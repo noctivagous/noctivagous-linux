@@ -1,0 +1,35 @@
+noctivagous linux
+
+- AI models, modalities, frameworks, providers, mcp servers,
+sandboxes, etc. available at system level and to apps
+in native framework.
+	- tools for AI researchers, native
+	- app/development framework has algorithms built in
+- built on top of debian (likely)
+- MetaFont utilized (likely)
+
+UI
+- custom layout engine, noct-layout-engine.
+	- base layer: noct-layout-engine
+	- grids as first-class framework inclusion, behind
+	all GUI.
+		print: module grid, compound grid, column grid
+	- designed from the ground up for multiple targets
+	per app ("responsive design") breakpoints.
+- SVG-based UI images with embedded bitmap images
+when necessary.
+
+File Navigator
+- Git in the File Navigator UI.
+
+App Framework
+- dedicated to bases like paramorphic components
+that can make apps from morphic elements.   
+Paramorphic Components Runtime bridges to system framework.
+  - native support for XULRunner updated and extended
+  too.
+- no app imports that look out of place.
+
+- built-in support for AI - mcp servers, sandboxing
+in settings.
+- fork of Gnome -
