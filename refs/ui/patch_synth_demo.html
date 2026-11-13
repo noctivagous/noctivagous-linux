@@ -4,130 +4,237 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Keyboard-Driven Node UI</title>
+
+
 <!--
-  Patch-Based Synth Demo — keyboard-first node UI.
+Project: Patch-Based Synth Demo — Keyboard-First Node UI (Updated)
 
-  HTML "patch" panels in #patchArea are linked by Paper.js cables on
-  #cablesCanvas. Mouse gestures are replaced by key commands:
-    Tab select · Space drag-lock · F connect · S re-attach cable end ·
-    D delete cable · G drag-line relocate · T tidy rectangle ·
-    Y live selection rectangle · E collapse/expand · W/M duplicate & disable
-    (see the in-page instructions) · [ ] step/scale · ; ' rotate.
+Purpose
+- Demonstrates a keyboard-driven patch/node interface where HTML “patch” panels are linked by Paper.js “cables.”
+- Replaces common mouse gestures with explicit key commands for selection, movement, cabling, alignment, test toggles, and layout compaction.
+- Serves as a reference scaffold for adapting keyboard-centric interaction patterns to other applications.
 
-  Structure of this file:
-    <head>  — CSS (main block, then Bootstrap, then the accordion/ripple block:
-              that order is the original cascade and is load-bearing), Paper.js
-    <body>  — #instructions panel, #patchArea with the patches,
-              then all JavaScript in numbered sections at the end.
-  Receivers (.patch.cv-receiver) display values sent over CV cables;
-  sources are the numeric and slider-numeric patches.
+Architecture Overview
+- DOM
+  • #patchArea — absolute-positioned container for all .patch nodes and the cables canvas.  
+  • .patch — node with <header> plus content; may include .port elements (data-dir="in" | "out").  
+    – Special types:  
+      ▸ .patch.numeric — numeric textfield (“type-on-hover”).  
+      ▸ .patch.slider-numeric — slider + numeric textfield combo.  
+      ▸ .patch.cv-receiver — displays values received via cable.  
+  • #cablesCanvas — Paper.js canvas (overlays patches) for cubic Bézier cables.  
+  • #instructions — dark sidebar with custom, always-visible JS scrollbar.
+- Paper.js
+  • One PaperScope bound to #cablesCanvas.  
+  • Each connection stored in `connections: { from, to, path, disabled? }`.  
+  • Hit-testing highlights hovered cables; styles are centralized via `styleCable()`.
+
+Core Data/State
+- Selection: `.patch.selected` (multi-select). `clearSelection()` removes it.  
+- Drag-lock (patches): `dragLock`, `dragStart`, `initialPos` Map<patch,{left,top}>.  
+- Slider drag-lock: `sliderDragLock`, `sliderDragEl`, `sliderDragStart`, window-level mousemove during session, and a live bracket path from knob→cursor.  
+- Cable editing: `connecting`, `connectStart`, `previewPath`, `hoverCable`, `reattachCable` + `reattachEnd`.  
+- Drag-line relocate (G): `dragLineActive`, `dragLinePatch`, `dragLinePath`.
+
+Geometry Helpers
+- `centerOf(el)` — element center in page coords.  
+- `portAnchorPoint(portEl)` — if the owning patch is collapsed, anchors to the header’s vertical midline (left for inputs, right for outputs); otherwise uses the port center.  
+- `refreshPath(path, p1, p2)` and `redrawCables()` — keep Bézier paths in sync as patches move/collapse.
+
+Keyboard Map (document keydown)
+- Tab — toggle selection of patch under cursor; Tab in empty space clears selection.  
+  • Suppressed while any drag-lock is active (patch or slider).  
+- Space — drag-lock toggle.  
+  • Over a slider: locks the knob to horizontal mouse movement (no click), draws a bracket guide to the cursor; Space/Esc releases.  
+  • Over patches: locks the entire selection; if none selected, auto-selects the patch under cursor for a single-item drag, then deselects on release.  
+- F — connect/disconnect ports (F to start on a port, F again on a compatible port to finish; Esc cancels).  
+- S — detach nearest end of hovered cable, then re-attach on another port with S.  
+- D — delete hovered cable.  
+- G — drag-line relocate: first G starts a dashed line from patch center; second G animates the patch to the cursor, redrawing cables every frame.  
+- T — Tidy Rectangle (two-press): uses a dashed diagonal + transparent rectangle as a selector.  
+  • Wide rectangle → horizontal alignment (same y); tall → vertical (same x).  
+  • Prevents overlap by spacing with a configurable margin.  
+- Y — Live Selection Rectangle (two-press): same visuals as T; selection updates live as patches enter/exit the rectangle.  
+- W — Toggle disabled state for the targeted item.  
+  • Cable: dashed, light gray; visual only unless additional logic is added.  
+  • Patch: dimmed, dashed border; ports grayed; selection outline suppressed.  
+- E — Collapse/Expand patches.  
+  • Selection present: all-expanded → collapse all; all-collapsed → expand all; mixed → majority decides.  
+  • Collapse hides everything except the header; cables re-anchor to the header midline via `portAnchorPoint()`.  
+- Esc — cancels active modes (connect preview, re-patch, drag-line, tidy/live rectangles, slider drag-lock) and restores cursors/overlays.
+
+Numeric Textfield & Slider Combo
+- “Type-on-hover”: hovering `.num-value` and typing digits/“.”/“-” begins inline edit (`.editing`).  
+  • Enter commits (clamp to [min,max], quantize to data-step, apply data-precision).  
+  • Escape reverts; leaving the value commits with validation.  
+- Brackets on hover or while editing:  
+  • `[` decrement / `]` increment; Shift = big step; Alt/Option (Meta on macOS) = small step.  
+  • Uses `e.code` ('BracketLeft'/'BracketRight') for layout-independent detection.  
+- Slider visuals: block track with full-height rectangular thumb (WebKit/Firefox).  
+- Min/Max labels: injected `.num-range` row inside numeric patches from `data-min` / `data-max`.  
+- Sources/Receivers: numeric and slider patches expose `cv` outputs; cv-receiver patches display values when connected.
+
+Initialization
+- PaperScope is created and bound to `#cablesCanvas`.  
+- Auto-connections on load (examples): Oscillator→Filter (audio), Pitch Number→Pitch Receiver (cv), Level Slider→Level Receiver (cv).  
+- Instructions sidebar installs a custom scrollbar and keeps its thumb synced.
+
+Reliability & UX Notes
+- Window-level mousemove is used during slider drag-lock to ensure responsive updates outside `#patchArea`.  
+- Cable styles (normal/hover/disabled) are applied centrally; `redrawCables()` reapplies styling after geometry updates.  
+- Tab selection is blocked during any drag-lock to avoid state conflicts.  
+- All preview overlays and session listeners are removed on completion or Esc.
+
+Extensibility
+- New patch types can be added by composing HTML within `.patch` and providing ports; all routing is port-based.  
+- To make “disabled” affect logic (not only visuals), gate your processing on `conn.disabled` and/or `.patch.disabled`.  
+- Keep this comment synchronized when features or key bindings change; update the #instructions HTML accordingly.
+
+ <table class="table table-sm table-dark table-bordered align-middle">
+      <thead>
+        <tr>
+          <th style="width: 35%;">Setting</th>
+          <th style="width: 65%;">Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Original size reference</td>
+          <td>The first time a patch is transformed, its original width/height are stored in <code>data-orig-width</code> and <code>data-orig-height</code>.</td>
+        </tr>
+        <tr>
+          <td>Scaling limits</td>
+          <td>Global limits use percentages of original size (e.g., <code>GLOBAL_MIN_PCT</code>, <code>GLOBAL_MAX_PCT</code>). Per-patch overrides: <code>data-scale-min-percent</code>, <code>data-scale-max-percent</code>.</td>
+        </tr>
+        <tr>
+          <td>Selection scope</td>
+          <td>Transforms apply to elements marked with <code>.patch.is-selected</code>, <code>.patch.selected</code>, <code>[aria-selected="true"]</code>, or <code>[data-selected="true"]</code>.</td>
+        </tr>
+        <tr>
+          <td>Cable redraw</td>
+          <td>After each scale or rotation, <code>redrawCables()</code> is invoked (if defined) to update patch connections.</td>
+        </tr>
+      </tbody>
+    </table>
+    
 -->
-  <!-- Paper.js for the cable overlay -->
+
+
+  <!-- Paper.js for cable overlay -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/paper.js/0.12.17/paper-full.min.js"></script>
   <style>
-/* ===== Base, patches, ports, cables ===== */
-html,body {
-  height: 100%;
-  margin: 0;
-  overflow: hidden;
-  font-family: "Arial",sans-serif;
-  background: #f4f6fa;
+    html,body{height:100%;margin:0;overflow:hidden;font-family:"Arial",sans-serif;background:#f4f6fa;}
+    #patchArea{position:relative;width:100%;height:100%;}
+
+    /* —— Patch block —— */
+    .patch{position:absolute;z-index:10;width:170px;background:#fff;border:2px solid #0d6efd;border-radius:6px;
+    
+    box-shadow: 3pt 3pt 3pt gray;cursor:pointer;user-select:none;}
+    .patch header{background:#0d6efd;color:#fff;font-size:0.9rem;padding:4px 8px;border-radius:4px 4px 0 0;}
+
+	/* Translations during drag should move the visual center 1:1 */
+	.patch { transform-origin: 50% 50%; }
+
+    /* —— Ports —— */
+    .port{width:14px;height:14px;border:2px solid #333;border-radius:50%;display:inline-block;margin:6px;vertical-align:middle;pointer-events:auto;}
+    .port.input{background:#ffd7d7;border-color:#c0392b;}
+    .port.output{background:#d7ffd9;border-color:#27ae60;float:right;}
+    .port.hover{outline:3px solid #f1c40f;}
+
+    /* —— Selection & drag-lock state —— */
+    .selected{outline:5pt solid #33cc33 !important;box-shadow:13pt 13pt 13pt gray}
+    .dragging{opacity:0.7;}
+
+    /* —— Cable canvas overlays patches —— */
+    #cablesCanvas{position:absolute;inset:0;z-index:20;pointer-events:none;}
+    
+    #cablesCanvas {
+    display: block; /* Removes any extra space below the canvas */
+    width: 100vw;   /* Sets width to 100% of viewport width */
+    height: 100vh;  /* Sets height to 100% of viewport height */
 }
-.patch header {
-  background: #0d6efd;
-  color: #fff;
-  font-size: 0.9rem;
-  padding: 4px 8px;
-  border-radius: 4px 4px 0 0;
-}
-.patch {
-  position: absolute;
-  z-index: 10;
-  width: 170px;
-  background: #fff;
-  border: 2px solid #0d6efd;
-  border-radius: 6px;
-  box-shadow: 3pt 3pt 3pt gray;
-  cursor: pointer;
-  user-select: none;
-  transform-origin: 50% 50%;
-}
-.port {
-  width: 14px;
-  height: 14px;
-  border: 2px solid #333;
-  border-radius: 50%;
-  display: inline-block;
-  margin: 6px;
-  vertical-align: middle;
-  pointer-events: auto;
-}
-.port.input {
-  background: #ffd7d7;
-  border-color: #c0392b;
-}
-.port.output {
-  background: #d7ffd9;
-  border-color: #27ae60;
-  float: right;
-}
-.port.hover {
-  outline: 3px solid #f1c40f;
-}
-.selected {
-  outline: 5pt solid #33cc33 !important;
-  box-shadow: 13pt 13pt 13pt gray;
-}
-.dragging {
-  opacity: 0.7;
-}
-#cablesCanvas {
-  position: absolute;
-  inset: 0;
-  z-index: 20;
-  pointer-events: none;
-  display: block;
-  width: 100vw;
-  height: 100vh;
-}
-@media (min-resolution: 2dppx) {
-  /* ===== Patch area & interaction cursors ===== */
-#patchArea {
-    background-size: 24px 24px;
+
+
+  </style>
+  
+  <style>
+  /* Light dotted grid for the patch area */
+  #patchArea{
+    background-image: radial-gradient(circle, rgba(0,0,0,0.15) 1px, transparent 1px);
+    background-size: 18px 18px;      /* grid pitch */
+  }
+  /* Slightly larger pitch on Hi-DPI screens */
+  @media (min-resolution: 2dppx){
+    #patchArea{ background-size: 24px 24px; }
+  }
+
+  /* ─────────── 2. CSS for the instruction bar ─────────── */
+ #instructionsBar{
+    position:fixed;           /* was: fixed */
+    top:0; z-index:40;
+    width:100%;
+    background:rgba(255,255,255,0.95);
+    border-bottom:1px solid #0d6efd;
+    padding:6px 12px;
+    font-size:1rem;
+    font-family:Tahoma;
+    line-height:1.5rem;
+    pointer-events:none;
+    box-shadow: 3pt 3pt 3pt gray;
+  background:black;
+  }
+  
+  @media (min-width: 800px){      /* applies when width > 650 px */
+  #instructionsBar{
+    font-size: 1rem;            /* raise from 0.85 rem (≈ 14 px) to 1 rem (≈ 16 px) */
+        font-size:1.2rem;
+    line-height:1.8rem;
   }
 }
-kbd {
-  border: 1pt solid silver;
-  border-radius: 3pt;
-  padding: 1pt;
-  text-align: Center;
-  padding-left: 3pt;
-  padding-right: 3pt;
-  margin-right: 3pt;
-  background: gray;
-  color: #444;
+  
+kbd{
+border:1pt solid silver;
+border-radius:3pt;
+padding:1pt;
+text-align:Center;
+padding-left:3pt;
+padding-right:3pt;
+margin-right:3pt;
+background:gray;
+color:#444;
 }
-#patchArea {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  background-image: radial-gradient(circle, rgba(0,0,0,0.15) 1px, transparent 1px);
-  background-size: 18px 18px;
-  cursor: default;
+
+</style>
+<style>
+  /* Cursor styles for different interaction states */
+  #patchArea               { cursor: default;    }
+  #patchArea.connecting    { cursor: crosshair;  }
+  #patchArea.over-port     { cursor: pointer;    }
+  #patchArea.hover-cable   { cursor: pointer;    }
+  #patchArea.invalid-connect{cursor: not-allowed;}
+  
+  
+</style>
+
+<style>
+#instructions {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: 500px;
+  bottom:10pt;
+
+  background: rgba(28, 28, 30, 0.95); /* dark semi-opaque */
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 12px 16px;
+  font-family: sans-serif;
+  font-size: 14pt;
+  color: #e0e0e0;
+box-shadow: 3pt 3pt 3pt gray;
+  z-index: 999;
 }
-#patchArea.connecting {
-  cursor: crosshair;
-}
-#patchArea.over-port {
-  cursor: pointer;
-}
-#patchArea.hover-cable {
-  cursor: pointer;
-}
-#patchArea.invalid-connect {
-  cursor: not-allowed;
-}
-/* ===== Instructions panel ===== */
+
 #instructions h3 {
   margin-top: 0;
   font-size: 16px;
@@ -135,50 +242,67 @@ kbd {
   border-bottom: 1px solid #555;
   padding-bottom: 4px;
 }
+
 #instructions ul {
   padding-left: 20px;
   margin: 6px 0 12px 0;
 }
+
 #instructions li {
   margin-bottom: 4px;
   line-height: 1.5;
-  color: gray;
-  font-family: arial;
+  color:gray;
+  font-family:arial;
 }
+
+#instructions kbd {
+  display: inline-block;
+  background: #333;
+  border: 1px solid #666;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 13px;
+  font-family: monospace;
+  color: #f0f0f0;
+  box-shadow: inset 0 -1px 0 #000;
+}
+
 #instructions p {
   margin: 8px 0 4px 0;
   font-weight: bold;
   color: #dddddd;
 }
+
 #instructions {
   position: absolute;
   top: 10px;
   left: 10px;
   width: 450px;
-  bottom: 10pt;
+	bottom:10pt;
   background: rgba(28, 28, 30, 0.95);
   border: 1px solid #444;
   border-radius: 6px;
   padding: 12px 16px 12px 12px;
-  font-family: Tahoma;
-  font-size: 1.2rem;
+    font-size:1.2rem;
+    font-family:Tahoma;
+    line-height:1.5rem;
   color: #e0e0e0;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
   z-index: 999;
-  line-height: 1.5rem;
   overflow: hidden;
 }
+
 #instructions .scroll-content {
   height: 100%;
   overflow-y: scroll;
-  padding-right: 16px;
-  padding-bottom: 240px; /* room for the last section to scroll clear (was ten <br> spacers in the markup) */
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  padding-right: 16px; /* space for fake scrollbar */
+  scrollbar-width: none;     /* Firefox */
+  -ms-overflow-style: none;  /* IE 10+ */
 }
 #instructions .scroll-content::-webkit-scrollbar {
-  display: none;
+  display: none; /* Chrome/Safari */
 }
+
 .scrollbar-track {
   position: absolute;
   top: 12px;
@@ -188,6 +312,7 @@ kbd {
   background: #222;
   border-radius: 3px;
 }
+
 .scrollbar-thumb {
   width: 100%;
   background: #555;
@@ -197,154 +322,179 @@ kbd {
   height: 40px;
   cursor: pointer;
 }
-/* ===== Pad grid ===== */
-.pad-cell:hover {
-  outline: 2px solid #66b0ff;
-  outline-offset: 2px;
-}
-.pad-cell.on {
-  background: #2a7fff;
-  border-color: #2a7fff;
-  box-shadow: 0 0 0 2px rgba(42,127,255,0.25), inset 0 -2px 0 rgba(0,0,0,0.25);
-}
-.pad-wrap {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.pad-out {
-  margin-left: 4px;
-}
-.patch.pad-grid {
-  width: 240px;
-}
-.pad-body {
-  padding: 10px;
-  background-color: #000;
-}
-.patch.pad-grid .pad-wrap {
-  position: relative;
-  display: block;
-  padding-right: 28px;
-}
-.pad-grid .port.output {
-  float: none;
-  margin-right: -5pt;
-}
-.patch.pad-grid .pad-out {
-  position: absolute;
-  right: 6px;
-  top: 50%;
-  transform: translateY(-50%);
-}
+
+/* 2) CSS — pad patch styling (add with your other patch styles) */
+.patch.pad-grid { width: 220px; }
+
+.pad-body { padding: 10px; background-color:#000;}
+
 .pads {
   display: grid;
   grid-template-columns: repeat(4, 42px);
   grid-auto-rows: 42px;
   gap: 8px;
   user-select: none;
-  margin: 0;
 }
-/* ===== Numeric & slider patches, receivers, patch states ===== */
-.patch.numeric, .patch.slider-numeric {
-  width: 220px;
+
+.pad-cell {
+  border: 2px solid #444;
+  border-radius: 2pt;
+  background: #1f1f22;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
 }
-.num-body {
+
+.pad-cell:hover {
+  outline: 2px solid #66b0ff;
+  outline-offset: 2px;
+}
+
+.pad-cell.on {
+  background: #2a7fff;
+  border-color: #2a7fff;
+  box-shadow: 0 0 0 2px rgba(42,127,255,0.25), inset 0 -2px 0 rgba(0,0,0,0.25);
+}
+
+
+.pad-wrap {
+  display: flex;
+  align-items: center;                               /* vertically center the port to the grid */
+  gap: 12px;
+}
+
+/* Override default float used elsewhere so flex positioning applies */
+.pad-grid .port.output { float: none; margin-right:-5pt;}
+
+.pad-out { margin-left: 4px; }                       /* small separation from the grid */
+
+/* Place the pad’s output port near the RIGHT edge of the patch */
+.patch.pad-grid { width: 240px; }            /* ensure room inside the card */
+.pad-body { padding: 10px; }
+
+/* Override earlier flex layout: use absolute positioning for the port */
+.patch.pad-grid .pad-wrap {
+  position: relative;
+  display: block;                            /* overrides any previous flex */
+  padding-right: 28px;                       /* reserve space for the port */
+}
+
+.pad-grid .port.output { float: none; }      /* ensure float doesn’t interfere */
+
+.patch.pad-grid .pad-out {
+  position: absolute;
+  right: 6px;                                /* close to the right edge */
+  top: 50%;
+  transform: translateY(-50%);               /* vertically centered to the grid */
+}
+
+.pads {
   display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
+  grid-template-columns: repeat(4, 42px);
+  grid-auto-rows: 42px;
   gap: 8px;
-  padding: 10px;
-}
-.num-label {
-  font-size: 0.9rem;
-  color: #666;
-}
-.num-value {
-  font-family: "Courier New", monospace;
-  font-size: 28px;
-  padding: 4px 8px;
-  border: 2px solid #66b0ff;
-  border-radius: 6px;
-  cursor: text;
   user-select: none;
-  min-width: 72px;
-  text-align: right;
+  margin: 0;                                 /* no extra margin on the grid */
 }
-.num-value.hover {
-  border-color: #66b0ff;
-  background: rgba(102,176,255,0.08);
-}
-.num-value.editing {
-  border-color: #ffc107;
-  background: rgba(255,193,7,0.10);
-}
-.num-slider {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  height: 32px;
-  background: transparent;
-  margin: 6px 0;
-}
-.num-slider::-webkit-slider-runnable-track {
-  height: 32px;
-  background: #e9ecef;
-  border: 2px solid #0d6efd;
-  border-radius: 6px;
-}
-.num-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 16px;
-  height: 32px;
-  background: #0d6efd;
-  border: 0;
-  border-radius: 4px;
-  margin-top: 0;
-  cursor: pointer;
-}
-.num-slider::-moz-range-track {
-  height: 32px;
-  background: #e9ecef;
-  border: 2px solid #0d6efd;
-  border-radius: 6px;
-}
-.num-slider::-moz-range-thumb {
-  width: 16px;
-  height: 32px;
-  background: #0d6efd;
-  border: 0;
-  border-radius: 4px;
-  cursor: pointer;
-}
-.num-slider:focus {
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(13,110,253,0.25);
-}
-.instructions-description {
-  color: #a0a0a0;
-  font-family: courier;
-}
+
+</style>
+
+<style>
+  /* Numeric patches */
+  .patch.numeric, .patch.slider-numeric { width: 220px; }
+
+  .num-body {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .num-label { font-size: 0.9rem; color: #666; }
+
+  .num-value {
+    font-family: "Courier New", monospace;
+    font-size: 28px;
+    padding: 4px 8px;
+    border: 2px solid #66b0ff;
+    border-radius: 6px;
+    cursor: text;
+    user-select: none;
+    min-width: 72px;
+    text-align: right;
+  }
+  .num-value.hover   { border-color: #66b0ff; background: rgba(102,176,255,0.08); }
+  .num-value.editing { border-color: #ffc107; background: rgba(255,193,7,0.10); }
+
+  /* Block slider with rectangular, full-height thumb */
+  .num-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 32px;                /* block track height */
+    background: transparent;     /* track drawn via vendor pseudo-elements */
+    margin: 6px 0;
+  }
+  /* WebKit */
+  .num-slider::-webkit-slider-runnable-track {
+    height: 32px;
+    background: #e9ecef;
+    border: 2px solid #0d6efd;
+    border-radius: 6px;
+  }
+  .num-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 32px;                /* full height to be rectangular */
+    background: #0d6efd;
+    border: 0;
+    border-radius: 4px;
+    margin-top: 0;
+    cursor: pointer;
+  }
+  /* Firefox */
+  .num-slider::-moz-range-track {
+    height: 32px;
+    background: #e9ecef;
+    border: 2px solid #0d6efd;
+    border-radius: 6px;
+  }
+  .num-slider::-moz-range-thumb {
+    width: 16px;
+    height: 32px;
+    background: #0d6efd;
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .num-slider:focus { outline: none; box-shadow: 0 0 0 2px rgba(13,110,253,0.25); }
+  
+  .instructions-description{
+  color:#a0a0a0;
+  font-family:courier;
+  }
+  
+  /* Optional: highlight slider while drag-locked via Space */
 .num-slider.dragging {
   outline: 2px solid #ffc107;
   outline-offset: 2px;
 }
+
+/* Inline min/max labels row inside numeric patches */
 .num-range {
-  grid-column: 1 / -1;
+  grid-column: 1 / -1;           /* span full width of the grid */
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-top: 4px;
   font-size: 12px;
-  color: #6c757d;
+  color: #6c757d;                /* muted */
   font-variant-numeric: tabular-nums;
 }
-.num-min, .num-max {
-  opacity: 0.9;
-}
-.patch.cv-receiver {
-  width: 220px;
-}
+.num-min, .num-max { opacity: 0.9; }
+
+/* Receiver patches reuse numeric look */
+.patch.cv-receiver { width: 220px; }
+
 .recv-body {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -352,10 +502,9 @@ kbd {
   gap: 8px;
   padding: 10px;
 }
-.recv-label {
-  font-size: 0.9rem;
-  color: #666;
-}
+
+.recv-label { font-size: 0.9rem; color: #666; }
+
 .recv-value {
   font-family: "Courier New", monospace;
   font-size: 24px;
@@ -367,6 +516,8 @@ kbd {
   color: #222;
   background: rgba(0,0,0,0.03);
 }
+
+/* Disabled patch: dimmed, dashed border; ports grayed */
 .patch.disabled {
   opacity: 0.55;
   filter: grayscale(40%);
@@ -381,47 +532,37 @@ kbd {
   background: #ddd !important;
   box-shadow: none;
 }
+/* Optional: suppress selection outline when disabled */
 .patch.disabled.selected {
   outline: none !important;
 }
+
+/* Collapse: hide all patch contents including ports; show only the header */
 .patch.collapsed {
   overflow: hidden;
 }
+
+/* Hide everything except the header */
 .patch.collapsed > :not(header) {
   display: none !important;
 }
+
+/* Optional: tighter header look when collapsed */
 .patch.collapsed header {
-  background-color: purple;
+
+  background-color:purple;
 }
+
+/* Actions row under the 4×4 grid */
 .pad-actions {
   display: flex;
   gap: 8px;
   margin-top: 10px;
-  border-top: 1pt solid gray;
-  padding-top: 10pt;
+  border-top:1pt solid gray;
+  padding-top:10pt;
 }
-.pad-btn:hover {
-  outline: 2px solid #66b0ff;
-  outline-offset: 2px;
-}
-.pad-btn.all-on {
-  border-color: #2a7fff;
-  border-radius: 3pt;
-  font-weight: normal;
-  font-family: courier;
-  color: gray;
-  background-color: black;
-  font-size: 10pt;
-}
-.pad-btn.all-off {
-  border-color: #6c757d;
-  border-radius: 3pt;
-  font-weight: normal;
-  font-family: courier;
-  color: gray;
-  background-color: black;
-  font-size: 10pt;
-}
+
+/* Large, tab-activated buttons */
 .pad-btn {
   flex: 1 1 0;
   text-align: center;
@@ -431,194 +572,172 @@ kbd {
   background: #202225;
   color: #e6e6e6;
   user-select: none;
-  cursor: default;
+  cursor: default;               /* activation is via Tab while hovering */
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
   font-weight: 600;
   font-size: 0.95rem;
+}
+
+.pad-btn:hover {
+  outline: 2px solid #66b0ff;
+  outline-offset: 2px;
+}
+
+.pad-btn.all-on  { border-color: #2a7fff; border-radius:3pt; font-weight:normal; font-family:courier;color:gray;background-color:black; font-size:10pt;}
+.pad-btn.all-off { border-color: #6c757d; border-radius:3pt;font-weight:normal; font-family:courier;color:gray;background-color:black;font-size:10pt;}
+
+/* Momentary "pressed" feedback for pad action buttons */
+.pad-btn {
   transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
 }
+
 .pad-btn.pressed {
   color: #fff;
   box-shadow: inset 0 0 0 2px rgba(42,127,255,0.25);
 }
+
 .pad-btn.all-on.pressed {
   background: #2a7fff;
   border-color: #2a7fff;
 }
+
 .pad-btn.all-off.pressed {
   background: #6c757d;
   border-color: #6c757d;
 }
+
+/* Optional: also show feedback on physical mouse click */
 .pad-btn:active {
   filter: brightness(1.05);
 }
+
+/* Optional: smooth visual response for pad color/rotation changes.
+   Add to your stylesheet with the other pad styles. */
 .pad-cell {
-  border: 2px solid #444;
-  border-radius: 2pt;
-  background: #1f1f22;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
   transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease;
 }
-/* ===== Instructions list & tables ===== */
+
+
+</style>
+
+<style>
+/* Base ordered list for the instructions panel */
 #instructions .instructions-list {
   margin: 0;
-  padding: 0 12px 0 28px;
+  padding: 0 12px 0 28px;          /* left indent for section numbers */
   list-style: decimal;
   color: #e0e0e0;
   font-size: 1rem;
   line-height: 1.5;
 }
+
+/* Top-level sections */
 #instructions .instructions-list > li {
   margin: 10px 0 16px 0;
 }
+
+/* Section title line (the <p> inside each <li>) */
 #instructions .instructions-list > li > p {
   margin: 0 0 6px 0;
   font-weight: 700;
-  color: #cfe5ff;
+  color: #cfe5ff;                  /* light blue for headings */
 }
+
+/* Optional description span placed under the title */
 #instructions .instructions-description {
   display: block;
   margin: 0 0 6px 0;
   color: #a8b3c2;
   font-size: 1.2rem;
 }
+
+/* Nested ordered lists for steps */
 #instructions .instructions-list ol {
   margin: 4px 0 6px 0;
-  padding-left: 22px;
+  padding-left: 22px;              /* indent step numbers */
   list-style: decimal;
 }
+
+/* Nested unordered lists within steps (e.g., sub-bullets) */
 #instructions .instructions-list ul {
   margin: 4px 0 6px 0;
   padding-left: 20px;
   list-style: disc;
   color: #cbd3dc;
 }
-#instructions .instructions-list ol > li, #instructions .instructions-list ul > li {
+
+/* Step list items spacing */
+#instructions .instructions-list ol > li,
+#instructions .instructions-list ul > li {
   margin: 2px 0;
 }
-#instructions .instructions-list li {
-  margin-top: 40pt;
+
+#instructions .instructions-list li{
+	margin-top:40pt;
 }
-#instructions .instructions-list li:first-child {
-  margin-top: 20pt;
+
+#instructions .instructions-list li:first-child{
+	margin-top:20pt;
 }
+/* Keyboard key appearance within instructions (keeps it readable on dark bg) */
 #instructions kbd {
-  display: inline-block;
   background: #333;
   border: 1px solid #666;
   border-radius: 4px;
   padding: 1px 6px;
-  font-size: 0.9rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.9rem;
   color: #f0f0f0;
   box-shadow: inset 0 -1px 0 #000;
 }
+
+/* Responsive: slightly larger text on wider screens */
 @media (min-width: 900px) {
   #instructions .instructions-list {
     font-size: 1.05rem;
     line-height: 1.6;
   }
 }
+/* Striped table styles for the Pad Grid section in #instructions */
 #instructions .pad-grid-table {
   width: 100%;
   border-collapse: collapse;
   margin: 0.25rem 0;
   font-size: 0.95rem;
 }
-#instructions .pad-grid-table th, #instructions .pad-grid-table td {
+
+#instructions .pad-grid-table th,
+#instructions .pad-grid-table td {
   text-align: left;
   padding: 8px 10px;
 }
+
 #instructions .pad-grid-table thead th {
   border-bottom: 1px solid #444;
   color: #cfe5ff;
 }
-#instructions .pad-grid-table tbody tr:nth-child(odd) {
-  background: rgba(255,255,255,0.04);
-}
-#instructions .pad-grid-table tbody tr:nth-child(even) {
-  background: rgba(255,255,255,0.08);
-}
+
+/* Zebra striping for dark UI */
+#instructions .pad-grid-table tbody tr:nth-child(odd)  { background: rgba(255,255,255,0.04); }
+#instructions .pad-grid-table tbody tr:nth-child(even) { background: rgba(255,255,255,0.08); }
+
+/* Subtle row hover */
 #instructions .pad-grid-table tbody tr:hover {
   background: rgba(102,176,255,0.18);
 }
+
+/* Optional: soften cell separators */
 #instructions .pad-grid-table tbody td {
   border-bottom: 1px solid rgba(255,255,255,0.06);
 }
-  </style>
-  <!-- Bootstrap CSS: after the main styles, as in the original file —
-       its reboot rules must keep winning the ties they won before (e.g. body background) -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
-        integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous" />
-  <style>
-/* ===== Instructions accordion (built by JS at the end of body) ===== */
-#instructions .accordion .accordion-button {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: .125rem;
-  line-height: 1.2;
-  padding-top: .5rem;
-  padding-bottom: .5rem;
-}
-#instructions .accordion .acc-title {
-  font-weight: 700;
-  color: #cfe5ff;
-}
-#instructions .accordion .acc-desc {
-  font-size: .95rem;
-  opacity: .9;
-}
-#instructions .accordion-item {
-  background: transparent;
-  border-color: #444;
-}
-#instructions .accordion-button, #instructions .accordion-button.collapsed {
-  background: rgb(0 0 0 / 65%);
-  color: #e0e0e0;
-}
-#instructions .accordion-button:not(.collapsed) {
-  background: black;
-  color: #fff;
-}
-#instructions .accordion-body {
-  background: rgba(20,20,20,1);
-}
-#instructions .accordion-button:hover {
-  background: rgba(0,0,5,0.9);
-}
-/* ===== Tab-key ripple ===== */
-.tab-key-circle {
-  position: absolute;
-  pointer-events: none;
-  width: 14px;
-  height: 14px;
-  margin-left: -7px;
-  margin-top: -7px;
-  border-radius: 50%;
-  background: rgba(102, 179, 255, 0.8);
-  transform: scale(1);
-  opacity: 1;
-  animation: tabCircleAnim 0.2s ease-out forwards;
-  z-index: 9999;
-}
-@keyframes tabCircleAnim {
-0% {
-    transform: scale(1);
-    opacity: 1;
-  }
-80% {
-    transform: scale(2.5);
-    opacity: 0.4;
-  }
-100% {
-    transform: scale(2.8);
-    opacity: 0;
-  }
-}
-  </style>
 
+
+</style>
 </head>
-<body>
+<body >
+
+
+
 
 <div id="instructions">
 
@@ -631,7 +750,7 @@ kind of GUI.</p>
 
 <hr/>
 
-  <div class="scroll-content">
+  <div class="scroll-content" style="box-styling:border-box;">
 
   <ol class="instructions-list">
 
@@ -678,8 +797,8 @@ kind of GUI.</p>
       <ol>
         <li>Notice the 4×4 Pad Grid. Some patches contain keyboard-activated controls like these squares.</li>
         <li>To turn a pad on, hover over a square and press <kbd>Tab</kbd>. Press <kbd>Tab</kbd> again to toggle it off.</li>
-        <li>Use the number keys on the keyboard to change a square's color.</li>
-          <li>Use the <kbd>`</kbd> key to rotate a square by 45 degrees.</li>
+        <li>Use the number keys on the keyboard to change a square's color.
+         <li>Use the <kbd>`</kbd> key to rotate a square by 45 degrees.
 
       </ol>
     </li>
@@ -914,6 +1033,8 @@ kind of GUI.</p>
   <td>Hovering any square</td>
   <td>Cycle border radius: 5&nbsp;pt → 10&nbsp;pt → 30&nbsp;pt → 5&nbsp;pt.</td>
 </tr>
+<!-- Insert these <tr> rows inside the Pad Grid Controls “Color and transform” table <tbody> -->
+
 <tr>
   <td><kbd>Alt</kbd> + <kbd>1</kbd> … <kbd>9</kbd>, <kbd>0</kbd></td>
   <td>Hovering any square</td>
@@ -954,6 +1075,11 @@ kind of GUI.</p>
 
   </ol>
 
+  <br><br>
+  <br><br>
+  <br><br>
+  <br><br>
+  <br><br>
 
 </div>
 
@@ -963,7 +1089,24 @@ kind of GUI.</p>
   
 </div>
 
+<!--
 
+<div style="color:white;margin-left:10pt;">    
+    1. To make a selection, hover over a node and press <kbd>Tab</kbd>.
+    <br/>
+    2. Start dragging the selection by pressing <kbd>Spacebar</kbd> once, then move the mouse. Press <kbd>Spacebar</kbd> again to unlock the dragging.
+
+    <br/>
+    3. Connect outlets by hovering over a circle and pressing <kbd>F</kbd>. Then move the mouse.
+    While hovering over the other outlet, press <kbd>F</kbd> again.  To cancel, press <kbd>Esc</kbd>.
+
+    <br/>
+    4. To delete a cable, hover over it and press <kbd>D</kbd>.
+    <br/>
+	5. To unhook a cable, to place it on a different outlet, press <kbd>S</kbd> while hovering 
+	over the outlet to detach.  After hovering over the other outlet, press <kbd>S</kbd> again
+	to attach.
+</div>-->
 <div id="patchArea">
   
 <div class="patch numeric" style="left:550px;top:380px;"
@@ -998,7 +1141,10 @@ kind of GUI.</p>
   <header>Pitch CV (Receiver)</header>
   <div class="recv-body">
    
-   
+   <!--
+    <span class="recv-label">Value</span>
+    <span class="recv-value" tabindex="-1">--</span>
+-->
   </div>
   <span class="port input" data-dir="in" data-name="cv"></span>
 </div>
@@ -1007,7 +1153,9 @@ kind of GUI.</p>
 <div class="patch cv-receiver" style="left:880px;top:620px;" data-id="levelRecv">
   <header>Level CV (Receiver)</header>
   <div class="recv-body">
-   
+   <!-- <span class="recv-label">Value</span>
+    <span class="recv-value" tabindex="-1">--</span>
+-->
   </div>
   <span class="port input" data-dir="in" data-name="cv"></span>
 </div>
@@ -1035,6 +1183,9 @@ kind of GUI.</p>
   <span class="port input" data-dir="in" data-name="audio"></span>
 </div>
 
+<!-- 1) HTML — insert inside #patchArea (a 4×4 pad patch) -->
+<!-- Updated Pad Grid patch HTML: adds an output port to the RIGHT of the 4×4 grid -->
+<!-- HTML (unchanged) -->
 <div class="patch pad-grid" style="left:1040px;top:40px;" data-id="pad1">
   <header>Pad Grid (4×4)</header>
   <div class="pad-body">
@@ -1077,19 +1228,8 @@ kind of GUI.</p>
     <canvas id="cablesCanvas" resize></canvas>
   </div>
 
-
-<!-- 3) Logic: type-on-hover editing + [ / ] increments; slider binding -->
-
-
-<!-- Bootstrap CSS/JS (v5) -->
-
-  <!-- Bootstrap JS: must load before section 7 (accordion builder) -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
-          integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
-          crossorigin="anonymous"></script>
-
-<!-- 1. Core: patch dragging, cabling (Paper.js), selection, tidy/live rectangles -->
 <script>
+
   function getNodePosition(node) {
         return {x: node.offsetLeft, y: node.offsetTop};
     }
@@ -2541,7 +2681,6 @@ if (dupLineActive  && dupLineOutline)  { dupLineOutline.remove();  dupLineOutlin
 window.addEventListener('resize',resizeCanvas); resizeCanvas();
 </script>
 
-<!-- 2. Instructions panel: custom scrollbar -->
 <script>
   const container = document.querySelector('#instructions');
   const content = container.querySelector('.scroll-content');
@@ -2581,8 +2720,7 @@ window.addEventListener('resize',resizeCanvas); resizeCanvas();
     document.body.style.userSelect = '';
   });
 </script>
-
-<!-- 3. Numeric fields & sliders: type-on-hover, bracket stepping, CV sources, duplication -->
+<!-- 3) Logic: type-on-hover editing + [ / ] increments; slider binding -->
 <script>
 (() => {
   if (window.__numericInit) return;
@@ -3216,9 +3354,9 @@ function visualCenter(el){
   const r = visualRect(el);
   return { x: r.left + r.width/2, y: r.top + r.height/2 };
 }
-</script>
 
-<!-- 4. Focus keeper for the patch area -->
+
+</script>
 <script>
 /* Focus keeper: ensure the page (specifically #patchArea) owns focus while hovered,
    so Tab / Space / letter keys reach your handlers rather than the browser UI. */
@@ -3288,8 +3426,19 @@ document.addEventListener('keydown', (e) => {
   });
 })();
 </script>
+<!-- Bootstrap CSS/JS (v5) -->
+<link
+  href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+  rel="stylesheet"
+  integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+  crossorigin="anonymous"
+/>
+<script
+  src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+  integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+  crossorigin="anonymous"
+></script>
 
-<!-- 5. Transform controls: scale [ ] and rotate ; ' for selected patches -->
 <script>
 /**
  * Unified transform controls for selected patches
@@ -3473,7 +3622,71 @@ document.addEventListener('keydown', (e) => {
 })();
 </script>
 
-<!-- 6. Tab-key ripple at the cursor -->
+<style>
+  /* Make both title and description visible in the accordion header (collapsed/expanded) */
+  #instructions .accordion .accordion-button {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: .125rem;
+    line-height: 1.2;
+    padding-top: .5rem;
+    padding-bottom: .5rem;
+  }
+  #instructions .accordion .acc-title {
+    font-weight: 700;
+    color: #cfe5ff;
+  }
+  #instructions .accordion .acc-desc {
+    font-size: .95rem;
+    opacity: .9;
+  }
+  /* Match dark panel aesthetics */
+  #instructions .accordion-item {
+    background: transparent;
+    border-color: #444;
+  }
+  #instructions .accordion-button,
+  #instructions .accordion-button.collapsed {
+    background: rgb(0 0 0 / 65%);
+    color: #e0e0e0;
+  }
+  #instructions .accordion-button:not(.collapsed) {
+    background: black;
+    color: #fff;
+  }
+  #instructions .accordion-body {
+    background: rgba(20,20,20,1);
+  }
+  
+    /* Hover effect on whole button */
+  #instructions .accordion-button:hover {
+    background: rgba(0,0,5,0.9);
+  }
+
+</style>
+<style>
+  .tab-key-circle {
+    position: absolute;
+    pointer-events: none;
+    width: 14px;
+    height: 14px;
+    margin-left: -7px; /* center horizontally on cursor */
+    margin-top: -7px;  /* center vertically on cursor */
+    border-radius: 50%;
+    background: rgba(102, 179, 255, 0.8);
+    transform: scale(1);
+    opacity: 1;
+    animation: tabCircleAnim 0.2s ease-out forwards;
+    z-index: 9999;
+  }
+
+  @keyframes tabCircleAnim {
+    0%   { transform: scale(1); opacity: 1; }
+    80%  { transform: scale(2.5); opacity: 0.4; }
+    100% { transform: scale(2.8); opacity: 0; }
+  }
+</style>
+
 <script>
 (function () {
   document.addEventListener('keydown', function (e) {
@@ -3502,7 +3715,6 @@ document.addEventListener('keydown', (e) => {
 })();
 </script>
 
-<!-- 7. Build the instructions accordion from the list above (uses Bootstrap) -->
 <script>
 (function () {
   const container = document.querySelector('#instructions .scroll-content');
@@ -3600,5 +3812,6 @@ document.addEventListener('keydown', (e) => {
   }, true);
 })();
 </script>
+
 </body>
 </html>
