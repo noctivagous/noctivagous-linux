@@ -1,0 +1,3817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Keyboard-Driven Node UI</title>
+
+
+<!--
+Project: Patch-Based Synth Demo — Keyboard-First Node UI (Updated)
+
+Purpose
+- Demonstrates a keyboard-driven patch/node interface where HTML “patch” panels are linked by Paper.js “cables.”
+- Replaces common mouse gestures with explicit key commands for selection, movement, cabling, alignment, test toggles, and layout compaction.
+- Serves as a reference scaffold for adapting keyboard-centric interaction patterns to other applications.
+
+Architecture Overview
+- DOM
+  • #patchArea — absolute-positioned container for all .patch nodes and the cables canvas.  
+  • .patch — node with <header> plus content; may include .port elements (data-dir="in" | "out").  
+    – Special types:  
+      ▸ .patch.numeric — numeric textfield (“type-on-hover”).  
+      ▸ .patch.slider-numeric — slider + numeric textfield combo.  
+      ▸ .patch.cv-receiver — displays values received via cable.  
+  • #cablesCanvas — Paper.js canvas (overlays patches) for cubic Bézier cables.  
+  • #instructions — dark sidebar with custom, always-visible JS scrollbar.
+- Paper.js
+  • One PaperScope bound to #cablesCanvas.  
+  • Each connection stored in `connections: { from, to, path, disabled? }`.  
+  • Hit-testing highlights hovered cables; styles are centralized via `styleCable()`.
+
+Core Data/State
+- Selection: `.patch.selected` (multi-select). `clearSelection()` removes it.  
+- Drag-lock (patches): `dragLock`, `dragStart`, `initialPos` Map<patch,{left,top}>.  
+- Slider drag-lock: `sliderDragLock`, `sliderDragEl`, `sliderDragStart`, window-level mousemove during session, and a live bracket path from knob→cursor.  
+- Cable editing: `connecting`, `connectStart`, `previewPath`, `hoverCable`, `reattachCable` + `reattachEnd`.  
+- Drag-line relocate (G): `dragLineActive`, `dragLinePatch`, `dragLinePath`.
+
+Geometry Helpers
+- `centerOf(el)` — element center in page coords.  
+- `portAnchorPoint(portEl)` — if the owning patch is collapsed, anchors to the header’s vertical midline (left for inputs, right for outputs); otherwise uses the port center.  
+- `refreshPath(path, p1, p2)` and `redrawCables()` — keep Bézier paths in sync as patches move/collapse.
+
+Keyboard Map (document keydown)
+- Tab — toggle selection of patch under cursor; Tab in empty space clears selection.  
+  • Suppressed while any drag-lock is active (patch or slider).  
+- Space — drag-lock toggle.  
+  • Over a slider: locks the knob to horizontal mouse movement (no click), draws a bracket guide to the cursor; Space/Esc releases.  
+  • Over patches: locks the entire selection; if none selected, auto-selects the patch under cursor for a single-item drag, then deselects on release.  
+- F — connect/disconnect ports (F to start on a port, F again on a compatible port to finish; Esc cancels).  
+- S — detach nearest end of hovered cable, then re-attach on another port with S.  
+- D — delete hovered cable.  
+- G — drag-line relocate: first G starts a dashed line from patch center; second G animates the patch to the cursor, redrawing cables every frame.  
+- T — Tidy Rectangle (two-press): uses a dashed diagonal + transparent rectangle as a selector.  
+  • Wide rectangle → horizontal alignment (same y); tall → vertical (same x).  
+  • Prevents overlap by spacing with a configurable margin.  
+- Y — Live Selection Rectangle (two-press): same visuals as T; selection updates live as patches enter/exit the rectangle.  
+- W — Toggle disabled state for the targeted item.  
+  • Cable: dashed, light gray; visual only unless additional logic is added.  
+  • Patch: dimmed, dashed border; ports grayed; selection outline suppressed.  
+- E — Collapse/Expand patches.  
+  • Selection present: all-expanded → collapse all; all-collapsed → expand all; mixed → majority decides.  
+  • Collapse hides everything except the header; cables re-anchor to the header midline via `portAnchorPoint()`.  
+- Esc — cancels active modes (connect preview, re-patch, drag-line, tidy/live rectangles, slider drag-lock) and restores cursors/overlays.
+
+Numeric Textfield & Slider Combo
+- “Type-on-hover”: hovering `.num-value` and typing digits/“.”/“-” begins inline edit (`.editing`).  
+  • Enter commits (clamp to [min,max], quantize to data-step, apply data-precision).  
+  • Escape reverts; leaving the value commits with validation.  
+- Brackets on hover or while editing:  
+  • `[` decrement / `]` increment; Shift = big step; Alt/Option (Meta on macOS) = small step.  
+  • Uses `e.code` ('BracketLeft'/'BracketRight') for layout-independent detection.  
+- Slider visuals: block track with full-height rectangular thumb (WebKit/Firefox).  
+- Min/Max labels: injected `.num-range` row inside numeric patches from `data-min` / `data-max`.  
+- Sources/Receivers: numeric and slider patches expose `cv` outputs; cv-receiver patches display values when connected.
+
+Initialization
+- PaperScope is created and bound to `#cablesCanvas`.  
+- Auto-connections on load (examples): Oscillator→Filter (audio), Pitch Number→Pitch Receiver (cv), Level Slider→Level Receiver (cv).  
+- Instructions sidebar installs a custom scrollbar and keeps its thumb synced.
+
+Reliability & UX Notes
+- Window-level mousemove is used during slider drag-lock to ensure responsive updates outside `#patchArea`.  
+- Cable styles (normal/hover/disabled) are applied centrally; `redrawCables()` reapplies styling after geometry updates.  
+- Tab selection is blocked during any drag-lock to avoid state conflicts.  
+- All preview overlays and session listeners are removed on completion or Esc.
+
+Extensibility
+- New patch types can be added by composing HTML within `.patch` and providing ports; all routing is port-based.  
+- To make “disabled” affect logic (not only visuals), gate your processing on `conn.disabled` and/or `.patch.disabled`.  
+- Keep this comment synchronized when features or key bindings change; update the #instructions HTML accordingly.
+
+ <table class="table table-sm table-dark table-bordered align-middle">
+      <thead>
+        <tr>
+          <th style="width: 35%;">Setting</th>
+          <th style="width: 65%;">Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Original size reference</td>
+          <td>The first time a patch is transformed, its original width/height are stored in <code>data-orig-width</code> and <code>data-orig-height</code>.</td>
+        </tr>
+        <tr>
+          <td>Scaling limits</td>
+          <td>Global limits use percentages of original size (e.g., <code>GLOBAL_MIN_PCT</code>, <code>GLOBAL_MAX_PCT</code>). Per-patch overrides: <code>data-scale-min-percent</code>, <code>data-scale-max-percent</code>.</td>
+        </tr>
+        <tr>
+          <td>Selection scope</td>
+          <td>Transforms apply to elements marked with <code>.patch.is-selected</code>, <code>.patch.selected</code>, <code>[aria-selected="true"]</code>, or <code>[data-selected="true"]</code>.</td>
+        </tr>
+        <tr>
+          <td>Cable redraw</td>
+          <td>After each scale or rotation, <code>redrawCables()</code> is invoked (if defined) to update patch connections.</td>
+        </tr>
+      </tbody>
+    </table>
+    
+-->
+
+
+  <!-- Paper.js for cable overlay -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paper.js/0.12.17/paper-full.min.js"></script>
+  <style>
+    html,body{height:100%;margin:0;overflow:hidden;font-family:"Arial",sans-serif;background:#f4f6fa;}
+    #patchArea{position:relative;width:100%;height:100%;}
+
+    /* —— Patch block —— */
+    .patch{position:absolute;z-index:10;width:170px;background:#fff;border:2px solid #0d6efd;border-radius:6px;
+    
+    box-shadow: 3pt 3pt 3pt gray;cursor:pointer;user-select:none;}
+    .patch header{background:#0d6efd;color:#fff;font-size:0.9rem;padding:4px 8px;border-radius:4px 4px 0 0;}
+
+	/* Translations during drag should move the visual center 1:1 */
+	.patch { transform-origin: 50% 50%; }
+
+    /* —— Ports —— */
+    .port{width:14px;height:14px;border:2px solid #333;border-radius:50%;display:inline-block;margin:6px;vertical-align:middle;pointer-events:auto;}
+    .port.input{background:#ffd7d7;border-color:#c0392b;}
+    .port.output{background:#d7ffd9;border-color:#27ae60;float:right;}
+    .port.hover{outline:3px solid #f1c40f;}
+
+    /* —— Selection & drag-lock state —— */
+    .selected{outline:5pt solid #33cc33 !important;box-shadow:13pt 13pt 13pt gray}
+    .dragging{opacity:0.7;}
+
+    /* —— Cable canvas overlays patches —— */
+    #cablesCanvas{position:absolute;inset:0;z-index:20;pointer-events:none;}
+    
+    #cablesCanvas {
+    display: block; /* Removes any extra space below the canvas */
+    width: 100vw;   /* Sets width to 100% of viewport width */
+    height: 100vh;  /* Sets height to 100% of viewport height */
+}
+
+
+  </style>
+  
+  <style>
+  /* Light dotted grid for the patch area */
+  #patchArea{
+    background-image: radial-gradient(circle, rgba(0,0,0,0.15) 1px, transparent 1px);
+    background-size: 18px 18px;      /* grid pitch */
+  }
+  /* Slightly larger pitch on Hi-DPI screens */
+  @media (min-resolution: 2dppx){
+    #patchArea{ background-size: 24px 24px; }
+  }
+
+  /* ─────────── 2. CSS for the instruction bar ─────────── */
+ #instructionsBar{
+    position:fixed;           /* was: fixed */
+    top:0; z-index:40;
+    width:100%;
+    background:rgba(255,255,255,0.95);
+    border-bottom:1px solid #0d6efd;
+    padding:6px 12px;
+    font-size:1rem;
+    font-family:Tahoma;
+    line-height:1.5rem;
+    pointer-events:none;
+    box-shadow: 3pt 3pt 3pt gray;
+  background:black;
+  }
+  
+  @media (min-width: 800px){      /* applies when width > 650 px */
+  #instructionsBar{
+    font-size: 1rem;            /* raise from 0.85 rem (≈ 14 px) to 1 rem (≈ 16 px) */
+        font-size:1.2rem;
+    line-height:1.8rem;
+  }
+}
+  
+kbd{
+border:1pt solid silver;
+border-radius:3pt;
+padding:1pt;
+text-align:Center;
+padding-left:3pt;
+padding-right:3pt;
+margin-right:3pt;
+background:gray;
+color:#444;
+}
+
+</style>
+<style>
+  /* Cursor styles for different interaction states */
+  #patchArea               { cursor: default;    }
+  #patchArea.connecting    { cursor: crosshair;  }
+  #patchArea.over-port     { cursor: pointer;    }
+  #patchArea.hover-cable   { cursor: pointer;    }
+  #patchArea.invalid-connect{cursor: not-allowed;}
+  
+  
+</style>
+
+<style>
+#instructions {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: 500px;
+  bottom:10pt;
+
+  background: rgba(28, 28, 30, 0.95); /* dark semi-opaque */
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 12px 16px;
+  font-family: sans-serif;
+  font-size: 14pt;
+  color: #e0e0e0;
+box-shadow: 3pt 3pt 3pt gray;
+  z-index: 999;
+}
+
+#instructions h3 {
+  margin-top: 0;
+  font-size: 16px;
+  color: #66b0ff;
+  border-bottom: 1px solid #555;
+  padding-bottom: 4px;
+}
+
+#instructions ul {
+  padding-left: 20px;
+  margin: 6px 0 12px 0;
+}
+
+#instructions li {
+  margin-bottom: 4px;
+  line-height: 1.5;
+  color:gray;
+  font-family:arial;
+}
+
+#instructions kbd {
+  display: inline-block;
+  background: #333;
+  border: 1px solid #666;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 13px;
+  font-family: monospace;
+  color: #f0f0f0;
+  box-shadow: inset 0 -1px 0 #000;
+}
+
+#instructions p {
+  margin: 8px 0 4px 0;
+  font-weight: bold;
+  color: #dddddd;
+}
+
+#instructions {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: 450px;
+	bottom:10pt;
+  background: rgba(28, 28, 30, 0.95);
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 12px 16px 12px 12px;
+    font-size:1.2rem;
+    font-family:Tahoma;
+    line-height:1.5rem;
+  color: #e0e0e0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+  z-index: 999;
+  overflow: hidden;
+}
+
+#instructions .scroll-content {
+  height: 100%;
+  overflow-y: scroll;
+  padding-right: 16px; /* space for fake scrollbar */
+  scrollbar-width: none;     /* Firefox */
+  -ms-overflow-style: none;  /* IE 10+ */
+}
+#instructions .scroll-content::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
+
+.scrollbar-track {
+  position: absolute;
+  top: 12px;
+  right: 4px;
+  width: 10px;
+  height: calc(100% - 24px);
+  background: #222;
+  border-radius: 3px;
+}
+
+.scrollbar-thumb {
+  width: 100%;
+  background: #555;
+  border-radius: 3px;
+  position: absolute;
+  top: 0;
+  height: 40px;
+  cursor: pointer;
+}
+
+/* 2) CSS — pad patch styling (add with your other patch styles) */
+.patch.pad-grid { width: 220px; }
+
+.pad-body { padding: 10px; background-color:#000;}
+
+.pads {
+  display: grid;
+  grid-template-columns: repeat(4, 42px);
+  grid-auto-rows: 42px;
+  gap: 8px;
+  user-select: none;
+}
+
+.pad-cell {
+  border: 2px solid #444;
+  border-radius: 2pt;
+  background: #1f1f22;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.pad-cell:hover {
+  outline: 2px solid #66b0ff;
+  outline-offset: 2px;
+}
+
+.pad-cell.on {
+  background: #2a7fff;
+  border-color: #2a7fff;
+  box-shadow: 0 0 0 2px rgba(42,127,255,0.25), inset 0 -2px 0 rgba(0,0,0,0.25);
+}
+
+
+.pad-wrap {
+  display: flex;
+  align-items: center;                               /* vertically center the port to the grid */
+  gap: 12px;
+}
+
+/* Override default float used elsewhere so flex positioning applies */
+.pad-grid .port.output { float: none; margin-right:-5pt;}
+
+.pad-out { margin-left: 4px; }                       /* small separation from the grid */
+
+/* Place the pad’s output port near the RIGHT edge of the patch */
+.patch.pad-grid { width: 240px; }            /* ensure room inside the card */
+.pad-body { padding: 10px; }
+
+/* Override earlier flex layout: use absolute positioning for the port */
+.patch.pad-grid .pad-wrap {
+  position: relative;
+  display: block;                            /* overrides any previous flex */
+  padding-right: 28px;                       /* reserve space for the port */
+}
+
+.pad-grid .port.output { float: none; }      /* ensure float doesn’t interfere */
+
+.patch.pad-grid .pad-out {
+  position: absolute;
+  right: 6px;                                /* close to the right edge */
+  top: 50%;
+  transform: translateY(-50%);               /* vertically centered to the grid */
+}
+
+.pads {
+  display: grid;
+  grid-template-columns: repeat(4, 42px);
+  grid-auto-rows: 42px;
+  gap: 8px;
+  user-select: none;
+  margin: 0;                                 /* no extra margin on the grid */
+}
+
+</style>
+
+<style>
+  /* Numeric patches */
+  .patch.numeric, .patch.slider-numeric { width: 220px; }
+
+  .num-body {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .num-label { font-size: 0.9rem; color: #666; }
+
+  .num-value {
+    font-family: "Courier New", monospace;
+    font-size: 28px;
+    padding: 4px 8px;
+    border: 2px solid #66b0ff;
+    border-radius: 6px;
+    cursor: text;
+    user-select: none;
+    min-width: 72px;
+    text-align: right;
+  }
+  .num-value.hover   { border-color: #66b0ff; background: rgba(102,176,255,0.08); }
+  .num-value.editing { border-color: #ffc107; background: rgba(255,193,7,0.10); }
+
+  /* Block slider with rectangular, full-height thumb */
+  .num-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 32px;                /* block track height */
+    background: transparent;     /* track drawn via vendor pseudo-elements */
+    margin: 6px 0;
+  }
+  /* WebKit */
+  .num-slider::-webkit-slider-runnable-track {
+    height: 32px;
+    background: #e9ecef;
+    border: 2px solid #0d6efd;
+    border-radius: 6px;
+  }
+  .num-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 32px;                /* full height to be rectangular */
+    background: #0d6efd;
+    border: 0;
+    border-radius: 4px;
+    margin-top: 0;
+    cursor: pointer;
+  }
+  /* Firefox */
+  .num-slider::-moz-range-track {
+    height: 32px;
+    background: #e9ecef;
+    border: 2px solid #0d6efd;
+    border-radius: 6px;
+  }
+  .num-slider::-moz-range-thumb {
+    width: 16px;
+    height: 32px;
+    background: #0d6efd;
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .num-slider:focus { outline: none; box-shadow: 0 0 0 2px rgba(13,110,253,0.25); }
+  
+  .instructions-description{
+  color:#a0a0a0;
+  font-family:courier;
+  }
+  
+  /* Optional: highlight slider while drag-locked via Space */
+.num-slider.dragging {
+  outline: 2px solid #ffc107;
+  outline-offset: 2px;
+}
+
+/* Inline min/max labels row inside numeric patches */
+.num-range {
+  grid-column: 1 / -1;           /* span full width of the grid */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6c757d;                /* muted */
+  font-variant-numeric: tabular-nums;
+}
+.num-min, .num-max { opacity: 0.9; }
+
+/* Receiver patches reuse numeric look */
+.patch.cv-receiver { width: 220px; }
+
+.recv-body {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+}
+
+.recv-label { font-size: 0.9rem; color: #666; }
+
+.recv-value {
+  font-family: "Courier New", monospace;
+  font-size: 24px;
+  padding: 4px 8px;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  min-width: 72px;
+  text-align: right;
+  color: #222;
+  background: rgba(0,0,0,0.03);
+}
+
+/* Disabled patch: dimmed, dashed border; ports grayed */
+.patch.disabled {
+  opacity: 0.55;
+  filter: grayscale(40%);
+  border-color: #bbb !important;
+  border-style: dashed;
+}
+.patch.disabled header {
+  background: #6c757d !important;
+}
+.patch.disabled .port {
+  border-color: #aaa !important;
+  background: #ddd !important;
+  box-shadow: none;
+}
+/* Optional: suppress selection outline when disabled */
+.patch.disabled.selected {
+  outline: none !important;
+}
+
+/* Collapse: hide all patch contents including ports; show only the header */
+.patch.collapsed {
+  overflow: hidden;
+}
+
+/* Hide everything except the header */
+.patch.collapsed > :not(header) {
+  display: none !important;
+}
+
+/* Optional: tighter header look when collapsed */
+.patch.collapsed header {
+
+  background-color:purple;
+}
+
+/* Actions row under the 4×4 grid */
+.pad-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  border-top:1pt solid gray;
+  padding-top:10pt;
+}
+
+/* Large, tab-activated buttons */
+.pad-btn {
+  flex: 1 1 0;
+  text-align: center;
+  padding: 10px 8px;
+  border: 2px solid #444;
+  border-radius: 6px;
+  background: #202225;
+  color: #e6e6e6;
+  user-select: none;
+  cursor: default;               /* activation is via Tab while hovering */
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.pad-btn:hover {
+  outline: 2px solid #66b0ff;
+  outline-offset: 2px;
+}
+
+.pad-btn.all-on  { border-color: #2a7fff; border-radius:3pt; font-weight:normal; font-family:courier;color:gray;background-color:black; font-size:10pt;}
+.pad-btn.all-off { border-color: #6c757d; border-radius:3pt;font-weight:normal; font-family:courier;color:gray;background-color:black;font-size:10pt;}
+
+/* Momentary "pressed" feedback for pad action buttons */
+.pad-btn {
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.pad-btn.pressed {
+  color: #fff;
+  box-shadow: inset 0 0 0 2px rgba(42,127,255,0.25);
+}
+
+.pad-btn.all-on.pressed {
+  background: #2a7fff;
+  border-color: #2a7fff;
+}
+
+.pad-btn.all-off.pressed {
+  background: #6c757d;
+  border-color: #6c757d;
+}
+
+/* Optional: also show feedback on physical mouse click */
+.pad-btn:active {
+  filter: brightness(1.05);
+}
+
+/* Optional: smooth visual response for pad color/rotation changes.
+   Add to your stylesheet with the other pad styles. */
+.pad-cell {
+  transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+
+</style>
+
+<style>
+/* Base ordered list for the instructions panel */
+#instructions .instructions-list {
+  margin: 0;
+  padding: 0 12px 0 28px;          /* left indent for section numbers */
+  list-style: decimal;
+  color: #e0e0e0;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+/* Top-level sections */
+#instructions .instructions-list > li {
+  margin: 10px 0 16px 0;
+}
+
+/* Section title line (the <p> inside each <li>) */
+#instructions .instructions-list > li > p {
+  margin: 0 0 6px 0;
+  font-weight: 700;
+  color: #cfe5ff;                  /* light blue for headings */
+}
+
+/* Optional description span placed under the title */
+#instructions .instructions-description {
+  display: block;
+  margin: 0 0 6px 0;
+  color: #a8b3c2;
+  font-size: 1.2rem;
+}
+
+/* Nested ordered lists for steps */
+#instructions .instructions-list ol {
+  margin: 4px 0 6px 0;
+  padding-left: 22px;              /* indent step numbers */
+  list-style: decimal;
+}
+
+/* Nested unordered lists within steps (e.g., sub-bullets) */
+#instructions .instructions-list ul {
+  margin: 4px 0 6px 0;
+  padding-left: 20px;
+  list-style: disc;
+  color: #cbd3dc;
+}
+
+/* Step list items spacing */
+#instructions .instructions-list ol > li,
+#instructions .instructions-list ul > li {
+  margin: 2px 0;
+}
+
+#instructions .instructions-list li{
+	margin-top:40pt;
+}
+
+#instructions .instructions-list li:first-child{
+	margin-top:20pt;
+}
+/* Keyboard key appearance within instructions (keeps it readable on dark bg) */
+#instructions kbd {
+  background: #333;
+  border: 1px solid #666;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.9rem;
+  color: #f0f0f0;
+  box-shadow: inset 0 -1px 0 #000;
+}
+
+/* Responsive: slightly larger text on wider screens */
+@media (min-width: 900px) {
+  #instructions .instructions-list {
+    font-size: 1.05rem;
+    line-height: 1.6;
+  }
+}
+/* Striped table styles for the Pad Grid section in #instructions */
+#instructions .pad-grid-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.25rem 0;
+  font-size: 0.95rem;
+}
+
+#instructions .pad-grid-table th,
+#instructions .pad-grid-table td {
+  text-align: left;
+  padding: 8px 10px;
+}
+
+#instructions .pad-grid-table thead th {
+  border-bottom: 1px solid #444;
+  color: #cfe5ff;
+}
+
+/* Zebra striping for dark UI */
+#instructions .pad-grid-table tbody tr:nth-child(odd)  { background: rgba(255,255,255,0.04); }
+#instructions .pad-grid-table tbody tr:nth-child(even) { background: rgba(255,255,255,0.08); }
+
+/* Subtle row hover */
+#instructions .pad-grid-table tbody tr:hover {
+  background: rgba(102,176,255,0.18);
+}
+
+/* Optional: soften cell separators */
+#instructions .pad-grid-table tbody td {
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+
+</style>
+</head>
+<body >
+
+
+
+
+<div id="instructions">
+
+  <h3>Patch/Node GUI Demo - <span style="font-weight:normal">Keyboard-Driven (Bimodal UI)</span></h3>
+
+<p style="font-family:arial; color:#c9c9c9;">Node-based (or patch-based) programming is found in many kinds of professional
+software.  To provide a better GUI, this demo utilizes keyboard keys instead of mouse buttons to move
+and manipulate patches.  Follow the instructions below step-by-step to experience this different
+kind of GUI.</p>
+
+<hr/>
+
+  <div class="scroll-content" style="box-styling:border-box;">
+
+  <ol class="instructions-list">
+
+    <li>
+      <p><strong>Drag-Line (G key)</strong></p>
+      <span class="instructions-description">For dragging patches (option 1)</span>
+      <ol>
+        <li>Press <kbd>G</kbd> while hovering over a patch to begin what is called a drag-line.</li>
+        <li>Move the mouse. A dashed line is drawn from the patch's center to your cursor.
+        The patch frame follows the cursor.
+        </li>
+        <li>Move the cursor to the desired location for the patch. Press <kbd>G</kbd> again.
+        The patch will move to that location.</li>
+      </ol>
+    </li>
+
+    <li>
+      <p><strong>Drag Lock (Spacebar)</strong></p>
+      <span class="instructions-description">For dragging patches (option 2).</span>
+      <ol>
+        <li>Hover over a patch. Press <kbd>Spacebar</kbd> once to begin dragging the patch.</li>
+        <li>Move the mouse to reposition the patch.</li>
+        <li>Press <kbd>Spacebar</kbd> a second time to drop the patch.</li>
+      </ol>
+    </li>
+
+    <li>
+      <p><strong>Selection (Tab key)</strong></p>
+      <span class="instructions-description">For selecting patches.</span>
+      <ol>
+        <li>
+          Hover over a patch and press <kbd>Tab</kbd> to select it.
+          <ul>
+            <li>The <kbd>Escape</kbd> key will clear the selection as will pressing <kbd>Tab</kbd> when the cursor is located outside of a patch.</li>
+          </ul>
+        </li>
+        <li>After selecting one or more patches, press the <kbd>Spacebar</kbd> to begin the drag lock.</li>
+      </ol>
+    </li>
+
+    <li>
+      <p><strong>Tap Patch Controls (Tab key)</strong></p>
+      <span class="instructions-description">For pressing buttons inside patches.</span>
+      <ol>
+        <li>Notice the 4×4 Pad Grid. Some patches contain keyboard-activated controls like these squares.</li>
+        <li>To turn a pad on, hover over a square and press <kbd>Tab</kbd>. Press <kbd>Tab</kbd> again to toggle it off.</li>
+        <li>Use the number keys on the keyboard to change a square's color.
+         <li>Use the <kbd>`</kbd> key to rotate a square by 45 degrees.
+
+      </ol>
+    </li>
+    
+
+
+    <li>
+      <p><strong>Live Selection Rectangle (Y key)</strong></p>
+      <span class="instructions-description">For selecting patches.</span>
+      <ol>
+        <li>Press <kbd>Y</kbd> anywhere on the workspace to begin drawing a live selection rectangle
+        (It works just like the rectangle for selecting desktop icons.)</li>
+        <li>Move the mouse to grow or shrink the rectangle diagonally.</li>
+        <ul>
+          <li>As patches intersect or enter the rectangle, they are automatically selected.</li>
+          <li>If a patch is no longer inside the rectangle, it is removed from the selection.</li>
+        </ul>
+        <li>Press <kbd>Y</kbd> again to finalize the selection and remove the outline.</li>
+        <li>Press <kbd>Esc</kbd> at any time to cancel the selection rectangle.</li>
+        <li>After making a selection, use the Drag Lock (<kbd>Spacebar</kbd>) for dragging.</li>
+      </ol>
+    </li>
+
+    <li>
+      <p><strong>Connect Cables (F key)</strong></p>
+      <span class="instructions-description">For wiring up patches.</span>
+      <ol>
+        <li>Hover over an outlet circle and press <kbd>F</kbd> to start a connection.</li>
+        <li>Move the mouse to the other outlet and press <kbd>F</kbd> again to complete.</li>
+        <li>Press <kbd>Esc</kbd> at any time to cancel.</li>
+      </ol>
+    </li>
+
+    <li>
+      <p><strong>Delete Cables (D key)</strong></p>
+      <span class="instructions-description">For removing cable connections.</span>
+      <ol>
+        <li>Hover over an existing cable and press <kbd>D</kbd> to delete it.</li>
+      </ol>
+    </li>
+
+    <li>
+      <p><strong>Swap Cable Outlet (S key)</strong></p>
+      <span class="instructions-description">For changing cable connections.</span>
+      <ol>
+        <li>Hover over an outlet with a connected cable and press <kbd>S</kbd> to detach it.</li>
+        <li>Move to a new outlet and press <kbd>S</kbd> again to attach.</li>
+      </ol>
+    </li>
+
+    <li>
+      <p><strong>Tidy Rectangle (T key)</strong></p>
+      <span class="instructions-description">For tidying up the workspace.</span>
+      <ol>
+        <li>Press <kbd>T</kbd> anywhere on the canvas to start a tidy rectangle outline for aligning patches.</li>
+        <li>Move the mouse to size the rectangle; all patches intersecting or inside the outline are candidates for alignment.</li>
+        <li>
+          Press <kbd>T</kbd> again to tidy the patches:
+          <ul>
+            <li>A <em>wide</em> rectangle aligns them horizontally (same&nbsp;<em>y</em>).</li>
+            <li>A <em>tall</em> rectangle aligns them vertically (same&nbsp;<em>x</em>).</li>
+          </ul>
+        </li>
+        <li>Press <kbd>Esc</kbd> at any time before the second <kbd>T</kbd> to cancel.</li>
+      </ol>
+    </li>
+
+    <li>
+      <p><strong>Numeric Field: Bracket Keys</strong></p>
+      <span class="instructions-description">For stepping up or down numeric values without mouse clicks.</span>
+      <ol>
+        <li>Hover over a numeric value to target the field.</li>
+        <li>Press <kbd>[</kbd> to decrement or <kbd>]</kbd> to increment the value.</li>
+        <li>
+          Use modifiers to change the step size:
+          <ul>
+            <li><kbd>Shift</kbd> + <kbd>[</kbd>/<kbd>]</kbd> → large step</li>
+            <li><kbd>Alt</kbd>/<kbd>Option</kbd> + <kbd>[</kbd>/<kbd>]</kbd> → small step</li>
+          </ul>
+        </li>
+        <li>Values are clamped to the patch’s <em>min</em>/<em>max</em> and quantized to its step.</li>
+        <li>To change the value directly, begin typing the new value after hover.</li>
+      </ol>
+    </li>
+
+    <li>
+      <p><strong>Slider: Spacebar Drag</strong></p>
+      <span class="instructions-description">For manipulating a slider without mouse clicks.</span>
+      <ol>
+        <li>Hover over a slider and press <kbd>Space</kbd> to begin drag-lock of the knob.</li>
+        <li>Move the mouse horizontally to change the slider value. The paired numeric field updates in real time. A bracket guide may be displayed from the knob to the cursor.</li>
+        <li>Press <kbd>Space</kbd> again or <kbd>Esc</kbd> to release the drag-lock.</li>
+        <li>While drag-lock is active, selection changes via <kbd>Tab</kbd> are disabled.</li>
+      </ol>
+    </li>
+
+    <li>
+      <p><strong>Collapse/Expand Patches (E key)</strong></p>
+      <span class="instructions-description">Hide patch contents for a compact layout; cables re-anchor to the header.</span>
+      <ol>
+        <li><strong>Single patch:</strong> Hover a patch and press <kbd>E</kbd> to toggle its collapsed state.</li>
+        <li>
+          <strong>Selection:</strong> If one or more patches are selected:
+          <ul>
+            <li>If all are expanded → press <kbd>E</kbd> to collapse all.</li>
+            <li>If all are collapsed → press <kbd>E</kbd> to expand all.</li>
+            <li>If mixed → majority decides (more expanded → collapse all; more collapsed → expand all).</li>
+          </ul>
+        </li>
+        <li><strong>Effect of collapse:</strong> Only the title bar remains visible; all other content (including ports) is hidden. Cables condense to the vertical midpoint of the header’s left/right edges.</li>
+      </ol>
+    </li>
+
+
+<li>
+  <p><strong>Scaling and Rotating Patches</strong></p>
+  <div class="instructions-description">
+    Use <kbd>[</kbd> and <kbd>]</kbd> to scale selected patch(es); use <kbd>;</kbd> and <kbd>&#39;</kbd> to rotate. Hold <kbd>Shift</kbd> for 45&deg; steps or <kbd>Alt</kbd> for 5&deg; steps. Scaling is limited by configured percentages of the patch’s original size.
+  </div>
+
+  <div class="instructions-content">
+    <table class="table table-sm table-dark table-bordered align-middle">
+      <thead>
+        <tr>
+          <th style="width: 28%;">Key</th>
+          <th style="width: 32%;">Action</th>
+          <th style="width: 40%;">Amount / Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><kbd>]</kbd></td>
+          <td>Scale up</td>
+          <td>Multiply size by <strong>1.15&times;</strong> (clamped by min/max % of original)</td>
+        </tr>
+        <tr>
+          <td><kbd>[</kbd></td>
+          <td>Scale down</td>
+          <td>Multiply size by <strong>1/1.15</strong> (clamped by min/max % of original)</td>
+        </tr>
+        <tr>
+          <td><kbd>&#39;</kbd></td>
+          <td>Rotate clockwise</td>
+          <td>Default step <strong>15&deg;</strong>; <kbd>Shift</kbd>=45&deg;, <kbd>Alt</kbd>=5&deg;</td>
+        </tr>
+        <tr>
+          <td><kbd>;</kbd></td>
+          <td>Rotate counterclockwise</td>
+          <td>Default step <strong>15&deg;</strong>; <kbd>Shift</kbd>=45&deg;, <kbd>Alt</kbd>=5&deg;</td>
+        </tr>
+      </tbody>
+    </table>
+
+   
+  </div>
+</li>
+
+    <li>
+      <p><strong>Duplication Line / Stamp (W key)</strong></p>
+      <span class="instructions-description">Copy patches with a guide line, or stamp clones during drag-lock.</span>
+      <ol>
+        <li><strong>Duplication Line (normal mode):</strong> Hover a patch and press <kbd>M</kbd> to begin a magenta dashed guide from its center. Move the mouse, then press <kbd>M</kbd> again (or release the mouse) to place a copy at the cursor. The original remains.</li>
+        <li><strong>Stamp clones (while drag-lock is active):</strong> With drag-lock on and one or more patches selected, press <kbd>M</kbd> to immediately clone <em>each</em> selected patch at its current position (no guide line).</li>
+        <li><strong>Cancel:</strong> Press <kbd>Esc</kbd> to cancel an in-progress duplication line.</li>
+        <li><strong>Note:</strong> Cables are not duplicated with the patch copy.</li>
+      </ol>
+    </li>
+
+    <li>
+      <p><strong>Toggle Disabled State (M key)</strong></p>
+      <span class="instructions-description">For testing output during programming.</span>
+      <ol>
+        <li>Hover over a <em>cable</em> or a <em>patch</em> to target it.</li>
+        <li>Press <kbd>W</kbd> to toggle the disabled state of the targeted item.</li>
+        <li>
+          Behavior:
+          <ul>
+            <li><strong>Cable:</strong> appears <em>dashed</em> and <em>light gray</em>. Press <kbd>W</kbd> again to re-enable.</li>
+            <li><strong>Patch:</strong> dims, shows a <em>dashed border</em>, and ports are grayed; selection outline is suppressed while disabled. Press <kbd>W</kbd> again to re-enable.</li>
+          </ul>
+        </li>
+      </ol>
+    </li>
+
+    <li>
+  <p><strong>Pad Grid Controls (Extended Information)</strong></p>
+  <span class="instructions-description">Keyboard operations for the 4×4 Pad Grid.</span>
+
+  <ol>
+    <li>
+      <strong>Toggle squares and run actions</strong>
+      <ol>
+        <li>Hover a square and press <kbd>Tab</kbd> to toggle it on/off. Color is shown only when the square is on.</li>
+        <li>Hover the <em>All On</em> or <em>All Off</em> button below the grid and press <kbd>Tab</kbd> to apply; the button briefly flashes to confirm.</li>
+        <li>Pressing <kbd>Tab</kbd> while the cursor is in the gaps inside the grid does nothing (does not change patch selection).</li>
+      </ol>
+    </li>
+
+    <li>
+      <strong>Color and transform of a hovered square</strong>
+      <table class="pad-grid-table" style="width:100%;border-collapse:collapse;margin:.25rem 0;" cellpadding="10">
+        <thead>
+          <tr>
+            <th style="text-align:left;border-bottom:1px solid #444;">Key</th>
+            <th style="text-align:left;border-bottom:1px solid #444;">When</th>
+            <th style="text-align:left;border-bottom:1px solid #444;">Effect</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><kbd>1</kbd> … <kbd>9</kbd>, <kbd>0</kbd></td>
+            <td>Hovering over a square.</td>
+            <td>Set hue around the color wheel: <kbd>1</kbd> → red (0°); <kbd>2</kbd>…<kbd>9</kbd> advance in 36° steps; <kbd>0</kbd> completes the top-row circle.</td>
+          </tr>
+          <tr>
+            <td><kbd>Shift</kbd> + <kbd>1</kbd> … <kbd>9</kbd>, <kbd>0</kbd></td>
+            <td>Hovering over a square.</td>
+            <td>Set saturation: <kbd>0</kbd> → 100%, <kbd>1</kbd>…<kbd>9</kbd> → 10%…90%.</td>
+          </tr>
+          <tr>
+            <td><kbd>`</kbd> or <kbd>'</kbd></td>
+            <td>Hovering over a square</td>
+            <td>Rotate the square by +45° per press.</td>
+          </tr>
+          <tr>
+            <td><kbd>Shift</kbd> + <kbd>`</kbd></td>
+            <td>Hovering any square</td>
+            <td>Toggle scale 1 ↔ 1.15 (keeps rotation).</td>
+          </tr>
+<tr>
+  <td><kbd>Alt</kbd> + <kbd>`</kbd></td>
+  <td>Hovering any square</td>
+  <td>Cycle border radius: 5&nbsp;pt → 10&nbsp;pt → 30&nbsp;pt → 5&nbsp;pt.</td>
+</tr>
+<!-- Insert these <tr> rows inside the Pad Grid Controls “Color and transform” table <tbody> -->
+
+<tr>
+  <td><kbd>Alt</kbd> + <kbd>1</kbd> … <kbd>9</kbd>, <kbd>0</kbd></td>
+  <td>Hovering any square</td>
+  <td>Set <strong>hue</strong> for the entire <em>row</em> of the hovered square and turn all pads in that row <strong>on</strong>.</td>
+</tr>
+
+<tr>
+  <td><kbd>Control</kbd> + <kbd>1</kbd> … <kbd>9</kbd>, <kbd>0</kbd></td>
+  <td>Hovering any square</td>
+  <td>Set <strong>hue</strong> for the entire <em>column</em> of the hovered square and turn all pads in that column <strong>on</strong>.</td>
+</tr>
+
+<tr>
+  <td><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>1</kbd> … <kbd>9</kbd>, <kbd>0</kbd></td>
+  <td>Hovering any square</td>
+  <td>Set <strong>brightness (saturation)</strong> for the entire <em>row</em> (e.g., <kbd>1</kbd>→10%, …, <kbd>9</kbd>→90%, <kbd>0</kbd>→100%) and turn all pads in that row <strong>on</strong>.</td>
+</tr>
+
+<tr>
+  <td><kbd>Control</kbd> + <kbd>Shift</kbd> + <kbd>1</kbd> … <kbd>9</kbd>, <kbd>0</kbd></td>
+  <td>Hovering any square</td>
+  <td>Set <strong>brightness (saturation)</strong> for the entire <em>column</em> with the same mapping and turn all pads in that column <strong>on</strong>.</td>
+</tr>
+
+        </tbody>
+      </table>
+    </li>
+
+    <li>
+      <strong>Output port</strong>
+      <ol>
+        <li>The Pad Grid’s output port is positioned to the right of the grid and can be cabled like other ports.</li>
+      </ol>
+    </li>
+  </ol>
+</li>
+
+
+  </ol>
+
+  <br><br>
+  <br><br>
+  <br><br>
+  <br><br>
+  <br><br>
+
+</div>
+
+    <div class="scrollbar-track">
+    <div class="scrollbar-thumb"></div>
+  </div>
+  
+</div>
+
+<!--
+
+<div style="color:white;margin-left:10pt;">    
+    1. To make a selection, hover over a node and press <kbd>Tab</kbd>.
+    <br/>
+    2. Start dragging the selection by pressing <kbd>Spacebar</kbd> once, then move the mouse. Press <kbd>Spacebar</kbd> again to unlock the dragging.
+
+    <br/>
+    3. Connect outlets by hovering over a circle and pressing <kbd>F</kbd>. Then move the mouse.
+    While hovering over the other outlet, press <kbd>F</kbd> again.  To cancel, press <kbd>Esc</kbd>.
+
+    <br/>
+    4. To delete a cable, hover over it and press <kbd>D</kbd>.
+    <br/>
+	5. To unhook a cable, to place it on a different outlet, press <kbd>S</kbd> while hovering 
+	over the outlet to detach.  After hovering over the other outlet, press <kbd>S</kbd> again
+	to attach.
+</div>-->
+<div id="patchArea">
+  
+<div class="patch numeric" style="left:550px;top:380px;"
+     data-id="num1"
+     data-min="0" data-max="127"
+     data-step="1" data-small-step="0.1" data-big-step="10"
+     data-fallback="0" data-precision="0">
+  <header>Pitch (Number)</header>
+  <div class="num-body">
+    <span class="num-label">Value</span>
+    <span class="num-value" tabindex="-1">64</span>
+  </div>
+  <span class="port output" data-dir="out" data-name="cv"></span>
+</div>
+
+<div class="patch slider-numeric" style="left:550px;top:600px;"
+     data-id="param1"
+     data-min="0" data-max="100"
+     data-step="1" data-small-step="0.5" data-big-step="10"
+     data-fallback="50" data-precision="0">
+  <header>Level (Slider+Number)</header>
+  <div class="num-body">
+    <input class="num-slider" type="range" min="0" max="100" step="1" value="50">
+    <span class="num-value" tabindex="-1">50</span>
+  </div>
+  <span class="port output" data-dir="out" data-name="cv"></span>
+</div>
+
+
+<!-- Pitch CV Receiver -->
+<div class="patch cv-receiver" style="left:880px;top:400px;" data-id="pitchRecv">
+  <header>Pitch CV (Receiver)</header>
+  <div class="recv-body">
+   
+   <!--
+    <span class="recv-label">Value</span>
+    <span class="recv-value" tabindex="-1">--</span>
+-->
+  </div>
+  <span class="port input" data-dir="in" data-name="cv"></span>
+</div>
+
+<!-- Level CV Receiver -->
+<div class="patch cv-receiver" style="left:880px;top:620px;" data-id="levelRecv">
+  <header>Level CV (Receiver)</header>
+  <div class="recv-body">
+   <!-- <span class="recv-label">Value</span>
+    <span class="recv-value" tabindex="-1">--</span>
+-->
+  </div>
+  <span class="port input" data-dir="in" data-name="cv"></span>
+</div>
+
+
+<div class="patch" style="left:550px;top:120px;" data-id="osc">
+  <header>Oscillator</header>
+  <span class="port output" data-dir="out" data-name="audio"></span>
+</div>
+
+<div class="patch" style="left:800px;top:120px;" data-id="filter">
+  <header>Filter</header>
+  <span class="port input" data-dir="in" data-name="audio"></span>
+  <span class="port output" data-dir="out" data-name="audio"></span>
+</div>
+
+<div class="patch" style="left:550px;top:220px;" data-id="amp">
+  <header>Amplifier</header>
+  <span class="port input"  data-dir="in"  data-name="audio"></span>
+  <span class="port output" data-dir="out" data-name="audio"></span>
+</div>
+
+<div class="patch" style="left:800px;top:220px;" data-id="out">
+  <header>Output</header>
+  <span class="port input" data-dir="in" data-name="audio"></span>
+</div>
+
+<!-- 1) HTML — insert inside #patchArea (a 4×4 pad patch) -->
+<!-- Updated Pad Grid patch HTML: adds an output port to the RIGHT of the 4×4 grid -->
+<!-- HTML (unchanged) -->
+<div class="patch pad-grid" style="left:1040px;top:40px;" data-id="pad1">
+  <header>Pad Grid (4×4)</header>
+  <div class="pad-body">
+    <div class="pad-wrap">
+      <div class="pads" role="grid" aria-label="4x4 pad grid">
+        <div class="pad-cell" role="button" aria-pressed="false"></div>
+        <div class="pad-cell" role="button" aria-pressed="false"></div>
+        <div class="pad-cell" role="button" aria-pressed="false"></div>
+        <div class="pad-cell" role="button" aria-pressed="false"></div>
+
+        <div class="pad-cell" role="button" aria-pressed="false"></div>
+        <div class="pad-cell" role="button" aria-pressed="false"></div>
+        <div class="pad-cell" role="button" aria-pressed="false"></div>
+        <div class="pad-cell" role="button" aria-pressed="false"></div>
+
+        <div class="pad-cell" role="button" aria-pressed="false"></div>
+        <div class="pad-cell" role="button" aria-pressed="false"></div>
+        <div class="pad-cell" role="button" aria-pressed="false"></div>
+        <div class="pad-cell" role="button" aria-pressed="false"></div>
+
+        <div class="pad-cell" role="button" aria-pressed="false"></div>
+        <div class="pad-cell" role="button" aria-pressed="false"></div>
+        <div class="pad-cell" role="button" aria-pressed="false"></div>
+        <div class="pad-cell" role="button" aria-pressed="false"></div>
+      </div>
+
+      <span class="port output pad-out" data-dir="out" data-name="trig"></span>
+    </div>
+
+<div class="pad-actions" aria-label="Pad actions">
+  <div class="pad-btn all-on"  role="button" data-action="all-on"  tabindex="-1">All On</div>
+  <div class="pad-btn all-off" role="button" data-action="all-off" tabindex="-1">All Off</div>
+</div>
+
+  </div>
+</div>
+
+
+    <!-- Overlay for cables (now above .patch) -->
+    <canvas id="cablesCanvas" resize></canvas>
+  </div>
+
+<script>
+
+  function getNodePosition(node) {
+        return {x: node.offsetLeft, y: node.offsetTop};
+    }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   MULTI-PATCH DRAG SUPPORT
+   •  Space-bar engages “drag-lock” for every .patch in the current selection.
+   •  All selected patches follow the mouse as a rigid group.
+   •  Press Space again (or release mouse) to drop them, then cables redraw.
+   ───────────────────────────────────────────────────────────────────────*/
+
+/* 1 ▸ New global to keep per-patch offsets from the cursor */
+const dragOffsets = new Map();       // Map<HTMLElement,{dx,dy}>
+/* ───── globals ───── */
+const initialPos  = new Map();   // original {left,top} of each .patch
+let   dragStart   = {x:0,y:0};   // mouse position at drag-start
+
+
+
+
+
+/*************************************************
+ *  Globals
+ *************************************************/
+const patchArea   = document.getElementById('patchArea');
+const cableCanvas = document.getElementById('cablesCanvas');
+const patches     = [...document.querySelectorAll('.patch')];
+let hoverCable = null;   // paper.Path currently under the cursor
+
+/* ——— Duplication Line (M key) ——— */
+let dupLineActive       = false;  // true while drawing
+let dupLineSourcePatch  = null;   // source .patch to duplicate
+let dupLinePath         = null;   // paper.Path preview line
+let patchIdCounter      = 1;
+
+
+let dragLineOutline = null;  // rectangle preview that mirrors the patch size (G)
+let dupLineOutline  = null;  // rectangle preview that mirrors the patch size (M)
+let dragLineMoveRef = null;   // window mousemove handler for G
+let dupLineMoveRef  = null;   // window mousemove handler for M
+
+
+let dragLineCircle = null;   // filled circle marking the first point (patch center)
+
+
+/* Visual: bracket from knob to cursor while dragging */
+let sliderBracketPath     = null;
+let sliderMoveListenerRef = null;   // window mousemove listener
+
+/*────────────────────────────  S-key “re-patch” support  ───────────────────────────
+   ▸  Hover any cable, press **S** → one end is detached and follows the cursor.
+   ▸  Press **F** while the cursor is over a *different* port to finish the move.
+   ▸  Press **Esc** to cancel.                                                         */
+
+let reattachCable = null;   // paper.Path currently being moved
+let reattachEnd   = 1;      // 0 = start-segment, 1 = end-segment
+let startPort     = null;   // port that remains fixed
+let lastMouse     = {x:0, y:0};   // updated on every mouse-move
+
+/* ——— Tidy Rectangle (T key) ——— */
+let tidyRectActive     = false;   // true while drawing
+let tidyStartPoint     = null;    // first corner (mouse-down or patch-centre)
+let tidyLinePath       = null;    // preview diagonal
+let tidyRectOutline    = null;    // preview upright rectangle
+
+/* ——— Live Selection Rectangle (Y key) ——— */
+let liveSelActive      = false;   // true while drawing
+let liveSelStart       = null;    // first corner (mouse position)
+let liveSelLine        = null;    // preview diagonal
+let liveSelRectOutline = null;    // preview upright rectangle
+
+/* ——— Slider drag-lock (Space on slider knob) ——— */
+let sliderDragLock  = false;
+let sliderDragEl    = null;     // <input class="num-slider">
+let sliderDragStart = null;     // { x, value, min, max, step, width }
+
+/* Paper.js setup */
+const paperScope = new paper.PaperScope();
+paperScope.setup(cableCanvas);
+
+/* ─────────── Auto-connect on load: Osc→Filter + Pitch/Level receivers ─────────── */
+window.addEventListener('load', () => {
+  const pairs = [
+    // Existing audio path
+  //  ['.patch[data-id="osc"]   .port.output',
+//     '.patch[data-id="filter"] .port.input'],
+
+    // New control-voltage paths
+    ['.patch[data-id="num1"]  .port.output',                               // Pitch (Number)
+     '.patch[data-id="pitchRecv"] .port.input'],                           // Pitch Receiver
+
+    ['.patch.slider-numeric[data-id="param1"] .port.output',               // Level (Slider+Number)
+     '.patch[data-id="levelRecv"] .port.input']                            // Level Receiver
+  ];
+
+  pairs.forEach(([fromSel, toSel]) => {
+    const from = document.querySelector(fromSel);
+    const to   = document.querySelector(toSel);
+    if (!(from && to)) return;
+
+    // Skip if already connected
+    if (connections.some(c => c.from === from && c.to === to)) return;
+
+    const p1 = centerOf(from);
+    const p2 = centerOf(to);
+
+    const path = new paperScope.Path({ strokeColor: '#333', strokeWidth: 2 });
+    const midX = (p1.x + p2.x) / 2;
+    path.moveTo(p1.x, p1.y);
+    path.cubicCurveTo(midX, p1.y, midX, p2.y, p2.x, p2.y);
+
+    connections.push({ from, to, path });
+  });
+
+  paperScope.view.update();
+  window.updateCvReceivers?.();
+});
+
+
+/* Data for active drag-lock & cables */
+let selectedPatch = null;
+let dragLock      = false;
+let dragOffset    = {x:0,y:0};
+/* tracks a patch selected automatically by the space-bar */
+let autoSelectedPatch = null;
+
+/* Connection‑state data */
+let connecting   = false;        // true → awaiting 2nd port
+let connectStart = null;         // HTMLElement (first port)
+let previewPath  = null;         // paper.Path for live preview
+const connections = [];          // {from:HTMLElement, to:HTMLElement, path:paper.Path}
+
+/* ——— Drag-Line relocation (G key) ——— */
+let dragLineActive = false;   // true while drawing
+let dragLinePatch  = null;    // HTMLElement being moved
+let dragLinePath   = null;    // paper.Path preview line
+
+
+// Ensure the page captures keyboard events as soon as it is shown
+window.addEventListener('load', () => document.body.focus(), { once:true });
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) document.body.focus();            // regain focus on tab-switch
+});
+
+
+
+patchArea.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;                              // left-button only
+  if (!e.target.closest('.patch')) {                       // clicked outside any node
+    clearSelection();
+    selectedPatch = null;
+    paperScope.view.update();
+  }
+});
+
+/*************************************************
+ *  Utility helpers
+ *************************************************/
+function centerOf(el){
+  const r = el.getBoundingClientRect();
+  return {x:r.left + r.width/2 + window.scrollX, y:r.top + r.height/2 + window.scrollY};
+}
+/* Replace the old single-selection helper with this multi-selection version */
+function clearSelection(){
+  /* remove the “selected” class from every patch that has it */
+  document.querySelectorAll('.patch.selected')
+          .forEach(el => el.classList.remove('selected'));
+
+  /* reset single-patch state, if in use elsewhere */
+  selectedPatch = null;
+}
+
+/* Return the anchor point for a port.
+   If the owning patch is collapsed, snap to the header's vertical midline on the
+   left (inputs) or right (outputs). Otherwise use the port's own center. */
+function portAnchorPoint(portEl) {
+  const patch = portEl.closest('.patch');
+  if (!patch) return centerOf(portEl);
+
+  if (!patch.classList.contains('collapsed')) {
+    return centerOf(portEl);
+  }
+
+  const hdr = patch.querySelector('header');
+  if (!hdr) return centerOf(patch);
+
+  const r = hdr.getBoundingClientRect();
+  const y = r.top + r.height / 2 + window.scrollY;
+  const dir = portEl.dataset?.dir || '';  // 'in' | 'out'
+  const x = (dir === 'in')
+    ? (r.left + window.scrollX)   // left edge mid
+    : (r.right + window.scrollX); // right edge mid
+
+  return { x, y };
+}
+
+
+/** Update an existing cubic path's 4 control points to new endpoints */
+function refreshPath(path, p1, p2){
+  const midX=(p1.x+p2.x)/2;
+  const segs = path.segments;
+  if(segs.length!==4){ path.removeSegments(); path.moveTo(p1.x,p1.y); path.cubicCurveTo(midX,p1.y, midX,p2.y, p2.x,p2.y); return; }
+  segs[0].point.set(p1.x,p1.y);
+  segs[1].point.set(midX,p1.y);
+  segs[2].point.set(midX,p2.y);
+  segs[3].point.set(p2.x,p2.y);
+}
+
+function redrawCables() {
+  for (const c of connections) {
+    const p1 = portAnchorPoint(c.from);
+    const p2 = portAnchorPoint(c.to);
+
+    if (c.path) {
+      refreshPath(c.path, p1, p2);
+    } else {
+      const path = new paperScope.Path();
+      c.path = path;
+      path.strokeColor = '#333';
+      path.strokeWidth = 2;
+      path.moveTo(p1.x, p1.y);
+      const midX = (p1.x + p2.x) / 2;
+      path.cubicCurveTo(midX, p1.y, midX, p2.y, p2.x, p2.y);
+    }
+  }
+  paperScope.view.update();
+}
+
+function disconnect(from,to){
+  const idx = connections.findIndex(c=>c.from===from && c.to===to);
+  if(idx>-1){
+    connections[idx].path.remove();
+    connections.splice(idx,1);
+    paperScope.view.update();
+  }
+}
+function abortPreview(){
+  if(previewPath){ previewPath.remove(); previewPath=null; }
+  connecting=false;
+  connectStart=null;
+}
+
+/*************************************************
+ *  Pointer tracking
+ *************************************************/
+let mouse={x:0,y:0};
+patchArea.addEventListener('mousemove',e=>{
+  lastMouse = {x:e.clientX, y:e.clientY};                 // keep latest position
+  mouse.x = e.clientX; mouse.y = e.clientY;            // keep global mouse
+
+
+ if(reattachCable){                                      // move the floating end
+    reattachCable.segments[reattachEnd].point =
+      new paperScope.Point(e.clientX + window.scrollX,
+                           e.clientY + window.scrollY);
+    paperScope.view.update();
+  }
+
+
+  /* — group dragging — */
+ 
+/* mouse-move: reuse the stored offsets so every patch keeps its original spacing */
+if (dragLock && initialPos.size) {
+  const dx = mouse.x - dragStart.x;
+  const dy = mouse.y - dragStart.y;
+  initialPos.forEach((pos, el) => {
+    el.style.left = (pos.left + dx) + 'px';
+    el.style.top  = (pos.top  + dy) + 'px';
+  });
+  redrawCables();                // maintain connections
+  
+  return;
+}
+
+
+ const mouse1 = { x: e.clientX, y: e.clientY };
+  mouse.x=e.clientX; mouse.y=e.clientY;
+  if(dragLock && selectedPatch){
+    selectedPatch.style.left=(mouse.x-dragOffset.x)+'px';
+    selectedPatch.style.top =(mouse.y-dragOffset.y)+'px';
+    redrawCables();
+    
+  }
+
+/* live update for G drag-line */
+if (dragLineActive && dragLinePath) {
+  dragLinePath.lastSegment.point.set(mouse.x + window.scrollX,
+                                     mouse.y + window.scrollY);
+  paperScope.view.update();
+}
+
+/* Copy-line */
+if (dupLineActive && dupLinePath) {
+  dupLinePath.lastSegment.point.set(mouse.x + window.scrollX,
+                                    mouse.y + window.scrollY);
+  paperScope.view.update();
+}
+
+  
+ /* Cable hover detection */
+if (!connecting){
+  const hit = paperScope.project.hitTest(
+    new paperScope.Point(mouse.x + window.scrollX, mouse.y + window.scrollY),
+    { stroke: true, fill: false, segments: false, tolerance: 6 });
+
+  const target = (hit && hit.item &&
+                  connections.some(c => c.path === hit.item))
+                 ? hit.item : null;
+
+  if (target !== hoverCable){
+    // restore previous cable's normal style
+    if (hoverCable){
+      const prev = connections.find(c => c.path === hoverCable);
+      if (prev) styleCable(prev, false);
+    }
+    hoverCable = target;
+
+    // apply hover style to new target
+    if (hoverCable){
+      const next = connections.find(c => c.path === hoverCable);
+      if (next) styleCable(next, true);
+    }
+    paperScope.view.update();
+  }
+}
+
+  
+  
+  
+});
+
+/*************************************************
+ *  Hover state for ports
+ *************************************************/
+let hoverPort=null;
+patchArea.addEventListener('mouseover',e=>{
+  const p=e.target.closest('.port');
+  if(p){hoverPort=p; p.classList.add('hover');}
+});
+patchArea.addEventListener('mouseout',e=>{
+  const p=e.target.closest('.port');
+  if(p){p.classList.remove('hover'); if(hoverPort===p) hoverPort=null;}
+});
+
+
+
+
+/*************************************************
+ *  Keyboard control (Tab / Space / F / Esc)
+ *************************************************/
+/*  Focus the canvas whenever the mouse enters it  */
+patchArea.tabIndex = 0;                 // make the element focus-able
+patchArea.addEventListener('mouseenter', () => {
+  patchArea.focus();                    // direct subsequent key events here
+});
+
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   Unified key-down handler  (revised)
+   –  S  : detach nearest end of hovered cable; press S again to attach
+   –  D  : delete the hovered cable
+   –  F  : make / break a normal port-to-port connection
+   –  ⎵  : toggle drag-lock on the *last* selected patch
+   –  Tab: MULTI-SELECT patch under cursor; Tab in empty space clears selection
+   –  Esc: cancel current modes (drag, preview, re-patch, selection)
+   ────────────────────────────────────────────────────────────────────────────*/
+document.addEventListener('keydown', e => {
+
+  const key   = e.key;
+  const lower = key.toLowerCase();
+
+ /* ─────────────────────  G : drag-line relocation  ───────────────────── */
+// === Unified G : Drag-Line (start+finish with start-circle + traveling outline) ===
+/* 3) Drag-Line (G) — REPLACE the “first G press” branch with this version.
+      It installs a window-level mousemove that advances BOTH the line tip
+      and the outline center. */
+if (lower === 'g') {
+  e.preventDefault();
+
+  if (!dragLineActive) {
+    const tgt = document.elementFromPoint(mouse.x, mouse.y)?.closest('.patch');
+    if (!tgt) return;
+
+    dragLineActive = true;
+    dragLinePatch  = tgt;
+
+    const start = centerOf(tgt);
+
+    // dashed guide
+    dragLinePath = new paperScope.Path.Line({
+      from: start, to: start,
+      strokeColor: '#0d6efd', strokeWidth: 2, dashArray: [4, 4]
+    });
+
+    // start-circle (if you use it)
+    if (typeof dragLineCircle !== 'undefined' && dragLineCircle) {
+      dragLineCircle.remove(); dragLineCircle = null;
+    }
+    dragLineCircle = new paperScope.Path.Circle({
+      center: start, radius: 10, fillColor: '#0d6efd'
+    });
+
+    // traveling outline
+    if (dragLineOutline) { dragLineOutline.remove(); dragLineOutline = null; }
+    dragLineOutline = createPatchOutline(tgt, start, '#0d6efd', [10, 6]);
+
+    // NEW: window-level mousemove to avoid early returns in #patchArea handlers
+    dragLineMoveRef = (ev) => {
+      const p = clientToViewPoint(ev);
+      if (dragLinePath)    dragLinePath.lastSegment.point = p;   // move guide tip
+      if (dragLineOutline) dragLineOutline.position       = p;   // center outline at cursor
+      paperScope.view.update();
+    };
+    window.addEventListener('mousemove', dragLineMoveRef);
+
+    paperScope.view.update();
+    return;
+  }
+
+
+ /* second G — animate patch so its *visual center* reaches the cursor */
+const target = { x: mouse.x + window.scrollX, y: mouse.y + window.scrollY };
+
+/* Base start (layout left/top) and current visual center (transformed) */
+const b0 = basePos(dragLinePatch);
+const c0 = visualCenter(dragLinePatch);
+
+/* We want the visual center to move by (target - c0).
+   Because transform-origin is center, translating base left/top by the same
+   delta moves the transformed shape by the same vector. */
+const dv = { x: target.x - c0.x, y: target.y - c0.y };
+
+/* Animate base left/top from b0 → b0+dv */
+const steps = 15;
+let frame = 0;
+
+const cleanupG = () => {
+  if (dragLineMoveRef) { window.removeEventListener('mousemove', dragLineMoveRef); dragLineMoveRef = null; }
+  if (dragLinePath)    { dragLinePath.remove();    dragLinePath = null; }
+  if (dragLineCircle)  { dragLineCircle.remove();  dragLineCircle = null; }
+  if (dragLineOutline) { dragLineOutline.remove(); dragLineOutline = null; }
+};
+
+function animate() {
+  const t = ++frame / steps;
+  const ease = (t >= 1) ? 1 : (t < 0.5 ? 2*t*t : -1 + (4 - 2*t)*t);
+  dragLinePatch.style.left = (b0.left + dv.x * ease) + 'px';
+  dragLinePatch.style.top  = (b0.top  + dv.y * ease) + 'px';
+  redrawCables();
+
+  if (t >= 1) {
+    cleanupG();
+    dragLineActive = false;
+    dragLinePatch  = null;
+    return;
+  }
+  requestAnimationFrame(animate);
+}
+requestAnimationFrame(animate);
+return;
+
+}
+
+            
+  /* ──────────────────────  S : detach / re-attach a cable end  ─────────────────── */
+  if (lower === 's') {
+    /* 1 ▸ finish reconnection if a loose end exists */
+    if (reattachCable && connecting) {
+      const portElem = document.elementFromPoint(lastMouse.x, lastMouse.y);
+      if (!(portElem && portElem.classList.contains('port'))) return;
+      if (portElem.closest('.patch') === startPort.closest('.patch')) return;
+
+      const r = portElem.getBoundingClientRect();
+      reattachCable.segments[reattachEnd].point =
+        new paperScope.Point(r.left + r.width / 2 + window.scrollX,
+                             r.top  + r.height / 2 + window.scrollY);
+
+      const conn = connections.find(c => c.path === reattachCable);
+      if (reattachEnd === 0) { conn.from = portElem; } else { conn.to = portElem; }
+
+      reattachCable = null; connecting = false; startPort = null;
+      setCursor?.(null);
+      paperScope.view.update();
+      return;
+    }
+
+    /* 2 ▸ not reconnecting yet: detach nearest end of hovered cable */
+    if (hoverCable && !connecting && !reattachCable) {
+      const conn = connections.find(c => c.path === hoverCable);
+      if (!conn) return;
+
+      const p0  = hoverCable.segments[0].point;
+      const p1  = hoverCable.segments[1].point;
+      const cur = new paperScope.Point(lastMouse.x + window.scrollX,
+                                       lastMouse.y + window.scrollY);
+      reattachEnd = (p0.getDistance(cur) < p1.getDistance(cur)) ? 0 : 1;
+
+      if (reattachEnd === 0) { conn.from = null; startPort = conn.to; }
+      else                   { conn.to   = null; startPort = conn.from; }
+
+      reattachCable = hoverCable;
+      connecting    = true;
+      setCursor?.('connecting');
+      return;
+    }
+  }
+
+/* =========================
+   KEY HANDLER additions
+   Insert this block INSIDE your existing `document.addEventListener('keydown', e => { … })`,
+   *above* your Tab/selection logic, and after you compute `const lower = e.key.toLowerCase();`.
+   ========================= */
+
+/* Digit keys:
+   - Digit (no Shift): set HUE to a position on the wheel (1→red, …, 9,0 complete the circle)
+   - Shift + Digit: set SATURATION (0→100%, 1..9→10..90%)
+   Only applies when hovering a .pad-cell; doing nothing in gaps or outside the grid.
+*/
+/* ========= Key handling — extend your existing digit-key block =========
+   Replace your current `if (isDigitKey(e)) { … }` block with this version.
+*/
+if (isDigitKey(e)) {
+  const el   = document.elementFromPoint(mouse.x, mouse.y);
+  const cell = el?.closest('.pad-cell');
+  const pads = el?.closest('.pads');
+
+  // Inside the grid but not on a square → do nothing
+  if (pads && !cell) { e.preventDefault(); return; }
+
+  // Outside the grid → ignore
+  if (!cell || !pads) {
+    // no-op
+  } else {
+    e.preventDefault();
+    const d = digitValue(e);               // 0..9
+    if (d === null) return;
+
+    // --- Alt + number: set hue for the entire ROW of the hovered cell
+    if (e.altKey) {
+      const { row } = getPadGridIndex(cell);
+      setRowHueByDigit(pads, row, d);
+      return;
+    }
+
+    // --- Control + number: set hue for the entire COLUMN of the hovered cell
+    if (e.ctrlKey) {
+      const { col } = getPadGridIndex(cell);
+      setColHueByDigit(pads, col, d);
+      return;
+    }
+
+    // --- Shift + number: set SATURATION of the hovered cell (only shows if ON)
+    if (e.shiftKey) {
+      padCellSetSaturationByDigit(cell, d);  // uses your existing saturation helper
+      return;
+    }
+
+    // --- Plain number: set HUE of the hovered cell (only shows if ON)
+    padCellSetHueByDigit(cell, d);
+    return;
+  }
+}
+
+
+/* Backquote / Tilde:
+   - Backquote (`): rotate +45°
+   - Shift + Backquote (~): toggle scale 1↔1.15
+   - Quote ('): rotate +45° (a.k.a. “prime”)
+*/
+if (e.code === 'Backquote') {
+  const el   = document.elementFromPoint(mouse.x, mouse.y);
+  const cell = el?.closest('.pad-cell');
+  const pads = el?.closest('.pads');
+  if (pads && !cell) { e.preventDefault(); return; }
+  if (!cell) { // outside grid
+    // no-op; allow other Backquote logic (if any) for non-grid elements
+  } else {
+    e.preventDefault();
+    if (e.altKey) {
+      // Option/Alt + ` : cycle border radius
+      padCellCycleBorderRadius(cell);
+    } else if (e.shiftKey) {
+      // Shift + ` : scale toggle 1 ↔ 1.15
+      padCellToggleScale(cell, 1.15);
+    } else {
+      // ` : rotate +45°
+      padCellAdjustRotation(cell, 45);
+    }
+    return;
+  }
+}
+
+
+  /* ───────── Esc : cancel a pending re-patch (remove orphan if needed) ───────── */
+  if (key === 'Escape' && reattachCable) {
+    const conn = connections.find(c => c.path === reattachCable);
+    if (!conn.from || !conn.to) {
+      reattachCable.remove();
+      connections.splice(connections.indexOf(conn), 1);
+    }
+    reattachCable = null; connecting = false; startPort = null;
+    setCursor?.(null);
+    paperScope.view.update();
+    return;
+  }
+
+  /* ───────── Cursor tidy-up for Esc and D (outside re-patch mode) ───────── */
+  if (key === 'Escape' || (lower === 'd' && hoverCable)) {
+    setCursor?.(null);
+  }
+
+/* ────────────────────  Y : live selection rectangle  ──────────────────── */
+if (lower === 'y') {
+  e.preventDefault();
+
+  /* ── first Y ▶ begin preview ─────────────────────────────────────────── */
+  if (!liveSelActive) {
+    /* start rectangle where the cursor is */
+    liveSelStart  = { x: mouse.x + window.scrollX,
+                      y: mouse.y + window.scrollY };
+
+    liveSelActive = true;
+
+    /* clear existing selection — rectangle defines a new one */
+    clearSelection();
+
+    liveSelLine = new paperScope.Path.Line({
+      from: liveSelStart,
+      to:   liveSelStart,
+      strokeColor: '#00d1ff',
+      strokeWidth: 0,
+      dashArray: [4, 4]
+    });
+
+    liveSelRectOutline = new paperScope.Path.Rectangle({
+      from: liveSelStart,
+      to:   liveSelStart,
+      strokeColor: '#00d1ff',
+      strokeWidth: 1,
+      dashArray: [4, 4],
+      fillColor: null
+    });
+
+    return;                                           // wait for 2nd Y
+  }
+
+  /* ── second Y ▶ finish selection ─────────────────────────────────────── */
+  liveSelActive      = false;
+  liveSelStart       = null;
+  liveSelLine.remove();
+  liveSelRectOutline.remove();
+  liveSelLine        = null;
+  liveSelRectOutline = null;
+  return;
+}
+
+/* ────────────────────  T : tidy-rectangle alignment  ──────────────────── */
+/* ────────────────────  T : tidy-rectangle alignment  ──────────────────── */
+if (lower === 't') {
+  e.preventDefault();
+
+  /* ── first T ▶ begin preview ─────────────────────────────────────────── */
+  if (!tidyRectActive) {
+    /* start at mouse position (centre of patch if present) */
+    const patchUnder = document.elementFromPoint(mouse.x, mouse.y)?.closest('.patch');
+    tidyStartPoint = patchUnder ? centerOf(patchUnder)
+                                : { x: mouse.x + window.scrollX,
+                                    y: mouse.y + window.scrollY };
+
+    tidyRectActive = true;
+
+    tidyLinePath = new paperScope.Path.Line({
+      from: tidyStartPoint,
+      to:   tidyStartPoint,
+      strokeColor: '#ffc107',
+      strokeWidth: 0,
+      dashArray: [4, 4]
+    });
+
+    tidyRectOutline = new paperScope.Path.Rectangle({
+      from: tidyStartPoint,
+      to:   tidyStartPoint,
+      strokeColor: '#ffc107',
+      strokeWidth: 4,
+      dashArray: [1, 1],
+      fillColor: null
+    });
+
+    return;                                           // wait for second T
+  }
+
+  /* ── second T ▶ apply alignment ──────────────────────────────────────── */
+  if (!tidyLinePath || !tidyStartPoint) return;
+
+  const endPt = { x: mouse.x + window.scrollX, y: mouse.y + window.scrollY };
+  const box   = {
+    left:   Math.min(tidyStartPoint.x, endPt.x),
+    right:  Math.max(tidyStartPoint.x, endPt.x),
+    top:    Math.min(tidyStartPoint.y, endPt.y),
+    bottom: Math.max(tidyStartPoint.y, endPt.y)
+  };
+  const w = box.right  - box.left;
+  const h = box.bottom - box.top;
+
+  /* collect patches that intersect or lie within the rectangle */
+  const affected = [];
+  document.querySelectorAll('.patch').forEach(el => {
+    const r = el.getBoundingClientRect();
+    const p = {
+      left:   r.left + window.scrollX,
+      right:  r.left + r.width  + window.scrollX,
+      top:    r.top  + window.scrollY,
+      bottom: r.top  + r.height + window.scrollY
+    };
+    const hit = !(p.right < box.left || p.left > box.right ||
+                  p.bottom < box.top || p.top  > box.bottom);
+    if (hit) affected.push(el);
+  });
+
+/* ── align patches without overlap ───────────────────────────────────── */
+if (affected.length > 1) {
+  const margin = 20;                       // gap between neighbouring patches
+
+  if (w >= h) {                            // ‼ wide rectangle → horizontal row
+    // sort by current x-position (left edge), leftmost first
+    affected.sort((a, b) => a.offsetLeft - b.offsetLeft);
+
+    // common y (row) is the arithmetic mean of current tops
+    const rowY = affected.reduce((s, e) => s + e.offsetTop, 0) / affected.length;
+
+    // lay patches left-to-right with no overlap (+ margin)
+    let cursorX = Math.min(...affected.map(e => e.offsetLeft));
+    affected.forEach(el => {
+      el.style.left = cursorX + 'px';
+      el.style.top  = rowY  + 'px';
+      const width   = el.getBoundingClientRect().width;
+      cursorX += width + margin;
+    });
+  } else {                                 // ‼ tall rectangle → vertical column
+    // sort by current y-position (top edge), topmost first
+    affected.sort((a, b) => a.offsetTop - b.offsetTop);
+
+    // common x (column) is the arithmetic mean of current lefts
+    const colX = affected.reduce((s, e) => s + e.offsetLeft, 0) / affected.length;
+
+    // lay patches top-to-bottom with no overlap (+ margin)
+    let cursorY = Math.min(...affected.map(e => e.offsetTop));
+    affected.forEach(el => {
+      el.style.left = colX + 'px';
+      el.style.top  = cursorY + 'px';
+      const height  = el.getBoundingClientRect().height;
+      cursorY += height + margin;
+    });
+  }
+
+  redrawCables();                          // refresh all connections
+}
+
+  /* cleanup preview */
+  tidyRectActive  = false;
+  tidyStartPoint  = null;
+  tidyLinePath.remove();
+  tidyRectOutline.remove();
+  tidyLinePath    = null;
+  tidyRectOutline = null;
+  return;
+}
+
+
+/* ───────── Tab : multi-select toggle, or clear selection in empty space ───────── */
+
+
+// ───────── Tab : pad actions, pad-cell toggle, then (maybe) selection ─────────
+/* ───────── Tab : slider seek-to-mouse, pad actions/cells, pads gap guard, selection ─────────
+   Drop-in replacement for your current Tab handler.
+*/
+if (e.key === 'Tab') {
+  e.preventDefault();
+
+  const elUnder = document.elementFromPoint(mouse.x, mouse.y);
+
+  /* 0) Slider seek: simulate a click at the cursor to move the knob */
+  const slider = elUnder?.closest('.num-slider');
+  if (slider) {
+    const r = slider.getBoundingClientRect();
+
+    // Prefer the numeric config next to the slider (keeps behavior consistent)
+    const valueEl = slider.closest('.num-body')?.querySelector('.num-value');
+    let min = 0, max = 100, step = 1;
+    if (valueEl && typeof getNumConfig === 'function') {
+      const cfg = getNumConfig(valueEl);
+      min = Number.isFinite(cfg.min) ? cfg.min : min;
+      max = Number.isFinite(cfg.max) ? cfg.max : max;
+      step = Number.isFinite(cfg.step) && cfg.step > 0 ? cfg.step : step;
+    } else {
+      // Fallback to slider attributes
+      if (Number.isFinite(parseFloat(slider.min)))  min  = parseFloat(slider.min);
+      if (Number.isFinite(parseFloat(slider.max)))  max  = parseFloat(slider.max);
+      if (slider.step && slider.step !== 'any' && Number.isFinite(parseFloat(slider.step)))
+        step = parseFloat(slider.step);
+    }
+
+    const tRaw = (mouse.x - r.left) / Math.max(1, r.width);
+    const t = Math.min(1, Math.max(0, tRaw));
+    let v = min + t * (max - min);
+
+    // Quantize/clamp
+    if (typeof quantizeToStep === 'function') {
+      v = quantizeToStep(v, step, min);
+    } else if (step > 0) {
+      v = min + Math.round((v - min) / step) * step;
+    }
+    if (typeof clamp === 'function') {
+      v = clamp(v, min, max);
+    } else {
+      v = Math.min(max, Math.max(min, v));
+    }
+
+    // Apply value + notify
+    slider.value = String(v);
+    slider.dispatchEvent(new Event('input',  { bubbles: true }));
+    slider.dispatchEvent(new Event('change', { bubbles: true }));
+
+    if (valueEl) {
+      if (typeof displayNumber === 'function') displayNumber(valueEl, v);
+      else valueEl.textContent = String(v);
+    }
+    window.updateCvReceivers?.();
+    return;
+  }
+
+  /* 1) Action buttons under the pad grid */
+  /* Replace ONLY the pad button block inside your existing Tab handler with this: */
+
+// 1) Action buttons under the pad grid
+const padBtn = elUnder?.closest('.pad-btn');
+if (padBtn) {
+  triggerPadAction(padBtn);   // performs action + momentary visual feedback
+  return;
+}
+
+
+  /* 2) Individual pad-cell toggle */
+ /* ===== Ensure Tab toggle applies color only when ON (leave your existing logic, but
+         keep this behavior inside the pad-cell Tab block) ===== */
+const padCell = elUnder?.closest('.pad-cell');
+if (padCell) {
+  const turnedOn = padCell.classList.toggle('on');
+  padCell.setAttribute('aria-pressed', String(turnedOn));
+  padCellApplyColorIfOn(padCell);     // show or clear color based on ON/OFF
+  return;
+}
+
+
+  /* 2.5) Inside pad grid gaps: do nothing */
+  const padsContainer = elUnder?.closest('.pads');
+  if (padsContainer) return;
+
+  /* 3) Block selection during any drag-lock */
+  if (dragLock || sliderDragLock) return;
+
+  /* 4) Default: patch selection toggle / clear */
+  const patchAtCursor = elUnder?.closest('.patch');
+  if (patchAtCursor) {
+    if (patchAtCursor.classList.contains('selected')) {
+      patchAtCursor.classList.remove('selected');
+      if (selectedPatch === patchAtCursor) selectedPatch = null;
+    } else {
+      patchAtCursor.classList.add('selected');
+      selectedPatch = patchAtCursor;
+    }
+  } else {
+    clearSelection();
+    selectedPatch = null;
+  }
+  return;
+}
+
+
+/* ───────────────────────  Space : drag-lock toggle  ─────────────────────── */
+if (e.code === 'Space' || e.key === ' ') {
+  e.preventDefault();
+
+  // 0) If a slider drag-lock is active, Space releases it.
+  if (sliderDragLock) {
+    stopSliderDrag();
+    return;
+  }
+
+  // 1) If hovering a slider knob/track, Space starts slider drag-lock.
+  const sliderUnderCursor =
+    document.elementFromPoint(mouse.x, mouse.y)?.closest('.num-slider');
+  if (sliderUnderCursor && !dragLock) {
+    startSliderDrag(sliderUnderCursor, mouse.x);
+    return;
+  }
+
+  // 2) Otherwise: patch drag-lock (supports multi-select + auto-select on hover)
+  let selected = [...document.querySelectorAll('.patch.selected')];
+
+  if (!dragLock) {
+    // Auto-select the patch under the cursor when none is selected
+    if (!selected.length) {
+      const tgt = document.elementFromPoint(mouse.x, mouse.y)?.closest('.patch');
+      if (!tgt) return;
+      tgt.classList.add('selected');
+      selected = [tgt];
+      autoSelectedPatch = tgt;  // so we can deselect on release
+    }
+
+    dragLock  = true;
+    dragStart = { x: mouse.x, y: mouse.y };
+
+    initialPos.clear();
+    selected.forEach(el => {
+// OLD (problematic: stored transformed rect.left/top)
+// const r = el.getBoundingClientRect();
+// initialPos.set(el, { left: r.left, top: r.top });
+
+/* NEW */
+const b = basePos(el);
+	initialPos.set(el, { left: b.left, top: b.top });
+
+      el.classList.add('dragging');
+    });
+  } else {
+    // Release patch drag-lock
+    dragLock = false;
+    document.querySelectorAll('.patch.dragging')
+            .forEach(el => el.classList.remove('dragging'));
+    initialPos.clear();
+    dragOffsets.clear?.();
+    redrawCables();
+
+    if (autoSelectedPatch) {
+      autoSelectedPatch.classList.remove('selected');
+      autoSelectedPatch = null;
+    }
+  }
+  return;
+}
+
+  /* ───────────────────  F : connect / disconnect ports  ──────────────────── */
+  if (lower === 'f') {
+    e.preventDefault();
+    if (!hoverPort) return;
+
+    if (!connecting) {                       /* first press: begin */
+      abortPreview();
+      connecting   = true; connectStart = hoverPort;
+
+	  const startPt = portAnchorPoint(connectStart);
+
+      previewPath = new paperScope.Path.Line({
+        from: startPt, to: startPt,
+        strokeColor: '#f39c12', strokeWidth: 2, dashArray: [6, 4]
+      });
+      return;
+    }
+
+    /* second press: finalise */
+    const start = connectStart; const end = hoverPort;
+    abortPreview();
+    if (start === end) return;
+
+    const okFwd  = start.dataset.dir === 'out' && end.dataset.dir === 'in';
+    const okBack = start.dataset.dir === 'in'  && end.dataset.dir === 'out';
+    if (!(okFwd || okBack)) return;
+
+    const from = okFwd ? start : end;
+    const to   = okFwd ? end   : start;
+
+    const exists = connections.some(c => c.from === from && c.to === to);
+    if (exists) { disconnect(from, to); } else {
+      connections.push({ from, to, path: null }); redrawCables();
+    }
+    return;
+  }
+
+  /* ─────────────────────  D : delete the hovered cable  ───────────────────── */
+  if (lower === 'd') {
+    if (hoverCable) {
+      const idx = connections.findIndex(c => c.path === hoverCable);
+      if (idx > -1) {
+        connections[idx].path.remove();
+        connections.splice(idx, 1);
+      }
+      hoverCable = null;
+      paperScope.view.update();
+    }
+    return;
+  }
+
+/* ─────────────────────  M : toggle disabled (cable or patch)  ───────────────────── */
+if (lower === 'm') {
+  e.preventDefault();
+
+  // 1) If hovering a cable, toggle its disabled state (existing behavior)
+  if (hoverCable) {
+    const conn = connections.find(c => c.path === hoverCable);
+    if (conn) {
+      conn.disabled = !conn.disabled;
+      styleCable(conn, true);           // keep hover highlighting
+      paperScope.view.update();
+    }
+    return;
+  }
+
+  // 2) Otherwise, toggle the patch under the cursor
+  const patchAtCursor = document.elementFromPoint(mouse.x, mouse.y)?.closest('.patch');
+  if (patchAtCursor) {
+    const nowDisabled = patchAtCursor.classList.toggle('disabled');
+
+    // If you prefer to clear selection when disabling:
+    if (nowDisabled) {
+      patchAtCursor.classList.remove('selected', 'dragging');
+    }
+
+    // Optional: if you want cables connected to this patch to visually reflect disabled state,
+    // you may restyle them here (purely visual). Uncomment to use:
+    /*
+    connections.forEach(c => {
+      if (c.from?.closest('.patch') === patchAtCursor || c.to?.closest('.patch') === patchAtCursor) {
+        // No logical disable for cables here; keep their current disabled flag.
+        // If you'd like to gray out connected cables when patch is disabled, do:
+        // c._viaDisabledPatch = nowDisabled;
+        styleCable(c, false);
+      }
+    });
+    paperScope.view.update();
+    */
+    return;
+  }
+
+  // Nothing under cursor to toggle
+  return;
+}
+
+
+/* ─────────────────────  w : duplication-line OR stamp (when drag-lock)  ─────────────────────
+   Replace your current M-key block with this version.
+   • If drag-lock is active → stamps (clones) all selected patches at their current positions.
+   • Otherwise → behaves as the Duplication Line (two-press) feature.
+*/
+/* ───────── Unified M key: stamp during drag-lock, else duplication line ───────── */
+if (lower === 'w') {
+  e.preventDefault();
+
+  /* 1) Drag-lock active → STAMP (clone) the current selection immediately */
+  if (dragLock) {
+    const selected = [...document.querySelectorAll('.patch.selected')];
+    if (selected.length) {
+      // Tear down any in-progress duplication preview so one press stamps.
+      if (dupLineMoveRef) { window.removeEventListener('mousemove', dupLineMoveRef); dupLineMoveRef = null; }
+      if (dupLinePath)    { dupLinePath.remove();    dupLinePath = null; }
+      if (dupLineOutline) { dupLineOutline.remove(); dupLineOutline = null; }
+      dupLineActive = false;
+      dupLineSourcePatch = null;
+
+      selected.forEach(src => {
+        const r = src.getBoundingClientRect();
+        const cx = r.left + window.scrollX + r.width  / 2;
+        const cy = r.top  + window.scrollY + r.height / 2;
+        duplicatePatchAt(src, cx, cy);
+      });
+
+      redrawCables?.();
+    }
+    return; // IMPORTANT: don’t fall through to the two-press flow
+  }
+
+  /* 2) Normal mode → two-press duplication line (guide + place copy) */
+  if (!dupLineActive) {
+    const tgt = document.elementFromPoint(mouse.x, mouse.y)?.closest('.patch');
+    if (!tgt) return;
+
+    dupLineActive      = true;
+    dupLineSourcePatch = tgt;
+
+    const start = centerOf(tgt);
+    dupLinePath = new paperScope.Path.Line({
+      from: start, to: start,
+      strokeColor: '#d63384', strokeWidth: 2, dashArray: [2, 8]
+    });
+
+    if (dupLineOutline) { dupLineOutline.remove(); dupLineOutline = null; }
+    dupLineOutline = createPatchOutline(tgt, start, '#d63384', [2, 10]);
+
+    dupLineMoveRef = (ev) => {
+      const p = clientToViewPoint(ev);
+      if (dupLinePath)    dupLinePath.lastSegment.point = p;
+      if (dupLineOutline) dupLineOutline.position       = p;
+      paperScope.view.update();
+    };
+    window.addEventListener('mousemove', dupLineMoveRef);
+
+    paperScope.view.update();
+    return;
+  }
+
+  // Second M — place a copy at the cursor position
+  const endX = mouse.x + window.scrollX;
+  const endY = mouse.y + window.scrollY;
+
+  if (dupLineMoveRef) { window.removeEventListener('mousemove', dupLineMoveRef); dupLineMoveRef = null; }
+  if (dupLinePath)    { dupLinePath.remove();    dupLinePath = null; }
+  if (dupLineOutline) { dupLineOutline.remove(); dupLineOutline = null; }
+
+  duplicatePatchAt(dupLineSourcePatch, endX, endY);
+
+  dupLineActive = false;
+  dupLineSourcePatch = null;
+  redrawCables?.();
+  return;
+}
+
+
+/* ─────────────────────  E : collapse/expand patches  ─────────────────────
+   Behavior:
+   - If there is a selection: 
+       • all expanded  → collapse all
+       • all collapsed → expand all
+       • mixed         → decide by majority (more expanded → collapse all, more collapsed → expand all)
+   - If no selection: operate on the patch under the cursor (single-target toggle).
+---------------------------------------------------------------------------- */
+if (lower === 'e') {
+  e.preventDefault();
+
+  // Resolve targets: selection, else patch under cursor
+  let targets = [...document.querySelectorAll('.patch.selected')];
+  if (!targets.length) {
+    const p = document.elementFromPoint(mouse.x, mouse.y)?.closest('.patch');
+    if (!p) return;
+    targets = [p];
+  }
+
+  const total = targets.length;
+  const collapsedCount = targets.reduce((n, el) => n + (el.classList.contains('collapsed') ? 1 : 0), 0);
+  const expandedCount  = total - collapsedCount;
+
+  // Decide action
+  let action; // 'collapse' | 'expand'
+  if (collapsedCount === total) {
+    action = 'expand';            // all collapsed → expand all
+  } else if (expandedCount === total) {
+    action = 'collapse';          // all expanded → collapse all
+  } else {
+    // mixed: majority decides
+    action = (expandedCount >= collapsedCount) ? 'collapse' : 'expand';
+  }
+
+  // Apply
+  if (action === 'collapse') {
+    targets.forEach(el => el.classList.add('collapsed'));
+  } else {
+    targets.forEach(el => el.classList.remove('collapsed'));
+  }
+
+  redrawCables();
+  // Ports remain visible; redraw in case geometry affects cable routing
+  redrawCables?.();
+  return;
+}
+
+  /* ─────────────────────  Esc : cancel other operations  ──────────────────── */
+  if (key === 'Escape') {
+  
+  /* cancel live selection rectangle */
+if (liveSelActive) {
+  if (liveSelLine)        liveSelLine.remove();
+  if (liveSelRectOutline) liveSelRectOutline.remove();
+  liveSelActive      = false;
+  liveSelStart       = null;
+  liveSelLine        = null;
+  liveSelRectOutline = null;
+}
+
+if (dragLineOutline) { dragLineOutline.remove(); dragLineOutline = null; }
+if (dupLineOutline)  { dupLineOutline.remove();  dupLineOutline  = null; }
+paperScope.view.update();
+
+/* 5) Cleanup — add to your Escape and mouseup handlers */
+ // Escape:
+if (dragLineMoveRef) { window.removeEventListener('mousemove', dragLineMoveRef); dragLineMoveRef = null; }
+if (dupLineMoveRef)  { window.removeEventListener('mousemove', dupLineMoveRef);  dupLineMoveRef  = null; }
+if (dragLineOutline) { dragLineOutline.remove(); dragLineOutline = null; }
+if (dupLineOutline)  { dupLineOutline.remove();  dupLineOutline  = null; }
+
+ // Mouseup completion (if you also finish on mouseup):
+if (dragLineMoveRef) { window.removeEventListener('mousemove', dragLineMoveRef); dragLineMoveRef = null; }
+if (dupLineMoveRef)  { window.removeEventListener('mousemove', dupLineMoveRef);  dupLineMoveRef  = null; }
+if (dragLineOutline) { dragLineOutline.remove(); dragLineOutline = null; }
+if (dupLineOutline)  { dupLineOutline.remove();  dupLineOutline  = null; }
+
+
+/* cancel tidy rectangle */
+if (tidyRectActive) {
+  if (tidyLinePath)    tidyLinePath.remove();
+  if (tidyRectOutline) tidyRectOutline.remove();
+  tidyRectActive  = false;
+  tidyStartPoint  = null;
+  tidyLinePath    = null;
+  tidyRectOutline = null;
+}
+
+/* cancel duplication line */
+if (dupLineActive) {
+  if (dupLinePath) dupLinePath.remove();
+  dupLineActive = false;
+  dupLineSourcePatch = null;
+  dupLinePath = null;
+}
+
+
+if (sliderDragLock) {
+  stopSliderDrag();
+}
+
+
+ 
+  if (dragLock) {
+    dragLock = false;
+    document.querySelectorAll('.patch.dragging')
+            .forEach(el => el.classList.remove('dragging'));
+    initialPos.clear();
+    if (typeof dragOffsets?.clear === 'function') dragOffsets.clear();
+    // If a patch was auto-selected only to start the drag, keep it selected on Esc:
+    autoSelectedPatch = null;
+    redrawCables?.();
+  }
+
+
+    if (dragLock && selectedPatch) {
+      dragLock = false; selectedPatch.classList.remove('dragging');
+    }
+
+    abortPreview();
+
+    if (dragLineActive) {
+  if (dragLinePath) dragLinePath.remove();
+  dragLineActive = false; dragLinePatch = null; dragLinePath = null;
+	}
+
+    clearSelection();
+    paperScope.view.update();
+  }
+});
+
+
+/*************************************************
+ *  Live update of preview connection during mousemove (when connecting)
+ *************************************************/
+patchArea.addEventListener('mousemove',()=>{
+  if(connecting && previewPath && connectStart){
+    const p1=centerOf(connectStart);
+    const p2={x:mouse.x+window.scrollX,y:mouse.y+window.scrollY};
+    refreshPath(previewPath, p1, p2);
+    paperScope.view.update();
+  }
+  /* live update for T tidy rectangle */
+if (tidyRectActive && tidyLinePath) {
+  tidyLinePath.lastSegment.point.set(mouse.x + window.scrollX,
+                                     mouse.y + window.scrollY);
+  paperScope.view.update();
+}
+
+/* live update for T tidy rectangle */
+if (tidyRectActive && tidyLinePath) {
+  const curX = mouse.x + window.scrollX;
+  const curY = mouse.y + window.scrollY;
+
+  /* update diagonal */
+  tidyLinePath.lastSegment.point.set(curX, curY);
+
+  /* update / recreate rectangle outline */
+  if (tidyRectOutline) tidyRectOutline.remove();
+  tidyRectOutline = new paperScope.Path.Rectangle({
+    from: { x: Math.min(tidyStartPoint.x, curX),
+            y: Math.min(tidyStartPoint.y, curY) },
+    to:   { x: Math.max(tidyStartPoint.x, curX),
+            y: Math.max(tidyStartPoint.y, curY) },
+    strokeColor: '#ffc107',
+    strokeWidth: 1,
+    dashArray: [4, 4],
+  fillColor: '#ffc107'          // give it the same hue …
+});
+tidyRectOutline.fillColor.alpha = 0.2;   // … but almost fully transparent
+
+  paperScope.view.update();
+}
+
+
+/* live update for Y selection rectangle */
+if (liveSelActive && liveSelLine) {
+  const curX = mouse.x + window.scrollX;
+  const curY = mouse.y + window.scrollY;
+
+  /* update diagonal */
+  liveSelLine.lastSegment.point.set(curX, curY);
+
+  /* update rectangle outline */
+  if (liveSelRectOutline) liveSelRectOutline.remove();
+  liveSelRectOutline = new paperScope.Path.Rectangle({
+    from: { x: Math.min(liveSelStart.x, curX),
+            y: Math.min(liveSelStart.y, curY) },
+    to:   { x: Math.max(liveSelStart.x, curX),
+            y: Math.max(liveSelStart.y, curY) },
+    strokeColor: '#00d1ff',
+    strokeWidth: 0,
+  fillColor: '#00d1ff'
+});
+liveSelRectOutline.fillColor.alpha = 0.15; // light, transparent cyan
+
+  /* update selection membership */
+  const box = {
+    left:   Math.min(liveSelStart.x, curX),
+    right:  Math.max(liveSelStart.x, curX),
+    top:    Math.min(liveSelStart.y, curY),
+    bottom: Math.max(liveSelStart.y, curY)
+  };
+
+  document.querySelectorAll('.patch').forEach(el => {
+    const r = el.getBoundingClientRect();
+    const p = {
+      left:   r.left + window.scrollX,
+      right:  r.left + r.width  + window.scrollX,
+      top:    r.top  + window.scrollY,
+      bottom: r.top  + r.height + window.scrollY
+    };
+    const hit = !(p.right < box.left || p.left > box.right ||
+                  p.bottom < box.top || p.top  > box.bottom);
+    el.classList.toggle('selected', hit);
+  });
+
+/*  Mousemove — make the outlines travel with the cursor
+*/
+// === Mousemove: keep both lines and their outlines following the cursor (single copy only) ===
+if (dragLineActive && dragLinePath) {
+  dragLinePath.lastSegment.point.set(mouse.x + window.scrollX, mouse.y + window.scrollY);
+}
+if (dragLineActive && dragLineOutline) {
+  dragLineOutline.position.set(mouse.x + window.scrollX, mouse.y + window.scrollY);
+}
+
+if (dupLineActive && dupLinePath) {
+  dupLinePath.lastSegment.point.set(mouse.x + window.scrollX, mouse.y + window.scrollY);
+}
+if (dupLineActive && dupLineOutline) {
+  dupLineOutline.position.set(mouse.x + window.scrollX, mouse.y + window.scrollY);
+}
+paperScope.view.update();
+
+
+  paperScope.view.update();
+}
+
+});
+
+/*************************************************
+ *  Ensure canvas resizes with window
+ *************************************************/
+function resizeCanvas(){
+  cableCanvas.width=window.innerWidth; cableCanvas.height=window.innerHeight;
+  paperScope.view.update();
+}
+
+/* Utility: centralised cursor state handler */
+  function setCursor(state){           // state ∈ null | class-name string
+    patchArea.classList.remove(
+      'connecting','over-port','hover-cable','invalid-connect');
+    if(state){ patchArea.classList.add(state); }
+  }
+
+  /* —— A.  start of a cable drag —— */
+   startPort=null;                  // remember first port
+  document.addEventListener('mousedown',e=>{
+    if(e.target.classList && e.target.classList.contains('port')){
+      startPort=e.target;
+      connecting=true;                 // your existing flag
+      setCursor('connecting');
+      /* …existing cable-start code… */
+    }
+  });
+  
+    patchArea.addEventListener('mousemove',e=>{
+    const tgt=e.target;
+
+    if(connecting){
+      /* while dragging, show not-allowed when same-patch */
+      const overPort = tgt.classList && tgt.classList.contains('port');
+      const invalid  = overPort && startPort &&
+                       (startPort.closest('.patch')===tgt.closest('.patch'));
+      setCursor(invalid ? 'invalid-connect' : 'connecting');
+      return;                           // nothing else while dragging
+    }
+
+    /* not dragging: highlight cable or port */
+    if(hoverCable){                     // set in previous answer
+      setCursor('hover-cable');
+    }else if(tgt.classList && tgt.classList.contains('port')){
+      setCursor('over-port');
+    }else{
+      setCursor(null);
+    }
+    
+  
+
+
+  });
+  
+   /* —— C.  end of a drag / clear cursor —— */
+  document.addEventListener('mouseup',()=>{
+    if(connecting){
+      connecting=false;
+      setCursor(null);
+      startPort=null;
+    }
+    
+    /* complete drag-line – move patch to cursor */
+if (dragLineActive && dragLinePatch && dragLinePath) {
+  const endX = lastMouse.x + window.scrollX;
+  const endY = lastMouse.y + window.scrollY;
+  const r = dragLinePatch.getBoundingClientRect();
+  dragLinePatch.style.left = (endX - r.width  / 2) + 'px';
+  dragLinePatch.style.top  = (endY - r.height / 2) + 'px';
+  dragLinePath.remove();
+  dragLineActive = false; dragLinePatch = null; dragLinePath = null;
+  redrawCables();
+}
+
+/* complete duplication line – copy patch to cursor */
+if (dupLineActive && dupLineSourcePatch && dupLinePath) {
+  const endX = lastMouse.x + window.scrollX;
+  const endY = lastMouse.y + window.scrollY;
+  duplicatePatchAt(dupLineSourcePatch, endX, endY);
+  dupLinePath.remove();
+  dupLineActive = false;
+  dupLineSourcePatch = null;
+  dupLinePath = null;
+  redrawCables();
+}
+
+if (dragLineActive && dragLineOutline) { dragLineOutline.remove(); dragLineOutline = null; }
+if (dupLineActive  && dupLineOutline)  { dupLineOutline.remove();  dupLineOutline  = null; }
+
+    
+  });
+
+window.addEventListener('resize',resizeCanvas); resizeCanvas();
+</script>
+
+<script>
+  const container = document.querySelector('#instructions');
+  const content = container.querySelector('.scroll-content');
+  const track = container.querySelector('.scrollbar-track');
+  const thumb = container.querySelector('.scrollbar-thumb');
+
+  function updateThumb() {
+    const ratio = content.scrollTop / (content.scrollHeight - content.clientHeight);
+    const thumbHeight = Math.max((content.clientHeight / content.scrollHeight) * track.clientHeight, 30);
+    thumb.style.height = thumbHeight + 'px';
+    thumb.style.top = (ratio * (track.clientHeight - thumbHeight)) + 'px';
+  }
+
+  content.addEventListener('scroll', updateThumb);
+  window.addEventListener('resize', updateThumb);
+  window.addEventListener('load', updateThumb);
+
+  let dragging = false;
+  let startY, startScroll;
+
+  thumb.addEventListener('mousedown', (e) => {
+    dragging = true;
+    startY = e.clientY;
+    startScroll = content.scrollTop;
+    document.body.style.userSelect = 'none';
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const deltaY = e.clientY - startY;
+    const scrollRatio = (content.scrollHeight - content.clientHeight) / (track.clientHeight - thumb.clientHeight);
+    content.scrollTop = startScroll + deltaY * scrollRatio;
+  });
+
+  window.addEventListener('mouseup', () => {
+    dragging = false;
+    document.body.style.userSelect = '';
+  });
+</script>
+<!-- 3) Logic: type-on-hover editing + [ / ] increments; slider binding -->
+<script>
+(() => {
+  if (window.__numericInit) return;
+  window.__numericInit = true;
+
+  let hoverNumEl = null;
+  let numEditActive = false;
+  let numEditBuffer = "";
+  let numPrevText = "";
+
+  function getNumConfig(valueEl) {
+    const patch = valueEl.closest('.patch');
+    const ds = patch?.dataset || {};
+    const step = isFinite(parseFloat(ds.step)) ? parseFloat(ds.step) : 1;
+    return {
+      min: (ds.min !== undefined && ds.min !== "") ? parseFloat(ds.min) : Number.NEGATIVE_INFINITY,
+      max: (ds.max !== undefined && ds.max !== "") ? parseFloat(ds.max) : Number.POSITIVE_INFINITY,
+      step,
+      smallStep: isFinite(parseFloat(ds.smallStep)) ? parseFloat(ds.smallStep) : step / 10,
+      bigStep:   isFinite(parseFloat(ds.bigStep))   ? parseFloat(ds.bigStep)   : step * 10,
+      fallback:  isFinite(parseFloat(ds.fallback))  ? parseFloat(ds.fallback)  : 0,
+      precision: Number.isInteger(parseInt(ds.precision, 10)) ? parseInt(ds.precision, 10) : 0
+    };
+  }
+
+  function clamp(v, lo, hi) {
+    if (Number.isFinite(lo)) v = Math.max(lo, v);
+    if (Number.isFinite(hi)) v = Math.min(hi, v);
+    return v;
+  }
+
+  function roundToPrecision(v, precision) {
+    if (!Number.isInteger(precision) || precision < 0) return v;
+    const f = Math.pow(10, precision);
+    return Math.round(v * f) / f;
+  }
+
+  /* Align to nearest step from min (or 0 if min is -Infinity) */
+  function quantizeToStep(v, step, min) {
+    if (!isFinite(step) || step <= 0) return v;
+    const origin = Number.isFinite(min) ? min : 0;
+    return origin + Math.round((v - origin) / step) * step;
+  }
+
+  function displayNumber(valueEl, v) {
+    const cfg = getNumConfig(valueEl);
+    const out = roundToPrecision(v, cfg.precision);
+    valueEl.textContent = cfg.precision > 0 ? out.toFixed(cfg.precision) : String(out);
+
+    // Sync slider if present
+    const slider = valueEl.closest('.num-body')?.querySelector('.num-slider');
+    if (slider) slider.value = out;
+  }
+
+  function currentNumber(valueEl) {
+    const t = valueEl.textContent.trim();
+    const n = parseFloat(t);
+    return isFinite(n) ? n : getNumConfig(valueEl).fallback;
+  }
+
+  function beginNumericEdit(targetEl) {
+    numEditActive = true;
+    numEditBuffer = "";
+    numPrevText   = targetEl.textContent;
+    targetEl.classList.add('editing');
+  }
+
+  function commitNumericEdit(targetEl) {
+    const cfg = getNumConfig(targetEl);
+    let n = parseFloat(numEditBuffer);
+    if (!isFinite(n)) {
+      const prev = parseFloat(numPrevText);
+      n = isFinite(prev) ? prev : cfg.fallback;
+    }
+    n = clamp(n, cfg.min, cfg.max);
+    n = quantizeToStep(n, cfg.step, cfg.min);
+    displayNumber(targetEl, n);
+
+    numEditActive = false;
+    numEditBuffer = "";
+    numPrevText   = "";
+    targetEl.classList.remove('editing');
+  }
+
+  function cancelNumericEdit(targetEl) {
+    targetEl.textContent = numPrevText;
+    numEditActive = false;
+    numEditBuffer = "";
+    numPrevText   = "";
+    targetEl.classList.remove('editing');
+  }
+
+/* Approximate the knob center in page coords based on current slider value */
+function sliderKnobCenter(sliderEl) {
+  const r   = sliderEl.getBoundingClientRect();
+  const min = isFinite(+sliderEl.min)  ? +sliderEl.min  : 0;
+  const max = isFinite(+sliderEl.max)  ? +sliderEl.max  : 100;
+  const val = isFinite(+sliderEl.value)? +sliderEl.value: min;
+  const t   = (max === min) ? 0 : (val - min) / (max - min);
+  const x   = r.left + window.scrollX + t * r.width;
+  const y   = r.top  + window.scrollY + r.height / 2;
+  return { x, y };
+}
+
+/* Draw/update a bracket “]” from knob to the cursor */
+function updateSliderBracket(sliderEl, mouseX, mouseY) {
+  const p0 = sliderKnobCenter(sliderEl);             // knob
+  const p1 = { x: mouseX + window.scrollX, y: mouseY + window.scrollY };
+
+  if (!sliderBracketPath) {
+    sliderBracketPath = new paperScope.Path({ strokeColor: '#ffc107', strokeWidth: 2 });
+  } else {
+    sliderBracketPath.removeSegments();
+  }
+
+  const h = 10; // half-height of the bracket “post”
+  sliderBracketPath.moveTo(new paperScope.Point(p0.x, p0.y - h));
+  sliderBracketPath.lineTo(new paperScope.Point(p0.x, p0.y + h));
+  sliderBracketPath.lineTo(new paperScope.Point(p1.x, p1.y));
+  paperScope.view.update();
+}
+
+window.startSliderDrag = function startSliderDrag(sliderEl, mouseX) {
+  const r    = sliderEl.getBoundingClientRect();
+  const min  = isFinite(parseFloat(sliderEl.min))  ? parseFloat(sliderEl.min)  : 0;
+  const max  = isFinite(parseFloat(sliderEl.max))  ? parseFloat(sliderEl.max)  : 100;
+  const step = isFinite(parseFloat(sliderEl.step)) ? parseFloat(sliderEl.step) : 1;
+
+  sliderDragLock  = true;
+  sliderDragEl    = sliderEl;
+  sliderDragStart = {
+    x: mouseX,
+    value: isFinite(parseFloat(sliderEl.value)) ? parseFloat(sliderEl.value) : min,
+    min, max, step,
+    width: r.width
+  };
+  sliderEl.classList.add('dragging');
+
+  // Install a window-level mousemove just for this drag session
+  sliderMoveListenerRef = (e) => {
+    const dx = e.clientX - sliderDragStart.x;
+    const range = sliderDragStart.max - sliderDragStart.min;
+    const unitsPerPx = (sliderDragStart.width > 0) ? (range / sliderDragStart.width) : 0;
+
+    let next = sliderDragStart.value + dx * unitsPerPx;
+    // reuse your existing helpers
+    next = clamp(next, sliderDragStart.min, sliderDragStart.max);
+    next = quantizeToStep(next, sliderDragStart.step, sliderDragStart.min);
+
+    // Update slider and synced numeric display
+    sliderDragEl.value = String(next);
+    sliderDragEl.dispatchEvent(new Event('input', { bubbles: true })); // ensure visuals & bindings
+
+    // Update bracket path
+    updateSliderBracket(sliderDragEl, e.clientX, e.clientY);
+  };
+
+  window.addEventListener('mousemove', sliderMoveListenerRef);
+  // Draw initial bracket
+  updateSliderBracket(sliderEl, sliderDragStart.x, sliderKnobCenter(sliderEl).y - window.scrollY);
+};
+
+window.stopSliderDrag = function stopSliderDrag() {
+  if (!sliderDragLock) return;
+  sliderDragLock  = false;
+
+  if (sliderMoveListenerRef) {
+    window.removeEventListener('mousemove', sliderMoveListenerRef);
+    sliderMoveListenerRef = null;
+  }
+  if (sliderBracketPath) {
+    sliderBracketPath.remove();
+    sliderBracketPath = null;
+    paperScope.view.update();
+  }
+  if (sliderDragEl) sliderDragEl.classList.remove('dragging');
+
+  sliderDragEl    = null;
+  sliderDragStart = null;
+};
+
+
+
+  // Hover tracking independent of other handlers
+  const patchArea = document.getElementById('patchArea');
+  patchArea.addEventListener('mousemove', (e) => {
+    const maybeVal = document.elementFromPoint(e.clientX, e.clientY)?.closest('.num-value');
+
+    if (hoverNumEl !== maybeVal) {
+      if (hoverNumEl) hoverNumEl.classList.remove('hover');
+
+      // Leaving an editing field commits/reverts based on validity
+      if (numEditActive && hoverNumEl && hoverNumEl !== maybeVal) {
+        commitNumericEdit(hoverNumEl);
+      }
+
+      hoverNumEl = maybeVal || null;
+      if (hoverNumEl) hoverNumEl.classList.add('hover');
+    }
+  });
+
+  // Key handling: brackets + type-on-hover
+  document.addEventListener('keydown', (e) => {
+    // Bracket increments
+    if (e.code === 'BracketLeft' || e.code === 'BracketRight') {
+      const target = hoverNumEl || document.querySelector('.num-value.editing');
+      if (target) {
+        const cfg  = getNumConfig(target);
+        const base = currentNumber(target);
+
+        let delta = cfg.step;
+        if (e.shiftKey) delta = cfg.bigStep;
+        else if (e.altKey || e.metaKey) delta = cfg.smallStep; // Option on macOS
+
+        if (e.code === 'BracketLeft') delta = -delta;
+
+        let next = base + delta;
+        next = clamp(next, cfg.min, cfg.max);
+        next = quantizeToStep(next, cfg.step, cfg.min);
+        displayNumber(target, next);
+
+        e.preventDefault();
+        return;
+      }
+    }
+
+    // Type-on-hover editing
+    const isEditingKey =
+      (e.key.length === 1 && /[0-9.\-]/.test(e.key)) ||
+      e.key === 'Backspace' || e.key === 'Delete' ||
+      e.key === 'Enter'     || e.key === 'Escape';
+
+    if ((hoverNumEl || numEditActive) && isEditingKey) {
+      const target = hoverNumEl || document.querySelector('.num-value.editing');
+      if (!target) return;
+
+      e.preventDefault();
+      if (!numEditActive) beginNumericEdit(target);
+
+      if (e.key === 'Enter')    { commitNumericEdit(target); return; }
+      if (e.key === 'Escape')   { cancelNumericEdit(target); return; }
+      if (e.key === 'Backspace'){ numEditBuffer = numEditBuffer.slice(0, -1); }
+      else if (e.key === 'Delete') { numEditBuffer = ""; }
+      else { numEditBuffer += e.key; }
+
+      // Show live buffer (validation occurs on commit)
+      target.textContent = numEditBuffer;
+      return;
+    }
+  });
+
+  // Bind slider to numeric text
+  function bindSliders() {
+    document.querySelectorAll('.patch.slider-numeric').forEach(patch => {
+      const slider  = patch.querySelector('.num-slider');
+      const valueEl = patch.querySelector('.num-value');
+      if (!slider || !valueEl) return;
+
+      const cfg = getNumConfig(valueEl);
+      if (Number.isFinite(cfg.min))  slider.min  = String(cfg.min);
+      if (Number.isFinite(cfg.max))  slider.max  = String(cfg.max);
+      if (Number.isFinite(cfg.step)) slider.step = String(cfg.step);
+
+      slider.addEventListener('input', () => {
+        let v = parseFloat(slider.value);
+        v = clamp(v, cfg.min, cfg.max);
+        displayNumber(valueEl, v);
+      });
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindSliders);
+  } else {
+    bindSliders();
+  }
+})();
+
+/* ------- Min/Max labels inside numeric patches ------- */
+(function addMinMaxLabels() {
+  function fmt(n, precision) {
+    if (!Number.isFinite(n)) return null;
+    return (Number.isInteger(precision) && precision > 0)
+      ? n.toFixed(precision)
+      : String(n);
+  }
+
+  const patches = document.querySelectorAll('.patch.numeric, .patch.slider-numeric');
+  patches.forEach(patch => {
+    const ds = patch.dataset || {};
+    const min = parseFloat(ds.min);
+    const max = parseFloat(ds.max);
+    const precision = Number.isInteger(parseInt(ds.precision, 10))
+      ? parseInt(ds.precision, 10)
+      : 0;
+
+    const minText = `min: ${fmt(min, precision)}`;
+    const maxText = `max: ${fmt(max, precision)}`;
+
+    // If neither is finite, don’t show a labels row
+    if (minText === null && maxText === null) return;
+
+    const body = patch.querySelector('.num-body');
+    if (!body) return;
+
+    // Create the row once
+    let rangeRow = patch.querySelector('.num-range');
+    if (!rangeRow) {
+      rangeRow = document.createElement('div');
+      rangeRow.className = 'num-range';
+
+      const minSpan = document.createElement('span');
+      minSpan.className = 'num-min';
+
+      const maxSpan = document.createElement('span');
+      maxSpan.className = 'num-max';
+
+      rangeRow.appendChild(minSpan);
+      rangeRow.appendChild(maxSpan);
+      body.appendChild(rangeRow);
+    }
+
+    const minEl = rangeRow.querySelector('.num-min');
+    const maxEl = rangeRow.querySelector('.num-max');
+    if (minEl) minEl.textContent = minText ?? '';
+    if (maxEl) maxEl.textContent = maxText ?? '';
+  });
+})();
+
+/* Style a cable path according to its disabled/hover state */
+function styleCable(conn, hover = false) {
+  if (!conn || !conn.path) return;
+  const p = conn.path;
+
+  if (hover) {
+    p.strokeColor = '#895010';
+    p.strokeWidth = 5;
+    p.dashArray   = conn.disabled ? [6, 4] : null;   // keep dashed when hovered if disabled
+  } else {
+    p.strokeColor = conn.disabled ? '#bbb' : '#333'; // light gray when disabled
+    p.strokeWidth = 2;
+    p.dashArray   = conn.disabled ? [6, 4] : null;
+  }
+}
+
+/* Unique id for new patches */
+function generatePatchId(base = 'patch') {
+  return `${base}-copy-${Date.now().toString(36)}-${patchIdCounter++}`;
+}
+
+/* Duplicate a patch and place its center at (pageX, pageY) */
+/* Place a clone so its *visual center* lands at (pageX,pageY), honoring transforms */
+function duplicatePatchAt(srcPatch, pageX, pageY) {
+  const clone = srcPatch.cloneNode(true);
+  clone.removeAttribute('id');
+
+  /* Start from the source’s base left/top */
+  const b0 = basePos(srcPatch);
+  const c0 = visualCenter(srcPatch);
+
+  /* Vector needed to bring the visual center to the target point */
+  const dv = { x: pageX - c0.x, y: pageY - c0.y };
+
+  clone.style.left = (b0.left + dv.x) + 'px';
+  clone.style.top  = (b0.top  + dv.y) + 'px';
+
+  // Ensure unique data-id if you rely on it elsewhere
+  clone.dataset.id = (clone.dataset.id || srcPatch.dataset.id || 'patch') + '-copy-' + (Date.now()%1e7);
+
+  // Append and re-hook any per-patch initialization you do (ports, listeners, etc.)
+  patchArea.appendChild(clone);
+
+  // If the patch type needs init (e.g., pad-grid polygons, numeric ranges), call it here:
+  if (typeof initPadGridSVG === 'function' && clone.classList.contains('pad-grid')) {
+    initPadGridSVG(clone);
+  }
+
+  // New patches are not selected by default; redraw cables
+  redrawCables?.();
+  return clone;
+};
+
+
+
+function setAllPadCells(padPatch, turnOn) {
+  if (!padPatch) return;
+  padPatch.querySelectorAll('.pad-cell').forEach(cell => {
+    cell.classList.toggle('on', !!turnOn);
+    cell.setAttribute('aria-pressed', String(!!turnOn));
+    padCellApplyColorIfOn(cell);   // shows color when turning on; clears when off
+  });
+}
+
+
+/* Helper: flash a pad action button to show a momentary "on" state */
+function flashPadButton(btn) {
+  if (!btn) return;
+  btn.classList.add('pressed');
+  btn.setAttribute('aria-pressed', 'true');
+  setTimeout(() => {
+    btn.classList.remove('pressed');
+    btn.setAttribute('aria-pressed', 'false');
+  }, 150);
+}
+
+/* Unified trigger for pad actions (All On / All Off) including visual flash */
+function triggerPadAction(padBtn) {
+  const padPatch = padBtn?.closest('.patch.pad-grid');
+  if (padPatch) {
+    const action = padBtn.dataset.action;
+    if (action === 'all-on')  setAllPadCells(padPatch, true);
+    if (action === 'all-off') setAllPadCells(padPatch, false);
+  }
+  flashPadButton(padBtn);
+}
+
+/* Hook physical mouse clicks as well (optional but recommended) */
+patchArea.addEventListener('click', (e) => {
+  const btn = e.target.closest('.pad-btn');
+  if (!btn) return;
+  triggerPadAction(btn);
+});
+
+
+function createPatchOutline(patchEl, centerPt, stroke, dash) {
+  const r = patchEl.getBoundingClientRect();
+  return new paperScope.Path.Rectangle({
+    point: [centerPt.x - r.width / 2, centerPt.y - r.height / 2],
+    size:  [r.width, r.height],
+    strokeColor: stroke,
+    strokeWidth: 2,
+    dashArray: dash || [6, 4],
+    fillColor: null
+  });
+}
+function clientToViewPoint(e){
+  return new paperScope.Point(e.clientX + window.scrollX, e.clientY + window.scrollY);
+}
+
+/* =========================
+   Pad Grid: color & rotation controls
+   Place these HELPERS near your other utility functions.
+   ========================= */
+/* Replace your existing pad color helpers with these */
+
+/* Apply color only when ON; uses stored hue/saturation */
+function padCellApplyColorIfOn(cell) {
+  const hue = Number.isFinite(Number(cell.dataset.hue)) ? Number(cell.dataset.hue) : 0;   // default red
+  const sat = Number.isFinite(Number(cell.dataset.sat)) ? Number(cell.dataset.sat) : 60;  // default 60%
+  if (cell.classList.contains('on')) {
+    const s = Math.max(0, Math.min(100, sat));
+    cell.style.backgroundColor = `hsl(${((hue % 360) + 360) % 360}, ${s}%, 50%)`;
+    cell.style.borderColor     = `hsl(${((hue % 360) + 360) % 360}, ${Math.min(100, s + 10)}%, 45%)`;
+  } else {
+    cell.style.backgroundColor = '';
+    cell.style.borderColor     = '';
+  }
+}
+
+/* Map keyboard row digits to hue around the wheel: 
+   1→0°, 2→36°, …, 9→288°, 0→324° (completes the circle) */
+function hueFromDigit(d) {
+  const index = (d === 0) ? 9 : (d - 1);            // 0 is the 10th key
+  return (index * 36) % 360;
+}
+
+/* Set hue by digit key, but only if the pad is ON */
+function padCellSetHueByDigit(cell, d) {
+  // Turn on if currently off
+  if (!cell.classList.contains('on')) {
+    cell.classList.add('on');
+	  cell.setAttribute('aria-pressed', true);	
+	  padCellApplyColorIfOn(cell);     // show or clear color based on ON/OFF
+  
+  }
+//  ensurePadPolygon(cell);
+  //ensurePadSaturation(cell);                 // keep prior saturation if present, else default
+  cell.dataset.hue = String(hueFromDigit(d));
+  padCellApplyColorIfOn(cell);
+}
+
+
+  
+/* Set saturation by digit key (Shift+digit), only if the pad is ON.
+   0 → 100%, 1..9 → 10%..90% */
+function padCellSetSaturationByDigit(cell, d) {
+  // Turn on if currently off
+  if (!cell.classList.contains('on')) {
+    cell.classList.add('on');
+    cell.setAttribute('aria-pressed', 'true');
+  }
+ // ensurePadPolygon(cell);
+  const sat = (d === 0) ? 100 : d * 10;      // 0→100%, 1..9→10..90%
+  cell.dataset.sat = String(sat);
+  padCellApplyColorIfOn(cell);
+}
+
+/* Compute grid indices for a given cell (assumes 4×4) */
+function getPadGridIndex(cell) {
+  const pads  = cell.closest('.pads');
+  const list  = pads ? Array.from(pads.querySelectorAll('.pad-cell')) : [];
+  const idx   = list.indexOf(cell);
+  const cols  = 4;
+  const rows  = 4;
+  const row   = idx >= 0 ? Math.floor(idx / cols) : -1;
+  const col   = idx >= 0 ? (idx % cols) : -1;
+  return { pads, list, idx, row, col, rows, cols };
+}
+
+/* Replace your existing row/column hue functions with these.
+   They force all pads in the target row/column to ON, set hue, and show color. */
+
+function setRowHueByDigit(pads, row, d) {
+  if (!pads || row < 0) return;
+  const cells = pads.querySelectorAll('.pad-cell');
+  const cols  = 4;
+  const hue   = hueFromDigit(d);
+
+  for (let c = 0; c < cols; c++) {
+    const cell = cells[row * cols + c];
+    if (!cell) continue;
+
+    // Force ON
+    cell.classList.add('on');
+    cell.setAttribute('aria-pressed', 'true');
+
+    // Set hue (and keep existing saturation if any)
+    cell.dataset.hue = String(hue);
+
+    // Render color now that it's ON
+    padCellApplyColorIfOn(cell);
+  }
+}
+
+function setColHueByDigit(pads, col, d) {
+  if (!pads || col < 0) return;
+  const cells = pads.querySelectorAll('.pad-cell');
+  const cols  = 4, rows = 4;
+  const hue   = hueFromDigit(d);
+
+  for (let r = 0; r < rows; r++) {
+    const cell = cells[r * cols + col];
+    if (!cell) continue;
+
+    // Force ON
+    cell.classList.add('on');
+    cell.setAttribute('aria-pressed', 'true');
+
+    // Set hue (and keep existing saturation if any)
+    cell.dataset.hue = String(hue);
+
+    // Render color now that it's ON
+    padCellApplyColorIfOn(cell);
+  }
+}
+
+/* Unified transform application so rotate/scale can coexist */
+function padCellApplyTransform(cell) {
+  const rot = Number.isFinite(Number(cell.dataset.rot)) ? Number(cell.dataset.rot) : 0;
+  const scl = Number.isFinite(Number(cell.dataset.scl)) ? Number(cell.dataset.scl) : 1;
+  cell.style.transform = `rotate(${rot}deg) scale(${scl})`;
+  cell.style.transformOrigin = '50% 50%';
+}
+
+/* +45° rotation step */
+function padCellAdjustRotation(cell, deltaDeg) {
+  const cur = Number.isFinite(Number(cell.dataset.rot)) ? Number(cell.dataset.rot) : 0;
+  const next = ((cur + deltaDeg) % 360 + 360) % 360;
+  cell.dataset.rot = String(next);
+  padCellApplyTransform(cell);
+}
+
+/* Toggle scale between 1 and 1.15 */
+function padCellToggleScale(cell, factor = 1.15) {
+  const cur = Number.isFinite(Number(cell.dataset.scl)) ? Number(cell.dataset.scl) : 1;
+  const next = Math.abs(cur - 1) < 1e-3 ? factor : 1;
+  cell.dataset.scl = String(next);
+  padCellApplyTransform(cell);
+}
+
+function isDigitKey(evt) {
+  return /^Digit[0-9]$/.test(evt.code) || /^Numpad[0-9]$/.test(evt.code);
+}
+
+function digitValue(evt) {
+  // evt.code is layout-independent; works with Shift too
+  const m = evt.code.match(/([0-9])/);
+  return m ? Number(m[1]) : null;
+}
+
+/* Optional: if you also want Alt/Control operations to set a default saturation
+   when none exists yet, add this near pad helpers. Call it inside the loops above. */
+
+function ensurePadSaturation(cell, fallback = 60) {
+  if (!Number.isFinite(Number(cell.dataset.sat))) {
+    cell.dataset.sat = String(fallback);
+  }
+}
+
+
+/* ───────── Pad Grid: border-radius cycle helper (add near other pad helpers) ───────── */
+function padCellCycleBorderRadius(cell) {
+  // Cycle through 5pt → 10pt → 30pt → 5pt …
+  const seq = ['2pt', '10pt', '30pt'];
+  const idx = Number.isFinite(Number(cell.dataset.brIndex)) ? Number(cell.dataset.brIndex) : 0;
+  const nextIdx = (idx + 1) % seq.length;
+  cell.dataset.brIndex = String(nextIdx);
+  cell.style.borderRadius = seq[nextIdx];
+}
+
+/* Base (layout) position from CSS left/top — unaffected by transforms */
+function basePos(el){
+  const cs = getComputedStyle(el);
+  return {
+    left: parseFloat(cs.left) || 0,
+    top:  parseFloat(cs.top)  || 0
+  };
+}
+
+/* Visual rect/center (includes transforms) in page coordinates */
+function visualRect(el){
+  const r = el.getBoundingClientRect();
+  return {
+    left:   r.left   + window.scrollX,
+    top:    r.top    + window.scrollY,
+    width:  r.width,
+    height: r.height
+  };
+}
+function visualCenter(el){
+  const r = visualRect(el);
+  return { x: r.left + r.width/2, y: r.top + r.height/2 };
+}
+
+
+</script>
+<script>
+/* Focus keeper: ensure the page (specifically #patchArea) owns focus while hovered,
+   so Tab / Space / letter keys reach your handlers rather than the browser UI. */
+
+/* 1) Make the interactive surface focusable */
+//const patchArea = document.getElementById('patchArea');
+if (patchArea && !patchArea.hasAttribute('tabindex')) {
+  patchArea.setAttribute('tabindex', '0');
+}
+
+/* 2) Lightweight focus function */
+function focusPatchArea() {
+  if (document.activeElement !== patchArea) {
+    patchArea.focus({ preventScroll: true });
+  }
+}
+
+/* 3) Give focus whenever the pointer enters or clicks the surface */
+patchArea.addEventListener('pointerenter', focusPatchArea, { passive: true });
+patchArea.addEventListener('pointerdown',  focusPatchArea);
+
+/* 4) Also refresh focus as the pointer moves across the surface (throttled) */
+let _focusRAF = 0;
+patchArea.addEventListener('mousemove', () => {
+  if (_focusRAF) return;
+  _focusRAF = requestAnimationFrame(() => {
+    _focusRAF = 0;
+    focusPatchArea();
+  });
+});
+
+/* 5) When the tab becomes visible again, restore focus */
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) focusPatchArea();
+});
+
+/* 6) Capture Tab/Space early so they don’t advance focus or scroll the page.
+      Use a capturing listener to beat default browser handling. */
+document.addEventListener('keydown', (e) => {
+  const k = e.key;
+  const isTypingField =
+    e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable);
+
+  // If you never want native Tab focus movement inside the canvas:
+  if (k === 'Tab') {
+    e.preventDefault();         // stop focus traversal
+    focusPatchArea();           // make sure our surface owns focus
+  }
+
+  // Prevent Space from scrolling the page when not typing
+  if (k === ' ' && !isTypingField) {
+    e.preventDefault();
+    focusPatchArea();
+  }
+}, { capture: true });
+
+/* 7) Optional: make inner controls non-tabbable so Tab is purely a command key.
+      (We operate them by hover + Tab, not by native focus.) */
+(function makeInnerControlsUntabbable(){
+  const sel = [
+    '.num-slider', '.num-value',
+    '.pad-btn', '.pad-cell',
+    '.port', '.recv-value'
+  ].join(',');
+  document.querySelectorAll(sel).forEach(el => {
+    if (el.tabIndex !== -1) el.tabIndex = -1;
+  });
+})();
+</script>
+<!-- Bootstrap CSS/JS (v5) -->
+<link
+  href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+  rel="stylesheet"
+  integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+  crossorigin="anonymous"
+/>
+<script
+  src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+  integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+  crossorigin="anonymous"
+></script>
+
+<script>
+/**
+ * Unified transform controls for selected patches
+ * - Scale: '[' (down 1/1.15), ']' (up ×1.15), clamped by % of original size
+ * - Rotate: ';' (−step), "'" (+step) where step = 15° default, 45° with Shift, 5° with Alt
+ * - After each operation, redrawCables() is invoked if present.
+ *
+ * Per-patch overrides (optional):
+ *   data-scale-min-percent="<number>"   data-scale-max-percent="<number>"
+ * These limits are relative to the patch's original unscaled size.
+ */
+(function () {
+  // ---- Configuration ----
+  const SCALE_UP = 1.15;
+  const SCALE_DOWN = 1 / SCALE_UP;
+
+  const ROT_STEP_DEFAULT = 15;   // degrees
+  const ROT_STEP_SHIFT   = 45;   // degrees
+  const ROT_STEP_ALT     = 5;    // degrees
+
+  // Percent of original size for scaling limits
+  const GLOBAL_MIN_PCT = 30;     // e.g., 30% of original size
+  const GLOBAL_MAX_PCT = 250;    // e.g., 250% of original size
+
+  // Absolute safety rails on the scale factor
+  const SCALE_MIN = 0.05;
+  const SCALE_MAX = 100;
+
+  // ---- Utilities ----
+  function getSelectedPatches() {
+    return Array.from(document.querySelectorAll(
+      '.patch.is-selected, .patch.selected, [aria-selected="true"], [data-selected="true"]'
+    )).filter(el => {
+      if (el.hasAttribute('aria-selected')) return el.getAttribute('aria-selected') === 'true';
+      if (el.hasAttribute('data-selected')) return el.getAttribute('data-selected') === 'true';
+      return true;
+    });
+  }
+
+  function isTypingContext(target) {
+    if (!target) return false;
+    const tag = target.tagName ? target.tagName.toLowerCase() : '';
+    return target.isContentEditable || tag === 'input' || tag === 'textarea' || tag === 'select';
+  }
+
+  function isSVG(el) {
+    return typeof SVGElement !== 'undefined' && el instanceof SVGElement;
+  }
+
+  function ensureTransformState(el) {
+    if (!el.dataset.baseTransformInitialized) {
+      if (isSVG(el)) {
+        el.dataset.baseTransform = el.getAttribute('transform') || '';
+      } else {
+        el.dataset.baseTransform = (el.style && el.style.transform) ? el.style.transform : '';
+        if (el.style && !el.style.transformOrigin) {
+          el.style.transformOrigin = '50% 50%';
+        }
+      }
+
+      // Store original size for % limits
+      const r = el.getBoundingClientRect();
+      el.dataset.origWidth  = el.dataset.origWidth  || String(r.width  || 1);
+      el.dataset.origHeight = el.dataset.origHeight || String(r.height || 1);
+
+      el.dataset.scaleFactor = el.dataset.scaleFactor || '1';
+      el.dataset.rotateDeg   = el.dataset.rotateDeg   || '0';
+      el.dataset.baseTransformInitialized = 'true';
+    }
+    if (el.dataset.scaleFactor == null) el.dataset.scaleFactor = '1';
+    if (el.dataset.rotateDeg   == null) el.dataset.rotateDeg   = '0';
+    if (el.dataset.baseTransform == null) {
+      el.dataset.baseTransform = isSVG(el)
+        ? (el.getAttribute('transform') || '')
+        : ((el.style && el.style.transform) || '');
+    }
+  }
+
+  function composeTransform(el, rotateDeg, scaleFactor) {
+    const base = (el.dataset.baseTransform || '').trim();
+    const rotateStr = isSVG(el)
+      ? ` rotate(${rotateDeg})`
+      : ` rotate(${rotateDeg}deg)`;
+    const scaleStr  = ` scale(${scaleFactor})`;
+    return `${base}${rotateStr}${scaleStr}`.trim();
+  }
+
+  // Clamp scale by percentage of original size
+  function clampScaleByPercent(el, proposedScale) {
+    const origW = parseFloat(el.dataset.origWidth  || '1') || 1;
+    const origH = parseFloat(el.dataset.origHeight || '1') || 1;
+
+    const minPct = parseFloat(el.dataset.scaleMinPercent || '') || GLOBAL_MIN_PCT;
+    const maxPct = parseFloat(el.dataset.scaleMaxPercent || '') || GLOBAL_MAX_PCT;
+
+    const minScaleW = (minPct / 100) * (1); // relative to original width
+    const minScaleH = (minPct / 100) * (1); // relative to original height
+    const maxScaleW = (maxPct / 100) * (1);
+    const maxScaleH = (maxPct / 100) * (1);
+
+    // Intersect ranges and also clamp to absolute SCALE_MIN/MAX
+    const minScale = Math.max(minScaleW, minScaleH, SCALE_MIN);
+    const maxScale = Math.min(maxScaleW, maxScaleH, SCALE_MAX);
+
+    return Math.min(Math.max(proposedScale, minScale), maxScale);
+  }
+
+  function applyScale(el, multiplier) {
+    ensureTransformState(el);
+    const current = parseFloat(el.dataset.scaleFactor || '1') || 1;
+    const next = current * multiplier;
+    const clamped = clampScaleByPercent(el, next);
+
+    const rotate = parseFloat(el.dataset.rotateDeg || '0') || 0;
+    const composed = composeTransform(el, rotate, clamped);
+
+    if (isSVG(el)) {
+      el.setAttribute('transform', composed);
+    } else {
+      el.style.transform = composed;
+    }
+    el.dataset.scaleFactor = String(clamped);
+  }
+
+  function applyRotation(el, deltaDeg) {
+    ensureTransformState(el);
+    const currentR = parseFloat(el.dataset.rotateDeg || '0') || 0;
+    const nextR = currentR + deltaDeg;
+
+    const scale = parseFloat(el.dataset.scaleFactor || '1') || 1;
+    const composed = composeTransform(el, nextR, scale);
+
+    if (isSVG(el)) {
+      el.setAttribute('transform', composed);
+    } else {
+      el.style.transform = composed;
+    }
+    el.dataset.rotateDeg = String(nextR);
+  }
+
+  function rotationStepFromEvent(e) {
+    if (e.shiftKey) return ROT_STEP_SHIFT;
+    if (e.altKey)   return ROT_STEP_ALT;
+    return ROT_STEP_DEFAULT;
+  }
+
+  function safeRedrawCables() {
+    if (typeof window.redrawCables === 'function') {
+      try { window.redrawCables(); } catch (_) {}
+    }
+  }
+
+  // ---- Keyboard handling ----
+  document.addEventListener('keydown', function (e) {
+    if (isTypingContext(e.target)) return;
+
+    const key = e.key;
+    if (key !== ']' && key !== '[' && key !== ';' && key !== "'") return;
+
+    const patches = getSelectedPatches();
+    if (patches.length === 0) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (key === ']' || key === '[') {
+      const mult = (key === ']') ? SCALE_UP : SCALE_DOWN;
+      patches.forEach(el => applyScale(el, mult));
+      safeRedrawCables();
+      return;
+    }
+
+    if (key === ';' || key === "'") {
+      const step = rotationStepFromEvent(e);
+      const delta = (key === "'") ? +step : -step; // "'" clockwise, ";" counter-clockwise
+      patches.forEach(el => applyRotation(el, delta));
+      safeRedrawCables();
+      return;
+    }
+  }, true);
+})();
+</script>
+
+<style>
+  /* Make both title and description visible in the accordion header (collapsed/expanded) */
+  #instructions .accordion .accordion-button {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: .125rem;
+    line-height: 1.2;
+    padding-top: .5rem;
+    padding-bottom: .5rem;
+  }
+  #instructions .accordion .acc-title {
+    font-weight: 700;
+    color: #cfe5ff;
+  }
+  #instructions .accordion .acc-desc {
+    font-size: .95rem;
+    opacity: .9;
+  }
+  /* Match dark panel aesthetics */
+  #instructions .accordion-item {
+    background: transparent;
+    border-color: #444;
+  }
+  #instructions .accordion-button,
+  #instructions .accordion-button.collapsed {
+    background: rgb(0 0 0 / 65%);
+    color: #e0e0e0;
+  }
+  #instructions .accordion-button:not(.collapsed) {
+    background: black;
+    color: #fff;
+  }
+  #instructions .accordion-body {
+    background: rgba(20,20,20,1);
+  }
+  
+    /* Hover effect on whole button */
+  #instructions .accordion-button:hover {
+    background: rgba(0,0,5,0.9);
+  }
+
+</style>
+<style>
+  .tab-key-circle {
+    position: absolute;
+    pointer-events: none;
+    width: 14px;
+    height: 14px;
+    margin-left: -7px; /* center horizontally on cursor */
+    margin-top: -7px;  /* center vertically on cursor */
+    border-radius: 50%;
+    background: rgba(102, 179, 255, 0.8);
+    transform: scale(1);
+    opacity: 1;
+    animation: tabCircleAnim 0.2s ease-out forwards;
+    z-index: 9999;
+  }
+
+  @keyframes tabCircleAnim {
+    0%   { transform: scale(1); opacity: 1; }
+    80%  { transform: scale(2.5); opacity: 0.4; }
+    100% { transform: scale(2.8); opacity: 0; }
+  }
+</style>
+
+<script>
+(function () {
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Tab') return;
+    // Get mouse position relative to page
+    const mouseX = e.clientX ?? window._lastMouseX;
+    const mouseY = e.clientY ?? window._lastMouseY;
+
+    if (mouseX == null || mouseY == null) return;
+
+    const circle = document.createElement('div');
+    circle.className = 'tab-key-circle';
+    circle.style.left = mouseX + 'px';
+    circle.style.top  = mouseY + 'px';
+    document.body.appendChild(circle);
+
+    // Remove after animation
+    setTimeout(() => circle.remove(), 450);
+  });
+
+  // Track last mouse position for key events that don't have clientX/Y
+  document.addEventListener('mousemove', function (e) {
+    window._lastMouseX = e.clientX;
+    window._lastMouseY = e.clientY;
+  });
+})();
+</script>
+
+<script>
+(function () {
+  const container = document.querySelector('#instructions .scroll-content');
+  if (!container) return;
+
+  const srcList = container.querySelector('ol.instructions-list');
+  if (!srcList) return;
+
+  // Build accordion from the existing <li> items
+  const acc = document.createElement('div');
+  acc.className = 'accordion';
+  acc.id = 'instructionsAccordion';
+
+  const items = Array.from(srcList.children).filter(el => el.tagName === 'LI');
+
+  items.forEach((li, idx) => {
+    const id = `instr-${idx+1}`;
+    const headingId = `heading-${id}`;
+    const collapseId = `collapse-${id}`;
+
+ // Conditional classes and attributes for the first item
+    const isFirstItem = idx === 0;
+    const buttonClass = isFirstItem ? "accordion-button" : "accordion-button collapsed";
+    const collapseClass = isFirstItem ? "accordion-collapse collapse show" : "accordion-collapse collapse";
+    const ariaExpanded = isFirstItem ? "true" : "false";
+
+    // Extract title and description from the original list item
+    const titleEl = li.querySelector(':scope > p > strong');
+    const descEl  = li.querySelector(':scope > .instructions-description');
+
+    const titleText = titleEl ? titleEl.textContent.trim() : `Section ${idx+1}`;
+    const descText  = descEl ? descEl.textContent.trim() : '';
+
+    // Clone the content for the accordion body (remove title/desc from the clone)
+    const bodyClone = li.cloneNode(true);
+    const removeTitle = bodyClone.querySelector(':scope > p');
+    if (removeTitle) removeTitle.remove();
+    const removeDesc = bodyClone.querySelector(':scope > .instructions-description');
+    if (removeDesc) removeDesc.remove();
+
+    // Accordion item DOM
+    const item = document.createElement('div');
+    item.className = 'accordion-item';
+    item.innerHTML = `
+      <h2 class="accordion-header" id="${headingId}">
+        <button class="${buttonClass}" type="button"
+                data-bs-toggle="collapse" data-bs-target="#${collapseId}"
+                aria-expanded="${ariaExpanded}" aria-controls="${collapseId}">
+          <span class="acc-title">${titleText}</span>
+          ${descText ? `<span class="acc-desc">${descText}</span>` : ''}
+        </button>
+      </h2>
+      <div id="${collapseId}" class="${collapseClass}"
+           data-bs-parent="#${acc.id}">
+        <div class="accordion-body"></div>
+      </div>
+    `;
+
+    // Move the remaining content (steps, tables, etc.) into the body
+    const bodyHost = item.querySelector('.accordion-body');
+    // Append all remaining top-level children from bodyClone (now without title/desc)
+    Array.from(bodyClone.childNodes).forEach(n => bodyHost.appendChild(n));
+
+    acc.appendChild(item);
+  });
+
+  // Replace the list with the accordion
+  srcList.replaceWith(acc);
+
+  // Keyboard behavior: Tab toggles the hovered accordion item's collapse
+  let hoveredItem = null;
+  acc.addEventListener('mouseenter', e => {
+    const it = e.target.closest('.accordion-item');
+    if (it) hoveredItem = it;
+  }, true);
+  acc.addEventListener('mousemove', e => {
+    const it = e.target.closest('.accordion-item');
+    if (it) hoveredItem = it;
+  }, true);
+  acc.addEventListener('mouseleave', () => { hoveredItem = null; }, true);
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Tab') return;
+    if (!hoveredItem) return;
+
+    // Prevent normal Tab focus navigation ONLY while hovering an accordion item
+    e.preventDefault();
+    e.stopPropagation();
+
+    const collapseEl = hoveredItem.querySelector('.accordion-collapse');
+    if (!collapseEl) return;
+
+    const inst = bootstrap.Collapse.getOrCreateInstance(collapseEl, { toggle: false });
+    inst.toggle();
+  }, true);
+})();
+</script>
+
+</body>
+</html>

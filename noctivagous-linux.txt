@@ -1,5 +1,26 @@
 noctivagous linux
 
+----
+
+Before the desktop environment is built, a web-based (Node/ReactJS) 
+demo complete with features and apps will be the focus
+at demo-de/  (demo desktop environment).  It will model most of
+what the desktop environment will contain and eventually shape the
+codebase in TypeScript to be ported to a real desktop environment.
+
+dual mode:
+   - based on key-clicks (bimodal control ui theory).
+   - mouse-click work
+   
+
+----
+
+Plan for Linux Desktop Environment
+
+- grid systems backend for traditional print layout
+proportions, page layout, etc. for GUI
+	- Hollywood UI / HUD / FUI 
+
 - AI models, modalities, frameworks, providers, mcp servers,
 sandboxes, etc. available at system level and to apps
 in native framework.
