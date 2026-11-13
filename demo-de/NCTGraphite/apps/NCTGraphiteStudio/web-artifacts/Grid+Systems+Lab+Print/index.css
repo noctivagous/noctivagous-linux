@@ -1,0 +1,90 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-base: #121214;
+  --panel-start: #2d2e30;
+  --panel-end: #1e1f21;
+  --panel: #242528;
+  --well: #0f0f10;
+  --well-highlight: rgba(255,255,255,0.06);
+  --label: #7a7c7e;
+  --label-bright: #a3a5a7;
+  --blue: #4a8af4;
+  --blue-glow: 0 0 8px rgba(74,138,244,0.6);
+  --title-start: #3a3b3e;
+  --title-end: #242528;
+  --border-dark: #0c0c0d;
+  --border-light: rgba(255,255,255,0.08);
+  --gutter-pink: rgba(244,100,100,0.15);
+  --column-blue: rgba(74,138,244,0.12);
+  --column-blue-border: rgba(74,138,244,0.28);
+  --baseline-faint: rgba(255,255,255,0.07);
+  --baseline-strong: rgba(255,255,255,0.14);
+  --text-main: #d8d9da;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+* { font-family: "Lucida Grande", "Lucida Sans Unicode", Verdana, sans-serif; }
+
+body {
+  background: var(--bg-base);
+  color: var(--text-main);
+  overflow: hidden;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--well); }
+::-webkit-scrollbar-thumb { background: #2a2b2e; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #343538; }
+
+.pro-panel {
+  background: linear-gradient(180deg, var(--panel-start) 0%, var(--panel-end) 100%);
+  border: 1px solid var(--border-dark);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), 0 1px 2px rgba(0,0,0,0.6);
+}
+
+.pro-well {
+  background: var(--well);
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.9), inset 0 0 0 1px rgba(0,0,0,0.6);
+  border: 1px solid #080808;
+}
+
+.pro-thumb {
+  background: linear-gradient(180deg, #5a5c60 0%, #3a3b3e 50%, #2a2b2d 100%);
+  border: 1px solid #0a0a0a;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.28), 0 1px 2px rgba(0,0,0,0.6);
+  border-radius: 10px;
+}
+
+.pro-label {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--label);
+  text-shadow: 0 1px 0 rgba(0,0,0,0.8);
+}
+
+.glossy-highlight::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 1px; right: 1px;
+  height: 45%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.02) 100%);
+  border-radius: 2px 2px 0 0;
+  pointer-events: none;
+}
+
+.dotted-bg {
+  background-image: radial-gradient(rgba(255,255,255,0.08) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+.mono { font-family: var(--mono); }
+
+@keyframes snap-pulse {
+  0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; }
+}

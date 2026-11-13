@@ -1,0 +1,27 @@
+{
+  "name": "@nct/nctgraphite",
+  "version": "0.0.0",
+  "description": "Shared NCTGraphite React component library, tag language, themes, and bindings.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./package.json": "./package.json",
+    "./density.css": "./src/theme/NCTGraphiteDensity.css"
+  },
+  "files": [
+    "src"
+  ],
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "dependencies": {
+    "d3-contour": "^4.0.2"
+  },
+  "devDependencies": {
+    "@types/d3-contour": "^3.0.6"
+  }
+}

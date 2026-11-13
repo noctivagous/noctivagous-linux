@@ -1,0 +1,591 @@
+import type { MoveRule, Occupant, Pos, Region, RuleSet, TilingDef, Toggles } from "./types";
+import { TILINGS, getTiling } from "./tilings";
+import { gridRegistry, recaptureFrames, replayMorphs, replayMorphsChecked, validateChain, type AppliedMorph, type MorphContext, type PlanState } from "./morphs/registry";
+import { validatePresentationConfig } from "./presentations";
+import { ruleSetsEqual, validateMoveRule, validateOutcome, validateTurns } from "./rule-sets";
+import { loadRuleChain } from "./rule-chains";
+import { cellsOf } from "./editing";
+import { validateRelationBindings, type RelationBinding } from "./relations";
+
+// ---------- Plan parsing & validation ----------
+export function parsePlan(text: string): { data: any; errors: string[]; format: "json" | "yaml" | "xml" } {
+  const errors: string[] = [];
+  const trimmed = text.trim();
+  if (!trimmed) return { data: null, errors: ["Empty plan"], format: "json" };
+  // try JSON
+  try {
+    const j = JSON.parse(trimmed);
+    return { data: j, errors: [], format: "json" };
+  } catch {}
+  // try XML
+  if (trimmed.startsWith("<")) {
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(trimmed, "text/xml");
+      const root = doc.documentElement;
+      if (root.nodeName === "parsererror" || doc.querySelector("parsererror")) {
+        errors.push("XML parse error");
+        return { data: null, errors, format: "xml" };
+      }
+      // simple XML to object: expect <OcelotPlan ...> with attributes
+      const getAttr = (n: string) => root.getAttribute(n);
+      const data: any = {
+        component: getAttr("component") || "Grid",
+        tilingId: getAttr("tiling") || root.getAttribute("tilingId") || "square8",
+        presetId: getAttr("preset") || "custom",
+        ruleSet: { id: getAttr("preset") || "custom", setup: { width: 6, height: 6, description: "from XML" }, moves: [], turns: { type: "alternating", order: ["white", "black"], first: "white" }, outcomes: [], end: { condition: "anyOutcome", action: "stop" }, regions: [] },
+        occupants: [],
+        width: parseInt(root.getAttribute("width") || "6"),
+        height: parseInt(root.getAttribute("height") || "6"),
+      };
+      // parse RuleSet children
+      const rsNode = doc.querySelector("RuleSet");
+      if (rsNode) {
+        const moves: MoveRule[] = [];
+        rsNode.querySelectorAll("Move").forEach(mn => {
+          const piece = mn.getAttribute("piece") || "*";
+          const dirs = (mn.getAttribute("dirs") || "").split(",").map(s => s.trim()).filter(Boolean);
+          const slide = mn.getAttribute("slide") === "true";
+          moves.push({ pieceType: piece, moves: dirs.map(d => slide ? { type: "slide" as const, dir: d } : { type: "step" as const, dir: d }), capture: "both" as any });
+        });
+        data.ruleSet.moves = moves;
+      }
+      return { data, errors, format: "xml" };
+    } catch (e: any) {
+      errors.push(`XML error: ${e.message}`);
+      return { data: null, errors, format: "xml" };
+    }
+  }
+  // try simple YAML (very limited)
+  try {
+    const lines = trimmed.split("\n");
+    const obj: any = {};
+    const stack: { indent: number; obj: any }[] = [{ indent: -1, obj }];
+    for (const line of lines) {
+      if (!line.trim() || line.trim().startsWith("#")) continue;
+      const indent = line.search(/\S/);
+      const content = line.trim();
+      if (content.includes(":")) {
+        const [k, ...rest] = content.split(":");
+        const v = rest.join(":").trim();
+        while (stack.length && indent <= stack[stack.length - 1].indent) stack.pop();
+        const parent = stack[stack.length - 1].obj;
+        if (!v) {
+          const newObj: any = {};
+          parent[k.trim()] = newObj;
+          stack.push({ indent, obj: newObj });
+        } else {
+          // try parse value
+          let parsed: any = v;
+          if (v === "true") parsed = true;
+          else if (v === "false") parsed = false;
+          else if (!isNaN(Number(v))) parsed = Number(v);
+          else if ((v.startsWith("[") && v.endsWith("]")) || (v.startsWith("{") && v.endsWith("}"))) {
+            try { parsed = JSON.parse(v); } catch {}
+          } else {
+            parsed = v.replace(/^["']|["']$/g, "");
+          }
+          parent[k.trim()] = parsed;
+        }
+      }
+    }
+    // if parsed looks like plan, return
+    if (obj.component || obj.tiling || obj.preset || obj.ruleSet) {
+      // normalize
+      const data: any = {
+        component: obj.component || "Grid",
+        tilingId: obj.tiling?.id || obj.tilingId || "square8",
+        presetId: obj.preset || obj.presetId || "custom",
+        ruleSet: obj.ruleSet || { id: "custom", setup: { width: 6, height: 6, description: "yaml" }, moves: [], turns: { type: "alternating", order: ["white", "black"], first: "white" }, outcomes: [], end: { condition: "anyOutcome", action: "stop" }, regions: [] },
+        occupants: obj.occupants || [],
+        width: obj.width || obj.ruleSet?.setup?.width || 6,
+        height: obj.height || obj.ruleSet?.setup?.height || 6,
+      };
+      return { data, errors, format: "yaml" };
+    }
+    errors.push("YAML parse: not recognized as plan");
+    return { data: null, errors, format: "yaml" };
+  } catch (e: any) {
+    errors.push(`YAML error: ${e.message}`);
+    return { data: null, errors, format: "yaml" };
+  }
+}
+
+export function validatePlan(data: any, tiling: TilingDef | null): string[] {
+  const errors: string[] = [];
+  if (!data) { errors.push("No data"); return errors; }
+  if (!data.component) errors.push("Missing component");
+  if (!data.tilingId) errors.push("Missing tilingId");
+  else {
+    if (!(data.tilingId in TILINGS)) errors.push(`Unknown tiling ${data.tilingId}, available: ${Object.keys(TILINGS).join(",")}`);
+  }
+  const tilingToCheck = data.tilingId ? getTiling(data.tilingId) : tiling;
+  if (!tilingToCheck) errors.push("Tiling not found");
+  if (!data.ruleSet) errors.push("Missing ruleSet");
+  else {
+    if (!data.ruleSet.id) errors.push("ruleSet.id missing");
+    if (!Array.isArray(data.ruleSet.moves)) errors.push("ruleSet.moves must be array");
+    else {
+      data.ruleSet.moves.forEach((mr: MoveRule, idx: number) => {
+        for (const e of validateMoveRule(mr, idx, tilingToCheck)) errors.push(e);
+      });
+    }
+    for (const e of validateTurns(data.ruleSet.turns)) errors.push(e);
+    if (!Array.isArray(data.ruleSet.outcomes)) errors.push("ruleSet.outcomes must be array");
+    else {
+      const regionIds = new Set([...(data.regions || []).map((r: any) => r.id), ...((data.ruleSet.regions || []).map((r: any) => r.id))]);
+      data.ruleSet.outcomes.forEach((o: any, i: number) => {
+        for (const e of validateOutcome(o, i, regionIds)) errors.push(e);
+      });
+    }
+    // span collision check at setup
+    if (Array.isArray(data.occupants)) {
+      const occMap = new Map<string, string>();
+      data.occupants.forEach((occ: Occupant, i: number) => {
+        if (!occ.anchor) errors.push(`occupants[${i}] missing anchor`);
+        const cells = [occ.anchor, ...(occ.span || []).map((s: Pos) => ({ q: occ.anchor.q + s.q, r: occ.anchor.r + s.r }))];
+        cells.forEach(c => {
+          const key = `${c.q},${c.r}`;
+          if (occMap.has(key)) errors.push(`Span collision at setup: occupants ${occMap.get(key)} and ${occ.id || i} both occupy ${key}`);
+          else occMap.set(key, occ.id || `${i}`);
+        });
+      });
+    }
+  }
+  return errors;
+}
+
+
+// ---------- Plan serialization (extracted verbatim from the demo shell) ----------
+export type PlanMode = "yaml" | "xml" | "json";
+export function serializePlan(args: {
+  component: string;
+  tiling: TilingDef;
+  tilingId: string;
+  presetId: string;
+  ruleSet: RuleSet;
+  occupants: Occupant[];
+  width: number;
+  height: number;
+  regions: Region[];
+  toggles: Toggles;
+  planMode: PlanMode;
+  /**
+   * Relation bindings (§8.4) the loaded plan holds. JSON mode carries them
+   * in the plan format's own representation, so a save -> load round trip
+   * preserves them; YAML/XML are display summaries and list them by id/def
+   * only, like their occupant summaries.
+   */
+  relations?: RelationBinding[];
+}): string {
+  const { component, tiling, tilingId, presetId, ruleSet, occupants, width, height, regions, toggles, planMode, relations } = args;
+    const plan = {
+      component,
+      tilingId,
+      presetId,
+      width,
+      height,
+      ruleSet,
+      occupants: occupants.slice(0, 30),
+      regions,
+      turns: ruleSet.turns,
+      outcomes: ruleSet.outcomes,
+      ...(relations && relations.length > 0 ? { relations } : {})
+    };
+    if (planMode === "json") {
+      return (JSON.stringify(plan, null, 2));
+    } else if (planMode === "xml") {
+      const movesXml = ruleSet.moves.map(m => `    <Move piece="${m.pieceType}" dirs="${m.moves.map((mk: any) => mk.dir || mk.type).join(",")}" slide="${m.moves.some(mk => mk.type === "slide")}" />`).join("\n");
+      const xml = `<OcelotPlan component="${component}" tiling="${tilingId}" preset="${presetId}" width="${width}" height="${height}">
+  <RuleSet id="${ruleSet.id}" outcome="${ruleSet.outcomes.map(o => o.kind).join(",")}" turn="${(ruleSet.turns as any).first || ""}">
+${movesXml}
+  </RuleSet>
+  <Grid width="${width}" height="${height}" gravity="${toggles.gravity}" wrapping="${toggles.wrapping}">
+${occupants.slice(0, 10).map(o => `    <Occupant id="${o.id}" anchor="${o.anchor.q},${o.anchor.r}" type="${o.type}" player="${o.data?.player || ""}" span="${o.span.length}" guest="${o.guest?.kind || ""}" />`).join("\n")}
+  </Grid>
+  <Regions count="${regions.length}">${regions.slice(0, 3).map(r => r.id).join(",")}</Regions>
+  <Relations count="${relations?.length ?? 0}">${(relations ?? []).map(b => `${b.id}:${b.def}`).join(",")}</Relations>
+</OcelotPlan>`;
+      return (xml);
+    } else {
+      const yaml = `component: ${component}
+tiling:
+  id: ${tilingId}
+  shape: ${tiling.shape}
+  neighbors: [${tiling.directions.map(d => d.name).join(", ")}]
+  style: ${tiling.style}
+  cellToPoint: "(q,r) -> point via ${tiling.id.includes("hex") ? "axial" : "cartesian"}"
+  pointToCell: "inverse"
+  distance: "${tiling.id.includes("hex") ? "axial hexDistance" : tilingId === "square4" ? "manhattan" : "chebyshev"}"
+  directions:
+${tiling.directions.map(d => `    - name: ${d.name} dq: ${d.dq} dr: ${d.dr} axial: {q:${d.axial.q},r:${d.axial.r}} angle:${d.angle}`).join("\n")}
+preset: ${presetId}
+ruleSet:
+  id: ${ruleSet.id}
+  setup: {w:${width}, h:${height}, desc: "${ruleSet.setup.description}"}
+  turns: {type:${(ruleSet.turns as any).type}, order:[${(ruleSet.turns as any).order?.join(",") || ""}], first:${(ruleSet.turns as any).first || ""}}
+  outcomes:
+${ruleSet.outcomes.map(o => `    - kind: ${o.kind} ${Object.entries(o).filter(([k]) => k !== "kind").map(([k, v]) => `${k}:${Array.isArray(v) ? `[${v}]` : v}`).join(" ")}`).join("\n")}
+  moves:
+${ruleSet.moves.map(m => `    - piece: ${m.pieceType} moves: [${m.moves.map(mk => `${mk.type}${(mk as any).dir ? `:${(mk as any).dir}` : ""}`).join(", ")}] capture:${m.capture} ${m.jumpOver ? "jumpOver:true" : ""} ${m.onMove ? `onMove:${JSON.stringify(m.onMove)}` : ""}`).join("\n")}
+  regions: ${regions.length} [${regions.slice(0, 3).map(r => r.id).join(",")}]
+  gravity: ${ruleSet.gravity ? JSON.stringify(ruleSet.gravity) : "none"}
+occupants: ${occupants.length} [${occupants.slice(0, 3).map(o => `${o.type}@${o.anchor.q},${o.anchor.r}${o.span.length ? ` span${o.span.length}` : ""}${o.guest ? ` guest:${o.guest.kind}` : ""}`).join(", ")}]
+relations: ${relations?.length ?? 0} [${(relations ?? []).map(b => `${b.id}:${b.def}`).join(", ")}]
+toggles: gravity=${toggles.gravity} diagonal=${toggles.diagonal} sliding=${toggles.sliding} wrapping=${toggles.wrapping} chainCapture=${toggles.chainCapture}
+engine: getValidMoves generic using tiling.directionMap + leaps, outcomes evaluated via tiling.line()
+`;
+      return (yaml);
+    }
+}
+
+// ---------- Stored plans: load + apply ----------
+// A plan file (morph-plans/*.json) is validated by validatePlan on load and only
+// then applied. Text pasted in the demo goes through parsePlan first; files
+// skip parsing because JSON import already produced data.
+export type PlanComponent = "Grid" | "Graph" | "Tree" | "Path" | "Protocol" | "Logic" | "Compose";
+
+const KNOWN_COMPONENTS: PlanComponent[] = ["Grid", "Graph", "Tree", "Path", "Protocol", "Logic", "Compose"];
+
+export type PlanBase = {
+  occupants: Occupant[];
+  width: number;
+  height: number;
+};
+
+export type LoadedPlan = {
+  component?: PlanComponent;
+  tilingId?: string;
+  interpretation?: any;
+  presetId: string;
+  ruleSet: RuleSet;
+  width: number;
+  height: number;
+  occupants?: Occupant[];
+  regions?: Region[];
+  firstTurn: string;
+  /**
+   * Normalized base the morph chain replays over. For snapshot-only plans
+   * (no stored morphs) this is the snapshot itself, so a later save can
+   * write base + new edits as a replayable chain.
+   */
+  base: PlanBase;
+  /** Normalized morph sequence; empty means snapshot-only plan. */
+  morphs: AppliedMorph[];
+  /**
+   * Rule construction when the plan carries it: the base the rule chain
+   * replays over plus the normalized chain. Absent for configuration-only
+   * plans, which keep using the embedded ruleSet as today.
+   */
+  ruleBase?: RuleSet;
+  ruleMorphs?: AppliedMorph[];
+  /**
+   * Relation bindings (§8.4), when the plan carries them: registry def ids
+   * wired to occupant entities. Validated at load; evaluation is the host's
+   * job (evaluatePlanRelations), outputs are derived and never stored.
+   */
+  relations?: RelationBinding[];
+};
+
+/** Compare a replayed state against the cached snapshot, order-insensitively. */
+function statesEqual(a: PlanState, occupants: Occupant[], width: number, height: number): string | null {
+  if (a.width !== width || a.height !== height) {
+    return `replayed dimensions ${a.width}x${a.height} do not match cached ${width}x${height}`;
+  }
+  const key = (o: Occupant) => o.id;
+  const ra = [...a.occupants].sort((x, y) => (key(x) < key(y) ? -1 : 1));
+  const rb = [...occupants].sort((x, y) => (key(x) < key(y) ? -1 : 1));
+  if (ra.length !== rb.length) {
+    return `replayed ${ra.length} occupants but cached snapshot has ${rb.length}`;
+  }
+  for (let i = 0; i < ra.length; i++) {
+    if (JSON.stringify(ra[i]) !== JSON.stringify(rb[i])) {
+      return `replayed occupant "${key(ra[i])}" differs from cached snapshot`;
+    }
+  }
+  return null;
+}
+
+function readBase(data: any, width: number, height: number): { base: PlanBase; errors: string[] } {
+  const errors: string[] = [];
+  const raw = data?.base;
+  if (raw === undefined) {
+    // Snapshot-only file: the snapshot is the base for future edits.
+    return {
+      base: {
+        occupants: Array.isArray(data?.occupants) ? data.occupants : [],
+        width,
+        height,
+      },
+      errors,
+    };
+  }
+  if (!raw || typeof raw !== "object") {
+    errors.push("plan.base must be { occupants, width, height }");
+    return { base: { occupants: [], width, height }, errors };
+  }
+  if (!Array.isArray(raw.occupants)) errors.push("plan.base.occupants must be an array");
+  if (typeof raw.width !== "number" || typeof raw.height !== "number") {
+    errors.push("plan.base needs numeric width and height");
+  }
+  // Guarded by the Array check above: a non-array occupants value is an
+  // error, never a throw.
+  if (Array.isArray(raw.occupants)) {
+    raw.occupants.forEach((o: Occupant, i: number) => {
+      if (!o || typeof o.id !== "string" || !o.id) errors.push(`plan.base.occupants[${i}] missing id`);
+      if (!o?.anchor || typeof o.anchor.q !== "number" || typeof o.anchor.r !== "number") {
+        errors.push(`plan.base.occupants[${i}] needs a numeric anchor {q,r}`);
+      }
+    });
+  }
+  return {
+    base: {
+      occupants: Array.isArray(raw.occupants) ? raw.occupants : [],
+      width: typeof raw.width === "number" ? raw.width : width,
+      height: typeof raw.height === "number" ? raw.height : height,
+    },
+    errors,
+  };
+}
+
+/**
+ * Final-board validation: every occupant needs a numeric in-bounds anchor,
+ * and no two occupants may cover the same cell. Runs on the state load will
+ * actually apply, whichever path produced it.
+ */
+function checkBoard(occupants: Occupant[], width: number, height: number): string[] {
+  const errors: string[] = [];
+  const seen = new Map<string, string>();
+  occupants.forEach((o, i) => {
+    if (!o || typeof o.id !== "string" || !o.id) {
+      errors.push(`occupants[${i}] missing id`);
+      return;
+    }
+    if (!o.anchor || typeof o.anchor.q !== "number" || typeof o.anchor.r !== "number") {
+      errors.push(`occupants[${i}] needs a numeric anchor {q,r}`);
+      return;
+    }
+    if (o.anchor.q < 0 || o.anchor.r < 0 || o.anchor.q >= width || o.anchor.r >= height) {
+      errors.push(`occupant "${o.id}" anchor (${o.anchor.q},${o.anchor.r}) is outside ${width}x${height}`);
+    }
+    for (const c of cellsOf(o)) {
+      const key = `${c.q},${c.r}`;
+      if (seen.has(key)) {
+        errors.push(`collision: occupants "${seen.get(key)}" and "${o.id}" both occupy ${key}`);
+      } else {
+        seen.set(key, o.id);
+      }
+    }
+  });
+  return errors;
+}
+
+export const PLAN_SCHEMA = "paramorphic-plan/1";
+
+export function loadPlan(
+  parsed: { data: any; errors: string[] },
+  tiling: TilingDef | null,
+  fallback?: { width: number; height: number }
+): { ok: true; plan: LoadedPlan } | { ok: false; errors: string[] } {
+  if (parsed.errors.length > 0) return { ok: false, errors: parsed.errors };
+  const data = parsed.data;
+  const errors = validatePlan(data, tiling);
+  if (data?.$schema !== undefined && data.$schema !== PLAN_SCHEMA) {
+    errors.push(`unsupported plan version "${data.$schema}" (this runtime reads ${PLAN_SCHEMA})`);
+  }
+  if (data?.component && !KNOWN_COMPONENTS.includes(data.component)) {
+    errors.push(`Unknown component "${data.component}" (available: ${KNOWN_COMPONENTS.join(", ")})`);
+  }
+  if (data?.morphs !== undefined) {
+    if (!Array.isArray(data.morphs)) errors.push("plan.morphs must be an array");
+    else for (const e of validateChain(data.morphs, { tilingId: data.tilingId })) errors.push(e);
+  }
+  if (data?.interpretation?.grid !== undefined) {
+    for (const e of validatePresentationConfig(data.interpretation.grid)) errors.push(e);
+  }
+  if (errors.length > 0) return { ok: false, errors };
+  const setup = data.ruleSet?.setup || {};
+  const width = setup.width ?? data.width ?? fallback?.width ?? 8;
+  const height = setup.height ?? data.height ?? fallback?.height ?? 8;
+  const { base, errors: baseErrors } = readBase(data, width, height);
+  for (const e of baseErrors) errors.push(e);
+  if (errors.length > 0) return { ok: false, errors };
+  let morphs: AppliedMorph[] = Array.isArray(data.morphs) ? data.morphs : [];
+  let occupants: Occupant[] | undefined = Array.isArray(data.occupants) ? data.occupants : undefined;
+  let outWidth = width;
+  let outHeight = height;
+  // Any stored chain — even an empty one over an explicit base — must
+  // reconstruct the cached snapshot. Snapshot-only files (no base, no
+  // morphs) skip this: the snapshot is the base.
+  if (data.morphs !== undefined || data.base !== undefined) {
+    // The chain constructs the app: checked replay against each
+    // intermediate state, then comparison with the cached snapshot. A
+    // mismatch is a hard error — the plan is never partially applied.
+    const replayed = replayMorphsChecked(base, morphs, { tilingId: data.tilingId });
+    if (!replayed.ok) return { ok: false, errors: replayed.errors };
+    if (!occupants) {
+      occupants = replayed.state.occupants;
+      outWidth = replayed.state.width;
+      outHeight = replayed.state.height;
+    } else {
+      const mismatch = statesEqual(replayed.state, occupants, width, height);
+      if (mismatch) return { ok: false, errors: [`plan replay mismatch: ${mismatch}`] };
+      // Use the replayed state as the source of truth.
+      occupants = replayed.state.occupants;
+      outWidth = replayed.state.width;
+      outHeight = replayed.state.height;
+    }
+    // Re-derive inverse frames from the replay so undoing the loaded chain
+    // restores the states that actually occurred, not hand-written ones.
+    morphs = recaptureFrames(base, morphs, { tilingId: data.tilingId });
+  }
+  // Rule construction, when the plan carries it: replay the rule chain over
+  // its base (or the embedded ruleSet as a snapshot-only base) and require
+  // the result to match the embedded ruleSet, exactly like the board chain
+  // must match the cached snapshot. Configuration-only plans skip this and
+  // keep the embedded ruleSet untouched.
+  let ruleSetOut = data.ruleSet;
+  let ruleBaseOut: RuleSet | undefined;
+  let ruleMorphsOut: AppliedMorph[] = [];
+  if (data.ruleMorphs !== undefined || data.ruleBase !== undefined) {
+    const ruleBaseRaw = data.ruleBase ?? data.ruleSet;
+    const res = loadRuleChain(
+      { board: base, rules: ruleBaseRaw },
+      data.ruleMorphs,
+      { tilingId: data.tilingId }
+    );
+    if (!res.ok) {
+      for (const e of res.errors) errors.push(e);
+    } else {
+      const mismatch = ruleSetsEqual(res.rules, data.ruleSet);
+      if (mismatch) {
+        errors.push(`plan rule replay mismatch: ${mismatch}`);
+      } else {
+        ruleSetOut = res.rules;
+        ruleBaseOut = ruleBaseRaw;
+        ruleMorphsOut = res.chain;
+      }
+    }
+  }
+  if (occupants) {
+    for (const e of checkBoard(occupants, outWidth, outHeight)) errors.push(e);
+  }
+  // Relation bindings validate against the final occupant set and the
+  // registered defs; any problem rejects the whole plan.
+  let relations: RelationBinding[] | undefined;
+  if (data.relations !== undefined) {
+    const occIds = new Set((occupants ?? []).map(o => o.id));
+    for (const e of validateRelationBindings(data.relations, occIds)) errors.push(e);
+    if (Array.isArray(data.relations)) relations = data.relations as RelationBinding[];
+  }
+  if (errors.length > 0) return { ok: false, errors };
+  return {
+    ok: true,
+    plan: {
+      component: data.component,
+      tilingId: data.tilingId,
+      presetId: data.presetId || "custom",
+      interpretation: data.interpretation ?? null,
+      ruleSet: ruleSetOut,
+      width: outWidth,
+      height: outHeight,
+      occupants,
+      regions: Array.isArray(data.regions)
+        ? data.regions
+        : Array.isArray(ruleSetOut?.regions)
+          ? ruleSetOut.regions
+          : undefined,
+      firstTurn:
+        (ruleSetOut?.turns as any)?.first ||
+        (ruleSetOut?.turns as any)?.order?.[0] ||
+        "white",
+      base,
+      morphs,
+      ruleBase: ruleBaseOut,
+      ruleMorphs: ruleMorphsOut,
+      relations,
+    },
+  };
+}
+
+/**
+ * Decide what a save publishes. When the in-memory chain still reconstructs
+ * the current state, the full base + chain is saved. Otherwise — history-cap
+ * truncation dropped the oldest steps, a snapshot-only edit left a gap no
+ * morph covers, or anything else diverged — save an honest snapshot
+ * checkpoint (current state as the new base, empty chain) instead of
+ * silently publishing a partial chain as a complete one.
+ */
+export function chainForSave(
+  base: PlanBase,
+  chain: AppliedMorph[],
+  occupants: Occupant[],
+  width: number,
+  height: number,
+  ctx: MorphContext = {}
+): { ok: true; base: PlanBase; morphs: AppliedMorph[]; checkpointed: boolean } | { ok: false; errors: string[] } {
+  // Save-publication rule shared with disjoint Tree chains (see
+  // `publishesFullChain` on the scoped core): publish the full base + chain
+  // only when the chain validates, the checked replay accepts it, and the
+  // replayed state matches the current board. Otherwise checkpoint honestly —
+  // but only a loadable checkpoint: an invalid current board is an error,
+  // never a file its own loader rejects.
+  const boardErrors = Array.isArray(occupants)
+    ? checkBoard(occupants, width, height)
+    : ["current occupants must be an array"];
+  if (boardErrors.length > 0) {
+    return { ok: false, errors: boardErrors.map(e => `current state: ${e}`) };
+  }
+  const chainValid = Array.isArray(chain) && validateChain(chain, ctx).length === 0;
+  const replayed = chainValid ? replayMorphsChecked(base, chain, ctx) : replayMorphs(base, chain, ctx);
+  const matches = replayed.ok && statesEqual(replayed.state, occupants, width, height) === null;
+  if (gridRegistry.publishesFullChain(true, chainValid, replayed.ok, matches)) {
+    return { ok: true, base, morphs: chain, checkpointed: false };
+  }
+  return { ok: true, base: { occupants, width, height }, morphs: [], checkpointed: true };
+}
+
+export type PlanApplyTarget = {
+  setComponent: (c: PlanComponent) => void;
+  setTilingId: (t: TilingDef["id"]) => void;
+  setInterpretation: (v: any) => void;
+  setPresetId: (p: string) => void;
+  setRuleSet: (r: RuleSet) => void;
+  setWidth: (w: number) => void;
+  setHeight: (h: number) => void;
+  setOccupants: (o: Occupant[]) => void;
+  setRegions: (r: Region[]) => void;
+  setCurrentTurn: (t: string) => void;
+  setOutcome: (o: null) => void;
+  setSelectedId: (id: string | null) => void;
+  setValidMoves: (m: any[]) => void;
+  setPlanErrors: (e: string[]) => void;
+  setChainCaptureActive: (b: boolean) => void;
+  markPlanLoad: () => void;
+  /** Optional: hosts that evaluate relations receive the plan's bindings. */
+  setRelations?: (r: RelationBinding[]) => void;
+};
+
+export function applyPlan(plan: LoadedPlan, target: PlanApplyTarget): void {
+  // Plan is the source of truth: the caller skips the preset effect so a
+  // custom plan's rules and occupants are not reset when presetId changes.
+  // plan.occupants is already the replayed chain result when the file
+  // carries morphs, so every shell constructs the app from the chain.
+  target.markPlanLoad();
+  if (plan.component) target.setComponent(plan.component);
+  if (plan.tilingId) target.setTilingId(plan.tilingId as TilingDef["id"]);
+  target.setInterpretation(plan.interpretation ?? null);
+  target.setPresetId(plan.presetId);
+  target.setRuleSet(plan.ruleSet);
+  target.setWidth(plan.width);
+  target.setHeight(plan.height);
+  if (plan.occupants) target.setOccupants(plan.occupants);
+  if (plan.regions) target.setRegions(plan.regions);
+  target.setCurrentTurn(plan.firstTurn);
+  target.setOutcome(null);
+  target.setSelectedId(null);
+  target.setValidMoves([]);
+  target.setPlanErrors([]);
+  target.setChainCaptureActive(false);
+  target.setRelations?.(plan.relations ?? []);
+}

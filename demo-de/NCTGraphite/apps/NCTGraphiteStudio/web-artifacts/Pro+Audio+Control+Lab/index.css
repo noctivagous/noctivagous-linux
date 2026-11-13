@@ -1,0 +1,124 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --base: #121214;
+  --panel: #242528;
+  --panel-top: #2d2e30;
+  --panel-bot: #1e1f21;
+  --well: #0f0f10;
+  --well2: #151516;
+  --line: #2a2c2f;
+  --line-strong: #3a3d41;
+  --text: #c8cacc;
+  --text-dim: #7a7c7e;
+  --text-emboss: #6b6e71;
+  --blue: #4a8af4;
+  --blue-glow: 0 0 12px rgba(74,138,244,0.6), 0 0 2px rgba(74,138,244,0.9);
+  --red: #ff4a3d;
+  --yellow: #f2c94c;
+  --green: #3dd68c;
+  --titlebar-top: #3a3b3e;
+  --titlebar-bot: #242528;
+  --safe-area-inset-top: 0px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --base: #121214;
+  }
+}
+
+* {
+  font-family: "Lucida Grande", "Lucida Sans Unicode", -apple-system, system-ui, sans-serif;
+}
+
+.mono {
+  font-family: "JetBrains Mono", "Menlo", monospace !important;
+}
+
+.emboss-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  text-shadow: 0 1px 0 rgba(0,0,0,0.9), 0 -0.5px 0 rgba(255,255,255,0.12);
+}
+
+.panel-gradient {
+  background: linear-gradient(180deg, var(--panel-top) 0%, var(--panel-bot) 100%);
+  border: 1px solid var(--line-strong);
+  border-top-color: #43464b;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), inset 0 -1px 0 rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.5);
+}
+
+.gloss-overlay {
+  position: relative;
+}
+.gloss-overlay::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 18%, rgba(255,255,255,0.02) 48%, rgba(255,255,255,0) 55%);
+  border-radius: inherit;
+}
+
+.inset-well {
+  background: radial-gradient(120% 120% at 50% 0%, #1a1b1d 0%, var(--well) 70%);
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.95), inset 0 0 0 1px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.06);
+  border: 1px solid #0a0a0b;
+}
+
+.dotted-grid {
+  background-color: #1a1a1c;
+  background-image: radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px);
+  background-size: 14px 14px;
+}
+
+.titlebar-gradient {
+  background: linear-gradient(180deg, var(--titlebar-top) 0%, var(--titlebar-bot) 100%);
+  border-bottom: 1px solid #111;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18);
+}
+
+.menubar {
+  background: linear-gradient(180deg, #2e2f32 0%, #232427 100%);
+  border-bottom: 1px solid #151515;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+.toolbar-gradient {
+  background: linear-gradient(180deg, #303236 0%, #212224 100%);
+  border-bottom: 1px solid #0f0f0f;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);
+}
+
+.blue-glow {
+  box-shadow: var(--blue-glow);
+}
+
+.traffic-light {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), inset 0 -1px 1px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.6);
+  border: 1px solid rgba(0,0,0,0.4);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2b2e;
+  border: 1px solid #1a1a1a;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-track {
+  background: #0f0f10;
+}

@@ -1,0 +1,183 @@
+/* NCTGraphiteTechDesMVD — shared lab chrome tokens.
+ * Canonical source: NCTGraphite/themes.json → NCTTechDesMVD.
+ * Union of the grid-paint-labs lab :root sets; lab index.css files
+ * must not redefine these (their :root blocks were removed on migration).
+ */
+@import url('https://fonts.googleapis.com/css2?family=Fragment+Mono&family=Instrument+Serif:ital@0;1&display=swap');
+
+:root {
+  --bg: #0e0e14;
+  --bg-deep: #0a0a0f;
+  --panel: #15151f;
+  --panel-2: #1a1a24;
+  --panel-3: #222230;
+  --border: #23232f;
+  --border-2: #2a2a3a;
+  --paper: #fdfaf3;
+  --paper-2: #f5efe0;
+  --grid-line: #e8e0c8;
+  --line: #e8e0cc;
+  --ink: #1a1a24;
+  --ink-2: #242432;
+  --accent: #7c5cff;
+  --accent-2: #00e5ff;
+  --accent-mag: #ff2d95;
+  --accent-orange: #ff5a2d;
+  --accent-lime: #b7ff2d;
+  --accent-gold: #c2a878;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Instrument Serif', Georgia, serif;
+  --font-alt-mono: 'Fragment Mono', ui-monospace, monospace;
+  --erase: #ff4d6d;
+  --danger: #e84855;
+  --success: #4ecdc4;
+  --text: #f5f1e8;
+  --text-dim: #9a958c;
+  --safe-area-inset-top: 0px;
+
+  /* ========== SPACING (4px base unit, shared with NCTGraphiteStack/Grid) ========== */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+
+  /* ========== RADIUS ========== */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+}
+
+/* Font-idiom utilities: the global * rule forces JetBrains Mono, so labs
+ * opt into the sans/display/alt-mono idioms per element (class beats *). */
+.nctgraphite-font-sans { font-family: var(--font-sans); }
+.nctgraphite-font-display { font-family: var(--font-display); }
+.nctgraphite-font-alt-mono { font-family: var(--font-alt-mono); }
+
+/* ========== STAGE STRUCTURE (NCTGraphiteStage family) ==========
+ * Plain CSS (no Tailwind dependency): full-viewport column shell whose
+ * body row stacks on small screens and splits into panels on lg+. */
+.nctgraphite-stage-body {
+  display: flex;
+  flex: 1 1 0%;
+  flex-direction: column;
+  min-height: 0;
+}
+@media (min-width: 1024px) {
+  .nctgraphite-stage-body { flex-direction: row; }
+}
+.nctgraphite-stage-panel {
+  width: 100%;
+  min-height: 0;
+}
+@media (min-width: 1024px) {
+  .nctgraphite-stage-panel {
+    width: var(--nct-w);
+    flex-shrink: 0;
+  }
+}
+.nctgraphite-stage-main {
+  flex: 1 1 0%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+* { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+
+/* Light paper variant (dot-shading idiom): set class="nctgraphite-paper"
+ * on the lab root element instead of redefining tokens per lab. */
+.nctgraphite-paper {
+  --bg: var(--paper);
+  --text: #0e0e14;
+  --text-dim: #6b6a7a;
+  --panel: #0e0e14;
+  --panel-2: #1a1a24;
+  background: var(--paper);
+  color: var(--text);
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--panel-3); border-radius: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* Shared range-input chrome (was duplicated in every lab index.css). */
+input[type="range"].nctgraphite-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: var(--panel-3);
+  border-radius: 2px;
+  outline: none;
+}
+input[type="range"].nctgraphite-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid var(--bg);
+}
+/* Stage keeps keyboard focus; the ring would flash every time a panel control returns it. */
+[data-nct-stage]:focus {
+  outline: none;
+}
+
+.nctgraphite-hint-trigger {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: help;
+  display: inline-flex;
+  line-height: 0;
+  vertical-align: middle;
+}
+.nctgraphite-hint-trigger:hover,
+.nctgraphite-hint-trigger:focus-visible {
+  color: var(--accent);
+  outline: none;
+}
+.nctgraphite-hint-icon {
+  display: block;
+}
+.nctgraphite-hint-circle {
+  fill: var(--panel-2);
+  stroke: currentColor;
+  stroke-width: 1;
+}
+.nctgraphite-hint-glyph {
+  fill: currentColor;
+  font-family: var(--font-alt-mono, ui-monospace, monospace);
+  font-size: 9px;
+  font-weight: 700;
+}
+.nctgraphite-popover {
+  z-index: 10000;
+  width: max-content;
+  max-width: min(280px, calc(100vw - 16px));
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-2);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 10px;
+  line-height: 1.45;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+input[type="range"].nctgraphite-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid var(--bg);
+}

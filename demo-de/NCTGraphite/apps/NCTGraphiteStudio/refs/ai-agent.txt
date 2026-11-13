@@ -1,0 +1,15 @@
+The AI agent will be using tool commands more often
+by utilizing the various logic, workflow, state, binding, 
+network, and GUI components build into NCTGraphite and
+will work in code when it cannot do that.  This in 
+combination with premade components and systems
+like app shell, settings, etc. should allow it to rapidly
+construct apps.  It will have tool calls for adjusting styling 
+and themes.  It will, by doing this neither work at
+a low code level where everything has to be tested
+nor will it be working at a high level of abstraction
+where the moves it makes work inside reduced conditions.
+It will have access to every level but be given the middle
+ground where it can have these logic, workflow, state,
+etc. components that make it so that it doesn't have
+to generate low level code for much of the app.

@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build output
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Vite, test, and type artifacts
+.vite/
+coverage/
+.nyc_output/
+
+# Editor, OS, and local environment files
+.vscode/
+.idea/
+.DS_Store
+*.local
+.env
+.env.*
+!.env.example

@@ -1,0 +1,116 @@
+{
+  "default": "NCTGraphiteDark",
+  "themes": [
+    {
+      "name": "NCTGraphiteDark",
+      "status": "default",
+      "description": "The current NCT look and the default NCTGraphite theme. Dark pro task-manager idiom: layered blue-gray surfaces, single teal accent, rounded corners, gradient bevel buttons, three font roles (system sans UI, monospace technical, Georgia serif reading).",
+      "sources": [
+        "nct-project-manager/src/index.css",
+        "nct-project-manager/src/controls/controls.css"
+      ],
+      "tokens": {
+        "bg-0": "#0c0e12",
+        "bg-1": "#12151c",
+        "bg-2": "#181d27",
+        "bg-3": "#202634",
+        "border": "#2a3140",
+        "border-soft": "#222838",
+        "text": "#d7dce4",
+        "text-dim": "#9aa3b2",
+        "text-faint": "#6b7484",
+        "accent": "#3ec6a7",
+        "accent-dim": "rgba(62, 198, 167, 0.14)",
+        "accent-text": "#0a1512",
+        "danger": "#e0655f",
+        "warn": "#d9a441",
+        "radius-s": "6px",
+        "radius-m": "10px",
+        "radius-l": "14px",
+        "font-ui": "-apple-system, BlinkMacSystemFont, Segoe UI, system-ui, sans-serif",
+        "font-technical": "ui-monospace, SFMono-Regular, Menlo, monospace",
+        "font-reading": "Georgia, Times New Roman, serif",
+        "font-size-base": "15px"
+      }
+    },
+    {
+      "name": "NCTClassicDark",
+      "status": "planned",
+      "description": "Rectangular bevelled pro dark inherited from the noct-code-appkit styleguide (formerly called NCTGraphiteDark in the plan). Sharp corners, 3D bevel highlights, VS Code blue accent, 4px spacing unit with print baseline-grid type, desktop-compact 24px controls, data-app-mode and data-density switches.",
+      "sources": [
+        "noct-code-appkit/src/styles/theme-tokens.css",
+        "noct-code-appkit/src/styles/rectangular-dark.css",
+        "noct-code-appkit/src/lib/app/noct-theme.ts"
+      ],
+      "tokens": {
+        "bg-base": "#2b2b2b",
+        "bg-raised": "#3a3a3a",
+        "bg-input": "#1f1f1f",
+        "bg-pressed": "#222222",
+        "bg-hover": "#404040",
+        "bg-selected": "#0d3656",
+        "bg-header": "#323232",
+        "bevel-highlight": "#4a4a4a",
+        "bevel-shadow": "#1a1a1a",
+        "text-primary": "#d0d0d0",
+        "text-secondary": "#999999",
+        "text-disabled": "#606060",
+        "accent": "#2f7dd2",
+        "accent-purple": "#7c4dff",
+        "accent-blue": "#007acc",
+        "success": "#4caf50",
+        "warning": "#ff9800",
+        "error": "#f44336",
+        "radius": "0",
+        "unit": "4px",
+        "baseline": "4px",
+        "font-mono-tech": "ui-monospace, SF Mono, Cascadia Code, Consolas, Roboto Mono, Menlo, monospace",
+        "height-button": "24px",
+        "height-toolbar": "36px",
+        "height-statusbar": "24px"
+      }
+    },
+    {
+      "name": "NCTTechDesMVD",
+      "status": "reserved",
+      "description": "Reserved theme for web artifacts with a technical minimum-viable-demo style: single-file demo-lab pages built from meta.ai chats, as seen in grid-paint-labs. Full-viewport dark canvas with a side or bottom control panel, monospace-everywhere type, violet/cyan accents on near-black, warm paper surfaces for light-mode labs.",
+      "sources": [
+        "grid-paint-labs/lab-sources/Grid+Cell+Hull+Lab/index.css",
+        "grid-paint-labs/lab-sources/Grid+Dot+Shading+Lab/index.css",
+        "grid-paint-labs/lab-sources/Hex+Grid+Cell+Paint/index.css",
+        "grid-paint-labs/standalone-html/*.html"
+      ],
+      "tokens": {
+        "bg": "#0e0e14",
+        "bg-deep": "#0a0a0f",
+        "panel": "#15151f",
+        "panel-2": "#1a1a24",
+        "panel-3": "#222230",
+        "border": "#23232f",
+        "border-2": "#2a2a3a",
+        "paper": "#fdfaf3",
+        "paper-2": "#f5efe0",
+        "grid-line": "#e8e0c8",
+        "accent-violet": "#7c5cff",
+        "accent-cyan": "#00e5ff",
+        "accent-gold": "#c2a878",
+        "erase": "#ff4d6d",
+        "danger": "#e84855",
+        "success": "#4ecdc4",
+        "text": "#f5f1e8",
+        "text-dim": "#9a958c",
+        "font-mono": "JetBrains Mono, ui-monospace, monospace",
+        "font-mono-alt": "Fragment Mono, ui-monospace, monospace",
+        "font-display": "Syne, sans-serif",
+        "label-size": "10px-11px",
+        "label-tracking": "0.18em",
+        "panel-radius": "8px"
+      },
+      "notes": [
+        "Dark labs set JetBrains Mono globally; the dot-shading lab uses Fragment Mono for body with Syne for display headings.",
+        "Control chrome shared across labs: 10-11px tracked-out uppercase micro-labels in dim text, range sliders with accent thumb, swatch buttons, 8px panels with 1px borders, thin dark scrollbars.",
+        "Neon variant (Grid-Paint-Field-Key): #FF2D95 / #00E5FF / #FF5A2D / #B7FF2D on #0a0a0f — same dark-lab idiom, hotter palette."
+      ]
+    }
+  ]
+}
