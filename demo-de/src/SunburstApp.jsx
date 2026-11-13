@@ -183,6 +183,7 @@ export default function SunburstApp() {
           <a href="./definition.html">definition</a>
           <a href="./tangled.html">tangled tree 3D</a>
           <a className="here" href="./sunburst.html">sunburst 3D</a>
+          <a href="./horizon.html">horizon monitor</a>
         </nav>
       </div>
       <p className="sb-sub">

@@ -27,6 +27,7 @@ export default defineConfig({
         definition: fileURLToPath(new URL('./definition.html', import.meta.url)),
         tangled: fileURLToPath(new URL('./tangled.html', import.meta.url)),
         sunburst: fileURLToPath(new URL('./sunburst.html', import.meta.url)),
+        horizon: fileURLToPath(new URL('./horizon.html', import.meta.url)),
       },
     },
   },

@@ -347,3 +347,20 @@ export type {
   SunburstSlice,
   SunburstNode,
 } from './sunburst/NCTGraphiteSunburstLayout.js';
+
+export {
+  horizonWalk,
+  mulberry32,
+  horizonBandColor,
+  SCHEME_GREENS,
+  SCHEME_BLUES,
+  horizonBandFill,
+  horizonY,
+  ACTIVITY_LANES,
+  HorizonSeries,
+  createMonitor,
+} from './horizon/NCTGraphiteHorizon.js';
+export type {
+  HorizonStrip,
+  ActivityLane,
+} from './horizon/NCTGraphiteHorizon.js';

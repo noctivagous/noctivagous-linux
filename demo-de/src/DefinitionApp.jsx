@@ -321,6 +321,7 @@ export default function DefinitionApp() {
           <a href="definition.html" className="here">definition canvas</a>
           <a href="tangled.html">tangled tree 3d</a>
           <a href="sunburst.html">sunburst 3d</a>
+          <a href="horizon.html">horizon monitor</a>
         </nav>
       </div>
       <p className="def-sub">
