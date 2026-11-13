@@ -33,7 +33,9 @@ is: "I opened the Calculator and every button press
 sends an event to another place I wired up" or "I added
 a button to the Calculator app, "Send" and it sends the
 total to a different application node that receives the value."
-So, 
+or "The Calculator exposed the node and I changed the 
+value that comes out and multiplied it by a function of my own,
+attaching it to the site"
 
 This is especially relevant to the use of paramorphic 
 components.
