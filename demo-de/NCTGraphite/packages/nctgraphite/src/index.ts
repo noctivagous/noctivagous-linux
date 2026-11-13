@@ -367,3 +367,23 @@ export type {
   HorizonReliefOptions,
   HorizonRelief,
 } from './horizon/NCTGraphiteHorizon.js';
+
+export {
+  buildTreemap,
+  descendants as treemapDescendants,
+  ancestors as treemapAncestors,
+  treemapPath,
+  zoomTargets as treemapZoomTargets,
+  resetCurrents,
+  binaryTileRects,
+  TREEMAP_WIDTH,
+  TREEMAP_HEIGHT,
+  SCHEME_CATEGORY10,
+  treemapHouse,
+  treemapHouseColor,
+} from './treemap/NCTGraphiteTreemapLayout.js';
+export type {
+  TreemapData,
+  TreemapRect,
+  TreemapNode,
+} from './treemap/NCTGraphiteTreemapLayout.js';

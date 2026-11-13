@@ -206,8 +206,10 @@ export default function HorizonApp() {
           <a href="./definition.html">definition</a>
           <a href="./tangled.html">tangled tree 3D</a>
           <a href="./sunburst.html">sunburst 3D</a>
+          <a href="./sunburst-cylinder.html">sunburst cylinder</a>
           <a className="here" href="./horizon.html">horizon monitor</a>
           <a href="./horizon3d.html">horizon 3D</a>
+          <a href="./treemap.html">treemap 3D</a>
         </nav>
       </div>
       <p className="hz-sub">

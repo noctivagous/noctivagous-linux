@@ -184,8 +184,10 @@ export default function TangledApp() {
           <a href="definition.html">definition canvas</a>
           <a href="tangled.html" className="here">tangled tree 3d</a>
           <a href="sunburst.html">sunburst 3d</a>
+          <a href="sunburst-cylinder.html">sunburst cylinder</a>
           <a href="horizon.html">horizon monitor</a>
           <a href="horizon3d.html">horizon 3d</a>
+          <a href="treemap.html">treemap 3D</a>
         </nav>
       </div>
       <p className="tg-sub">

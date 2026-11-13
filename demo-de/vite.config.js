@@ -29,6 +29,8 @@ export default defineConfig({
         sunburst: fileURLToPath(new URL('./sunburst.html', import.meta.url)),
         horizon: fileURLToPath(new URL('./horizon.html', import.meta.url)),
         horizon3d: fileURLToPath(new URL('./horizon3d.html', import.meta.url)),
+        treemap: fileURLToPath(new URL('./treemap.html', import.meta.url)),
+        sunburstCylinder: fileURLToPath(new URL('./sunburst-cylinder.html', import.meta.url)),
       },
     },
   },
