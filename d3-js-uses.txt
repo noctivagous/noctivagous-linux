@@ -8,14 +8,17 @@ of 3D spatial organization of UI vs. 2D space.
 
 ---
 
-UI frames 
+UI frame types
  - Flat UI frames (2D conventional)
  - ZUI Frames - d3.js
    - 2D Plane  - d3.js
    - 3D Spatial  - three.js + d3.js (d3.js charts ported to 3D)
    
-------    
-Flat UI 
+------
+d3.js examples to make into demos
+
+ZUI viewers:
+
   - Tree Map - d3.js
      - File System Navigation 
   - Realtime horizon chart 
@@ -27,9 +30,9 @@ Flat UI
 	  subdivided by category."
 	 
 	- Contours / Vector Fields - https://observablehq.com/@d3/contours
- 		- live 2d activity monitors
  
-ZUI viewers:
+ 
+
  - Sequences Sunburst
  - Chord dependency diagram
  - Tangled tree visualization
