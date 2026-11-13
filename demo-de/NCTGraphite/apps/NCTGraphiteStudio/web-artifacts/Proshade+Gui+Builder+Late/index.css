@@ -1,0 +1,90 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-base: #121214;
+  --bg-panel: #242528;
+  --bg-panel-grad-top: #2d2e30;
+  --bg-panel-grad-btm: #1e1f21;
+  --bg-well: #0f0f10;
+  --bg-canvas: #1a1a1c;
+  --highlight-top: rgba(255,255,255,0.12);
+  --shadow-bottom: rgba(0,0,0,0.9);
+  --border-dark: #0a0a0b;
+  --text-main: #d6d6d6;
+  --text-dim: #7a7c7e;
+  --text-emboss: #9a9c9e;
+  --blue-select: #4a8af4;
+  --blue-glow: rgba(74,138,244,0.5);
+}
+
+* {
+  font-family: "Lucida Grande", "Lucida Sans Unicode", Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-base);
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #121214;
+  border-left: 1px solid #0a0a0a;
+}
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #3a3b3e, #222326);
+  border: 1px solid #0a0a0a;
+  border-radius: 4px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #4a4c4f, #2a2c2f);
+}
+::-webkit-scrollbar-corner {
+  background: #121214;
+}
+
+/* Pro app grip texture */
+.pro-grip {
+  background-image: 
+    radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px);
+  background-size: 3px 3px;
+}
+
+.pro-inset-well {
+  background: var(--bg-well);
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.9), inset 0 0 0 1px rgba(0,0,0,1), inset 0 1px 0 rgba(0,0,0,0.5);
+  border-top: 1px solid rgba(0,0,0,0.8);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.pro-panel-grad {
+  background: linear-gradient(180deg, var(--bg-panel-grad-top) 0%, var(--bg-panel-grad-btm) 100%);
+  border-top: 1px solid var(--highlight-top);
+  border-bottom: 1px solid var(--shadow-bottom);
+}
+
+.pro-button-gloss {
+  background: linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.02) 50%, rgba(0,0,0,0.1) 100%);
+}
+
+.canvas-grid {
+  background-color: #1a1a1c;
+  background-image: 
+    radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px),
+    linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+  background-size: 20px 20px, 20px 20px, 20px 20px;
+  background-position: 0 0, 0 0, 0 0;
+}

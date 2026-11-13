@@ -1,0 +1,177 @@
+
+A Hybrid Interface Agentic (AI-Driven) IDE
+
+
+Note: An upgrade to the common IDE that moves
+towards GUI is only viable if it uses
+what is called Bimodal Control / Dual Input UI Theory,
+which means in this case that mouse button clicks are
+moved to keyboard keys, including a dedicated drag-lock
+(a.k.a. "sticky drag") key. The mouse is used 
+for steering of the cursor while the keyboard keys 
+are used for activation of functions.  (The
+mouse buttons are not used.)
+
+AI IS TOO BIG FOR A PLAIN TEXT IDE
+
+The general rule in technology is that when
+the form factor or technology has advanced, 
+changes and upgrades have to be made elsewhere too.  
+If you now have AI generating lots of code, you have
+to update the IDE and not keep it the same.
+To give a historical example from the 2000s: Apple quickly
+realized that the iPod's clickwheel wouldn't 
+serve the needs of the iPhone. The situation cannot
+remain the same in different contexts. AI's code-generation
+capabilities are too big for the small plain text editing
+interactivity that preceded it. At the minimum, an IDE can move 
+towards hybrid diagram and code editing.
+
+The code editor proposed here centers around a very
+large, zoomable workspace.  It works with the 
+user to construct diagrams of the files and their code.
+The user is not confined to working in either a diagram or 
+code view of a project: clicking on any part of the diagram,
+such as one of its object components, will reveal its code 
+in a popover. This way the user can stay at the overview level of 
+the code while opening up the code, editing it, and having the
+AI make additions or changes at any level of detail.   
+The user can see the big picture and the individual lines 
+of code at the same time in the same workspace.
+Multiple popovers can remain open at the same time
+and different parts of the diagram workspace can be
+set to different detail levels.  The user can select
+sections of code as diagram components or lines inside
+the popover editor and the AI receives prompts to change either one.
+For example, if multiple components are selected,
+the user's instructions to the AI are naturally understood to be
+limited to them (and this reduces typing). 
+
+What the user is working with is more like a UML diagram 
+but with more detail in the diagram available when the user
+zooms in.  At the same time, importantly, the user does not
+have to zoom in to expand a section to a higher detail level.
+One section of the diagram can be assigned to the
+most micro level of detail (just before it is the lines of code)
+while another is kept at a macro one.  The software developer
+can then work on different parts of the project at
+the right levels of detail for the given task.
+
+A benefit of this is that when editing the code, the user
+can start at the diagrammatic overview, click a component,
+and then be editing just the code for that component, exit it,
+and then select a group of components and instruct the AI
+to do something with them.  A major benefit of a popover of
+code for a diagram's component is that the popover editor 
+jumps to and only shows the code for that part of the
+code that matches the component of the diagram. This 
+greatly reduces the need to scroll through
+a file of text (code), because a file of code often
+has more than one section that would show up as a component
+in a diagram.
+
+A reorganization of the project's files and components will be
+happening at a more macro level of detail 
+whereas optimizing a code procedure can happen in a
+code editor popover.
+
+
+SOLVING THE PROBLEMS FOUND IN VIBE CODING
+
+When there is a code editor that can represent the
+code in diagram form and show its files' content in popovers,
+it addresses the problems of vibe coding, that the user
+cannot get a clear picture of what the AI is doing 
+Always working at the code level in one of these IDEs 
+while having the AI generate code is too challenging because of
+the volume of code that the AI produces and that it
+inserts it into multiple files.  A workspace that 
+doesn't limit editing to the code's text will 
+span pure no-code abstraction diagram all the
+way down to low-level line-by-line editing. 
+The AI builds and maintaining a living diagram of the codebase 
+while the user operates at the structural level
+in the diagrams and inspects at the code level
+when necessary.
+
+
+
+
+EXECUTING CONTEXTUAL COMMANDS AND PROMPTS ON COMPONENTS
+
+Commands or prompts can be made contextual.  The user clicks on the component
+of the diagram or selects more than one and can right-click it to
+modify it or instruct the AI about the whole area.  This way the user
+does not have to specify type out what area of code to work on as much.
+
+When the AI makes changes or moves code around, this is mirrored on
+the diagram by animations so that the user knows what is happening.
+The user will have a prompt text box at the bottom of the workspace
+area as well as one that can appear on any component.
+
+At the same time, the user can drag components to the map,
+edit them and generate code for them independently, and then
+have the AI hook them up.  This is a much more flexible use of
+AI.
+
+ALLOWS FOR VIEWING THE GUI NEXT TO THE CODE DIAGRAM
+
+Code components might be GUI and this allows the GUI editor
+to sit within the workspace.
+
+
+OVERVIEW
+
+A detailed UML++ workspace canvas that blends:
+
+Class diagrams for object structures
+Sequence flows for interaction timelines
+Component wiring for dependencies
+Data models for schemas
+State machines for behavioral logic
+Deployment nodes for infrastructure
+
+Click any element → code appears in a smart popover.
+Speak or type a vibe → the diagram evolves, code updates.
+
+Every box, arrow, and annotation is clickable.
+Hover → tooltip with intent.
+Click → Code Popover opens.
+
+
+
+INTEGRATION OF THE FILESYSTEM INTO THE WORKSPACE
+
+Important as part of this diagram is that the files, directories,
+and file imports are outlined around components so that
+the user is not just editing a diagram that represents code
+but simultaneously a representation of what is on the filesystem too.
+
+Another aspect included in this is that the user can
+choose to have the AI preview its actions with dashed outlined
+boxes of the code that will be inserted and strikethroughs
+of to-be-deleted elements and then the user can finalize them.
+
+
+---
+
+The Zoomable Architecture Map (UML++)
+A single, infinitely zoomable canvas that integrates:
+
+Layer,Content
+Macro,"System landscape, services, data stores"
+Meso,"Modules, components, APIs"
+Micro,"Classes, functions, state machines"
+Nano,"Individual lines, types, annotations"
+
+The code level is always available to you.  The zoom level
+you need is always available as well so that you
+can scan the project.
+
+----
+
+Pan, zoom, and click — every element is interactive.
+AI agents watch your cursor — suggest refactorings, detect anti-patterns, propose optimizations.
+
+
+

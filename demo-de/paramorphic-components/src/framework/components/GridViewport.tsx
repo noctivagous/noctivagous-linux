@@ -1,0 +1,794 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import type { Axial, LogicTriple, MoveRule, Occupant, Pos, Region, RuleSet, TilingDef, TilingDir, Toggles } from "../types";
+import { addPosByDir, applyOffset, rotateSpan } from "../tilings";
+import { buildOccupancyMap, getOccupiedCells, isCellOccupied, occupantAtCell } from "../occupancy";
+import { makeId } from "../tilings";
+import { applyPromotion, applySurroundCapture, canActOn, endAction, evaluateOutcomes, getValidMoves, isAutoEnd, nextTurn, promotionOptions, promotionSymbol, ruleHasSurroundCapture } from "../engine";
+import { colName, editingPolicies, enterDestination, formatCellValue, resolveBinding, resolveCellFormat, resolveCellStyle, type CellEditing, type CellPresentation, type CellStyle, type GridFreeze, type GridHeaders } from "../presentations";
+import { cellIsSelected, clampGridSelection, initialGridSelection, selectGridCell, selectedCellCount, type GridSelection, type SelectionMode } from "../grid-selection";
+
+export type KeySlot = { q: number; key: Occupant | null; covered: boolean };
+
+/**
+ * Slot-accurate row layout shared by every Grid renderer: every column
+ * 0..width-1 appears, so empty positions between wide keys hold their place
+ * instead of collapsing. Covered span cells are marked, not duplicated.
+ */
+export function slotsForRow(occupants: Occupant[], width: number, r: number): KeySlot[] {
+  const byCell = new Map<string, Occupant>();
+  for (const o of occupants) for (const c of getOccupiedCells(o)) byCell.set(`${c.q},${c.r}`, o);
+  return Array.from({ length: width }, (_, q) => {
+    const occ = byCell.get(`${q},${r}`) ?? null;
+    if (!occ) return { q, key: null, covered: false };
+    const isAnchor = occ.anchor.q === q && occ.anchor.r === r;
+    return { q, key: occ, covered: !isAnchor };
+  });
+}
+
+/** Row offset in px, read from the plan (`interpretation.keyboard.stagger`). */
+export function staggerForRow(r: number, stagger: number[] | undefined): number {
+  if (!Array.isArray(stagger) || stagger.length === 0) return 0;
+  return stagger[Math.min(r, stagger.length - 1)] ?? 0;
+}
+
+/** Merged box for a multi-cell occupant at a square cell size. Null when single-cell. */
+export function mergedBox(
+  occ: Occupant,
+  cellSize: number
+): { w: number; h: number; minQ: number; minR: number } | null {
+  if (occ.span.length === 0) return null;
+  const cells = getOccupiedCells(occ);
+  const qs = cells.map(c => c.q);
+  const rs = cells.map(c => c.r);
+  return {
+    w: (Math.max(...qs) - Math.min(...qs) + 1) * cellSize - 2,
+    h: (Math.max(...rs) - Math.min(...rs) + 1) * cellSize - 2,
+    minQ: Math.min(...qs),
+    minR: Math.min(...rs),
+  };
+}
+
+/** Presentation style binding -> CSS for one cell (Slice B). */
+export function cellStyleToCss(style: CellStyle | undefined): React.CSSProperties {
+  if (!style) return {};
+  const css: React.CSSProperties = {};
+  if (style.bold) css.fontWeight = 700;
+  if (style.italic) css.fontStyle = "italic";
+  if (style.underline) css.textDecoration = "underline";
+  if (style.align) css.textAlign = style.align;
+  if (style.color) css.color = style.color;
+  if (style.bg) css.backgroundColor = style.bg;
+  if (style.wrap) css.whiteSpace = "normal";
+  return css;
+}
+
+export type GridViewportProps = {
+  occupants: Occupant[];
+  setOccupants: React.Dispatch<React.SetStateAction<Occupant[]>>;
+  /** Merge multi-cell occupants into one box (wide keys); covered cells skip. */
+  mergeSpans?: boolean;
+  /** Per-row px offsets; extras reuse the last entry. */
+  stagger?: number[];
+  /** Hide the game toolbar and status footer (keyboard-style guests). */
+  chrome?: boolean;
+  /** Tap overrides: when set, bypass game logic for that cell. */
+  onOccupantTap?: (occ: Occupant) => void;
+  onEmptyTap?: (pos: Pos) => void;
+  /** Plan-configured cell presentation (editable sheet, event cards, ...). */
+  presentation?: CellPresentation;
+  headers?: GridHeaders;
+  editing?: CellEditing;
+  /** Derived display state (e.g. recomputed formulas); falls back to occupants. */
+  derivedOccupants?: Occupant[];
+  derivedErrorIds?: string[];
+  derivedErrors?: string[];
+  /** Text commit from a presentation cell; shell maps it to occupant edits. */
+  onCellCommit?: (q: number, r: number, text: string) => void;
+  /** Focus on a presentation cell, for formula bars and inspectors. */
+  onCellFocus?: (q: number, r: number) => void;
+  selectionMode?: SelectionMode;
+  onSelectionChange?: (selection: GridSelection) => void;
+  /** Frozen leading rows/columns in a presentation table (view state). */
+  freeze?: GridFreeze;
+  /** Pixel width per column index in a presentation table. */
+  columnWidths?: number[];
+  /**
+   * Per-cell style override for presentation mode only (conditional
+   * formatting): returned CSS merges over the occupant's bound style.
+   */
+  styleForCell?: (occ: Occupant | undefined, shownValue: unknown) => React.CSSProperties | undefined;
+  /** Help line under a presentation table. */
+  presentationHint?: string;
+  tiling: TilingDef;
+  ruleSet: RuleSet;
+  width: number;
+  height: number;
+  toggles: Toggles;
+  selectedId: string | null;
+  setSelectedId: (id: string | null) => void;
+  validMoves: (Pos & { capture?: string; via?: string })[];
+  setValidMoves: (m: (Pos & { capture?: string; via?: string })[]) => void;
+  currentTurn: string;
+  setCurrentTurn: (t: string) => void;
+  outcome: string | null;
+  setOutcome: (o: string | null) => void;
+  chainCaptureActive: boolean;
+  setChainCaptureActive: (b: boolean) => void;
+  logicTriples: LogicTriple[];
+  showRegions: boolean;
+  setShowRegions: (b: boolean) => void;
+  showSpan: boolean;
+  knightDemo: boolean;
+  setKnightDemo: (b: boolean) => void;
+};
+
+// ---------- Components ----------
+export function DirectionCompass({ tiling }: { tiling: TilingDef }) {
+  return (
+    <div className="flex flex-wrap gap-1">
+      {tiling.directions.map(d => (
+        <div key={d.name} className="px-2 py-1 rounded-full bg-[var(--bg-3)] border border-[var(--border)] text-[9px] flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-[var(--accent)]" style={{ transform: `rotate(${d.angle}deg)` }} />
+          {d.name}
+          <span className="text-[7px] text-[var(--text-faint)]">{d.dq},{d.dr}</span>
+        </div>
+      ))}
+      <div className="px-2 py-1 rounded-full bg-[var(--lime-bg)] border border-[var(--accent)] text-[9px] text-[var(--accent)]">
+        {tiling.id} • {tiling.shape} • {tiling.style}
+      </div>
+    </div>
+  );
+}
+
+export function GridViewport({
+  occupants, setOccupants, tiling, ruleSet, width, height, toggles, selectedId, setSelectedId, validMoves, setValidMoves,
+  currentTurn, setCurrentTurn, outcome, setOutcome, chainCaptureActive, setChainCaptureActive, logicTriples, showRegions, setShowRegions, showSpan, knightDemo, setKnightDemo,
+  mergeSpans, stagger, chrome = true, onOccupantTap, onEmptyTap,
+  presentation, headers, editing, derivedOccupants, derivedErrorIds, derivedErrors, onCellCommit, presentationHint, onCellFocus, selectionMode, onSelectionChange,
+  freeze, columnWidths, styleForCell
+}: GridViewportProps) {
+  const cellSize = tiling.shape === "square" ? 44 : 40;
+  const [selection, setSelection] = useState<GridSelection>(initialGridSelection);
+  const selectionRef = useRef(selection);
+  const tableRef = useRef<HTMLTableElement>(null);
+  const pointer = useRef<{ dragged: boolean } | null>(null);
+  const preserveFocusSelection = useRef(false);
+  const updateSelection = (next: GridSelection) => {
+    selectionRef.current = next;
+    setSelection(next);
+    onSelectionChange?.(next);
+  };
+  useEffect(() => {
+    const next = clampGridSelection(selectionRef.current, Math.max(1, width), Math.max(1, height));
+    selectionRef.current = next;
+    setSelection(next);
+  }, [width, height]);
+  useEffect(() => {
+    const finish = () => {
+      const wasDragging = pointer.current?.dragged;
+      pointer.current = null;
+      if (!wasDragging) return;
+      const { active } = selectionRef.current.ranges[selectionRef.current.activeRange];
+      const target = tableRef.current?.querySelector<HTMLInputElement>(`input[data-grid-q="${active.q}"][data-grid-r="${active.r}"]`);
+      if (target && document.activeElement !== target) { preserveFocusSelection.current = true; target.focus(); }
+    };
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', finish);
+    return () => { window.removeEventListener('pointerup', finish); window.removeEventListener('pointercancel', finish); };
+  }, []);
+
+  const mapOccupant = useMemo(() => {
+    const m = new Map<string, Occupant>();
+    occupants.forEach((o: Occupant) => {
+      getOccupiedCells(o).forEach(c => m.set(`${c.q},${c.r}`, o));
+    });
+    return m;
+  }, [occupants]);
+
+  // compute valid moves when selection changes
+  useEffect(() => {
+    if (!selectedId) { setValidMoves([]); return; }
+    const occ = occupants.find((o: Occupant) => o.id === selectedId);
+    if (!occ) { setValidMoves([]); return; }
+    const moves = getValidMoves(occ, occupants, tiling, ruleSet, width, height, toggles, logicTriples);
+    setValidMoves(moves);
+  }, [selectedId, occupants, tiling, ruleSet, width, height, toggles, logicTriples]);
+
+  // check outcome generic; end.condition manual/none never auto-stops (plan data).
+  const checkOutcome = (occs: Occupant[], turn: string) => {
+    const fn = (o: Occupant, all: Occupant[]) => getValidMoves(o, all, tiling, ruleSet, width, height, toggles, logicTriples);
+    const out = evaluateOutcomes(occs, tiling, ruleSet, turn, width, height, fn);
+    if (!out) return null;
+    if (!isAutoEnd(ruleSet) || endAction(ruleSet) === "none") return null;
+    return out;
+  };
+
+  const applyGravity = (occs: Occupant[]): Occupant[] => {
+    if (!toggles.gravity && !ruleSet.gravity) return occs;
+    const dirName = ruleSet.gravity?.direction || "S";
+    const dir = tiling.directionMap[dirName];
+    if (!dir) return occs;
+    // sort by opposite of gravity to avoid collisions
+    const sorted = [...occs].sort((a, b) => {
+      if (dirName === "S") return b.anchor.r - a.anchor.r;
+      if (dirName === "N") return a.anchor.r - b.anchor.r;
+      if (dirName === "E") return b.anchor.q - a.anchor.q;
+      return a.anchor.q - b.anchor.q;
+    });
+    const occupiedSet = new Set<string>();
+    sorted.forEach(o => getOccupiedCells(o).forEach(c => occupiedSet.add(`${c.q},${c.r}`)));
+    const result: Occupant[] = [];
+    for (const o of sorted) {
+      // remove self from set
+      getOccupiedCells(o).forEach(c => occupiedSet.delete(`${c.q},${c.r}`));
+      let cur = o.anchor;
+      while (true) {
+        const nxt = addPosByDir(cur, dirName, 1, tiling, width, height, false);
+        if (!nxt) break;
+        const cells = [nxt, ...o.span.map(s => ({ q: nxt.q + s.q, r: nxt.r + s.r }))];
+        const collides = cells.some(c => c.q < 0 || c.q >= width || c.r < 0 || c.r >= height || occupiedSet.has(`${c.q},${c.r}`));
+        if (collides) break;
+        cur = nxt;
+      }
+      const newOcc = { ...o, anchor: cur };
+      getOccupiedCells(newOcc).forEach(c => occupiedSet.add(`${c.q},${c.r}`));
+      result.push(newOcc);
+    }
+    return result;
+  };
+
+  // Rotate the selected multi-cell occupant via the tiling's own rotation steps
+  // (90 deg on squares, 60 deg on hexes). Rejected on collision or out of bounds.
+  const rotateSelected = () => {
+    if (outcome || !selectedId) return;
+    const sel = occupants.find((o: Occupant) => o.id === selectedId);
+    if (!sel || sel.span.length === 0) return;
+    const steps = 1;
+    const rotated = rotateSpan(sel.span, steps, tiling);
+    const occMap = buildOccupancyMap(occupants.filter((o: Occupant) => o.id !== sel.id));
+    const cells = [sel.anchor, ...rotated.map(s => ({ q: sel.anchor.q + s.q, r: sel.anchor.r + s.r }))];
+    const blocked = cells.some(c => c.q < 0 || c.q >= width || c.r < 0 || c.r >= height || occMap.has(`${c.q},${c.r}`));
+    if (blocked) return;
+    setOccupants(occupants.map((o: Occupant) => o.id === sel.id ? { ...o, span: rotated } : o));
+  };
+
+  // Pending promotion choice: the move is committed, the turn waits for an
+  // explicit pick. Local state like the app-kit's other interaction state;
+  // a stale id (file opened mid-choice) simply clears on first use.
+  const [pendingPromotion, setPendingPromotion] = useState<{ id: string; options: string[]; captured: boolean } | null>(null);
+
+  // Shared post-move tail: chain capture, outcome, turn advance.
+  const finishMove = (newOccs: Occupant[], selId: string, captured: boolean) => {
+    const movedSel = newOccs.find((o: Occupant) => o.id === selId);
+    if (movedSel && captured && (toggles.chainCapture || ruleSet.moves.some((m: MoveRule) => m.onCapture?.chain))) {
+      const further = getValidMoves(movedSel, newOccs, tiling, ruleSet, width, height, toggles, logicTriples).filter((m: any) => m.capture);
+      if (further.length > 0) {
+        setOccupants(newOccs);
+        setSelectedId(selId);
+        setValidMoves(further);
+        setChainCaptureActive(true);
+        const out = checkOutcome(newOccs, currentTurn);
+        if (out) setOutcome(out);
+        return;
+      }
+    }
+    setOccupants(newOccs);
+    setChainCaptureActive(false);
+    const out = checkOutcome(newOccs, currentTurn);
+    if (out) setOutcome(out);
+    else {
+      setCurrentTurn(nextTurn(ruleSet.turns, currentTurn, captured));
+      setSelectedId(null);
+      setValidMoves([]);
+    }
+  };
+
+  const choosePromotion = (type: string) => {
+    if (!pendingPromotion) return;
+    const { id, captured } = pendingPromotion;
+    setPendingPromotion(null);
+    if (!occupants.some(o => o.id === id)) return;
+    finishMove(applyPromotion(occupants, id, type), id, captured);
+  };
+
+  const handleCellClick = (q: number, r: number) => {
+    if (outcome) return;
+    if (pendingPromotion) return;
+    const clickedOcc = mapOccupant.get(`${q},${r}`) || null;
+    // Explicit tap overrides bypass game logic (keyboard presses and layout
+    // edits). Covered span cells map to their anchor occupant, so tapping
+    // anywhere on a wide key presses the whole key.
+    if (clickedOcc && onOccupantTap) {
+      onOccupantTap(clickedOcc);
+      return;
+    }
+    if (!clickedOcc && onEmptyTap) {
+      onEmptyTap({ q, r });
+      return;
+    }
+    const isValidTarget = validMoves.some((m: any) => m.q === q && m.r === r);
+
+    // painter mode or free placement
+    const isPlaceRule = ruleSet.moves.some((mr: MoveRule) => mr.moves.some(mk => mk.type === "place"));
+    const isFreePlace = ruleSet.turns.type === "free" && isPlaceRule;
+
+    if (isFreePlace && !selectedId) {
+      if (clickedOcc) {
+        setOccupants((prev: Occupant[]) => prev.filter(o => o.id !== clickedOcc.id));
+      } else {
+        // check if ConnectFour gravity: find lowest empty
+        let target: Pos = { q, r };
+        if (ruleSet.gravity?.direction === "S" || toggles.gravity) {
+          // find lowest empty in column
+          for (let rr = height - 1; rr >= 0; rr--) {
+            const test = { q, r: rr };
+            if (!mapOccupant.has(`${q},${rr}`)) { target = test; break; }
+          }
+        }
+        const player = currentTurn;
+        const sym = player === "R" ? "🔴" : player === "Y" ? "🟡" : player === "X" ? "X" : player === "O" ? "O" : "●";
+        const newOcc: Occupant = { id: makeId(), anchor: target, span: [], type: player === "R" || player === "Y" ? "disc" : "mark", data: { player, symbol: sym, hasMoved: true }, tags: [] };
+        let newOccs = [...occupants, newOcc];
+        if (toggles.gravity || ruleSet.gravity) newOccs = applyGravity(newOccs);
+        if (ruleHasSurroundCapture(ruleSet)) newOccs = applySurroundCapture(newOccs, player, tiling, width, height);
+        setOccupants(newOccs);
+        const out = checkOutcome(newOccs, player);
+        if (out) setOutcome(out);
+        else setCurrentTurn(nextTurn(ruleSet.turns, player, false));
+      }
+      return;
+    }
+
+    if (isValidTarget && selectedId) {
+      const sel = occupants.find((o: Occupant) => o.id === selectedId);
+      if (!sel) return;
+      // Turn ownership under both alternating and samePlayerIfCapture: a side
+      // may only move its own pieces. Either side moving any piece was the bug.
+      if (!canActOn(ruleSet.turns, currentTurn, sel.data?.player)) return;
+
+      let newOccs = [...occupants];
+      const capMove = validMoves.find((m: any) => m.q === q && m.r === r) as any;
+      if (capMove?.capture) newOccs = newOccs.filter(o => o.id !== capMove.capture);
+      else if (clickedOcc && clickedOcc.data?.player !== sel.data?.player) newOccs = newOccs.filter(o => o.id !== clickedOcc.id);
+
+      newOccs = newOccs.map(o => o.id === sel.id ? { ...o, anchor: { q, r }, data: { ...o.data, hasMoved: true } } : o);
+
+      // promotion via region: one option applies silently, several wait for
+      // an explicit choice instead of taking whatever is listed first.
+      const options = promotionOptions(sel, ruleSet, { q, r });
+      if (options.length === 1) {
+        newOccs = applyPromotion(newOccs, sel.id, options[0]);
+      } else if (options.length > 1) {
+        if (toggles.gravity || ruleSet.gravity) newOccs = applyGravity(newOccs);
+        setOccupants(newOccs);
+        setChainCaptureActive(false);
+        setPendingPromotion({ id: sel.id, options, captured: !!capMove?.capture });
+        return;
+      }
+
+      if (toggles.gravity || ruleSet.gravity) newOccs = applyGravity(newOccs);
+      finishMove(newOccs, sel.id, !!capMove?.capture);
+    } else if (clickedOcc) {
+      // Ownership gate for both turn disciplines; during an active chain only
+      // the chaining piece may be touched.
+      if (chainCaptureActive && clickedOcc.id !== selectedId) return;
+      if (!canActOn(ruleSet.turns, currentTurn, clickedOcc.data?.player)) {
+        if (chainCaptureActive) return;
+        // Pure placement games have no selectable pieces: ignore occupant taps.
+        if (isPlaceRule && !selectedId) return;
+        return;
+      }
+      if (isPlaceRule && !selectedId) return;
+      setSelectedId(clickedOcc.id);
+    } else {
+      // empty cell, maybe place for place rules
+      if (isPlaceRule && !selectedId) {
+        let target: Pos = { q, r };
+        if (ruleSet.gravity?.direction === "S" || toggles.gravity) {
+          for (let rr = height - 1; rr >= 0; rr--) if (!mapOccupant.has(`${q},${rr}`)) { target = { q, r: rr }; break; }
+        }
+        const player = currentTurn;
+        const sym = player === "R" ? "🔴" : player === "Y" ? "🟡" : player === "X" ? "X" : player === "O" ? "O" : "●";
+        const newOcc: Occupant = { id: makeId(), anchor: target, span: [], type: player === "R" || player === "Y" ? "disc" : "mark", data: { player, symbol: sym, hasMoved: true }, tags: [] };
+        let newOccs = [...occupants, newOcc];
+        if (toggles.gravity || ruleSet.gravity) newOccs = applyGravity(newOccs);
+        if (ruleHasSurroundCapture(ruleSet)) newOccs = applySurroundCapture(newOccs, player, tiling, width, height);
+        setOccupants(newOccs);
+        const out = checkOutcome(newOccs, player);
+        if (out) setOutcome(out);
+        else setCurrentTurn(nextTurn(ruleSet.turns, player, false));
+      } else {
+        if (!chainCaptureActive) { setSelectedId(null); setValidMoves([]); }
+      }
+    }
+  };
+
+  // knight demo leaps
+  const knightLeaps = useMemo(() => {
+    if (!knightDemo || !selectedId) return [];
+    const sel = occupants.find((o: Occupant) => o.id === selectedId);
+    if (!sel) return [];
+    const offs = tiling.leaps.offsets;
+    return offs.map((off: { dq: number; dr: number; axial?: Axial }) => applyOffset(sel.anchor, off, tiling, width, height, false)).filter(Boolean) as Pos[];
+  }, [knightDemo, selectedId, occupants, tiling, width, height]);
+
+  const getCellStyle = (q: number, r: number) => {
+    const isValid = validMoves.some((m: any) => m.q === q && m.r === r);
+    const isSelected = occupants.some((o: Occupant) => o.id === selectedId && getOccupiedCells(o).some(c => c.q === q && c.r === r));
+    const isKnightLeap = knightLeaps.some((p: Pos) => p.q === q && p.r === r);
+    let bg = "var(--bg-3)";
+    if (tiling.style === "2color") bg = (q + r) % 2 === 0 ? "#1a1d21" : "#22262e";
+    else {
+      const mod = (q + r * 2) % 3;
+      bg = mod === 0 ? "#1b1e24" : mod === 1 ? "#20242c" : "#252a33";
+    }
+    if (isValid) bg = "rgba(232,255,82,0.22)";
+    if (isSelected) bg = "rgba(232,255,82,0.32)";
+    if (isKnightLeap) bg = "rgba(120,180,255,0.22)";
+    const border = isValid ? "1px solid var(--accent)" : isKnightLeap ? "1px dashed #78b4ff" : "1px solid var(--border)";
+    return { bg, border, isValid, isSelected, isKnightLeap };
+  };
+
+  const maxStagger = stagger && stagger.length > 0 ? Math.max(...stagger) : 0;
+  const containerWidth = (tiling.shape === "square" ? width * cellSize : width * cellSize * 0.88 + 30) + maxStagger;
+  const containerHeight = tiling.shape === "square" ? height * cellSize : height * cellSize * 0.78 + 30;
+
+  const selectedOcc = occupants.find((o: Occupant) => o.id === selectedId);
+
+  // Plan-configured presentation table (editable sheet, event cards): headers
+  // plus bound cells instead of the game board. Game rendering below is
+  // untouched when no presentation is configured.
+  if (presentation) {
+    const policies = editingPolicies({ cell: presentation, headers: headers ?? { columns: "none", rows: "none" }, editing });
+    const expressions = policies.expressions;
+    const shown = derivedOccupants ?? occupants;
+    const byKey = new Map<string, Occupant>();
+    for (const o of shown) byKey.set(`${o.anchor.q},${o.anchor.r}`, o);
+    const errIds = new Set(derivedErrorIds ?? []);
+    const showCols = (headers?.columns ?? "none") === "letters";
+    const showRows = (headers?.rows ?? "none") === "numbers";
+    const cellText = (o: Occupant | undefined): { display: string; formula?: string; err: boolean; raw: unknown } => {
+      if (presentation.kind === "eventCard") {
+        const raw = resolveBinding(o, presentation.value).value;
+        return { display: String(raw ?? ""), err: !!o && errIds.has(o.id), raw };
+      }
+      const formula = expressions === "formula" && presentation.formula
+        ? (resolveBinding(o, presentation.formula).value as string | undefined)
+        : undefined;
+      const format = resolveCellFormat(o, presentation);
+      if (formula) {
+        const err = !!o && errIds.has(o.id);
+        if (err) return { display: formula, formula, err, raw: undefined };
+        const computed = resolveBinding(o, presentation.computed).value;
+        return { display: format ? formatCellValue(computed, format) : String(computed ?? ""), formula, err, raw: computed };
+      }
+      const raw = resolveBinding(o, presentation.value).value;
+      return {
+        display: format ? formatCellValue(raw, format) : String(raw ?? ""),
+        err: !!o && errIds.has(o.id),
+        raw,
+      };
+    };
+    const cols = Array.from({ length: width }, (_, q) => q);
+    const rows = Array.from({ length: height }, (_, r) => r);
+    // Freeze panes (Slice B): sticky positioning inside the table. Header
+    // row height and row-header width are the rendered sizes below
+    // (py-1 + 9px text ≈ 25px; w-8 + padding ≈ 36px).
+    const freezeRows = Math.max(0, Math.min(freeze?.rows ?? 0, height));
+    const freezeCols = Math.max(0, Math.min(freeze?.cols ?? 0, width));
+    const headerH = showCols ? 25 : 0;
+    const rowHeaderW = showRows ? 36 : 0;
+    const colW = (q: number) => columnWidths?.[q] ?? 96;
+    const freezeStyleFor = (q: number, r: number): React.CSSProperties => {
+      const css: React.CSSProperties = {};
+      if (r < freezeRows) {
+        css.position = "sticky";
+        css.top = headerH + r * 25;
+        css.zIndex = 2;
+      }
+      if (q < freezeCols) {
+        css.position = "sticky";
+        let left = rowHeaderW;
+        for (let i = 0; i < q; i++) left += colW(i);
+        css.left = left;
+        css.zIndex = r < freezeRows ? 3 : 2;
+      }
+      return css;
+    };
+    return (
+      <div>
+        <table ref={tableRef} className="border-collapse" role={selectionMode ? "grid" : undefined} aria-label={selectionMode ? "Cell grid" : undefined}>
+          <colgroup>
+            {showRows && <col style={{ width: rowHeaderW }} />}
+            {cols.map(q => (
+              <col key={q} style={{ width: colW(q) }} />
+            ))}
+          </colgroup>
+          {showCols && (
+            <thead>
+              <tr>
+                {showRows && <th className="w-8 px-1 py-1 text-[9px] text-[var(--text-faint)] font-normal" style={{ position: "sticky", top: 0, left: 0, zIndex: 4, backgroundColor: "var(--bg-2)" }} />}
+                {cols.map(q => (
+                  <th key={q} className="px-1 py-1 text-[9px] text-[var(--text-faint)] font-normal text-center min-w-[72px]" style={{ ...(q < freezeCols ? freezeStyleFor(q, -1) : {}), position: "sticky", top: 0, zIndex: 3, backgroundColor: "var(--bg-2)" }}>
+                    {colName(q)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+          )}
+          <tbody>
+            {rows.map(r => (
+              <tr key={r}>
+                {showRows && <td className="px-1 py-1 text-[9px] text-[var(--text-faint)] text-right" style={r < freezeRows ? { position: "sticky", top: headerH + r * 25, zIndex: 2, backgroundColor: "var(--bg-2)" } : undefined}>{r + 1}</td>}
+                {cols.map(q => {
+                  const o = byKey.get(`${q},${r}`);
+                  const { display, formula, err, raw } = cellText(o);
+                  const frozen = q < freezeCols || r < freezeRows;
+                  const cellCss: React.CSSProperties = {
+                    ...cellStyleToCss(resolveCellStyle(o, presentation)),
+                    ...(styleForCell ? styleForCell(o, raw) : undefined),
+                    ...freezeStyleFor(q, r),
+                    ...(frozen ? { backgroundColor: (styleForCell?.(o, raw)?.backgroundColor as string) ?? resolveCellStyle(o, presentation)?.bg ?? "var(--bg-3)" } : {}),
+                  };
+                  if (presentation.kind !== "editableText" || !onCellCommit) {
+                    return (
+                      <td key={q} className="p-0 border border-[var(--border)]" style={cellCss}>
+                        <div
+                          title={formula ? `${colName(q)}${r + 1}: ${formula}` : `${colName(q)}${r + 1}`}
+                          style={cellCss}
+                          className={`px-1 py-1 text-[11px] ${presentation.kind === "eventCard" ? "rounded-[6px] bg-[var(--bg-3)]" : ""} ${
+                            formula ? "text-[var(--accent)]" : "text-[var(--text)]"
+                          } ${err ? "text-[#ff8a6b]" : ""}`}
+                        >
+                          {display === "" ? <span className="text-[var(--text-faint)]">·</span> : err && formula ? "#ERR" : display}
+                        </div>
+                      </td>
+                    );
+                  }
+                  const selected = !!selectionMode && cellIsSelected(selection, { q, r });
+                  return (
+                    <td key={q} role={selectionMode ? "gridcell" : undefined} aria-selected={selectionMode ? selected : undefined} className="p-0 border border-[var(--border)]" style={{ ...cellCss, ...(selected ? { boxShadow: 'inset 0 0 0 2px var(--accent)' } : {}) }}>
+                      <input
+                        key={`${o?.id ?? `empty-${q}-${r}`}:${String(display)}`}
+                        data-grid-q={q}
+                        data-grid-r={r}
+                        defaultValue={formula ?? String(display)}
+                        spellCheck={false}
+                        onPointerDown={e => {
+                          if (!selectionMode || e.button !== 0) return;
+                          pointer.current = { dragged: false };
+                          const intent = e.shiftKey ? 'extend' : e.ctrlKey || e.metaKey ? 'add' : 'replace';
+                          updateSelection(selectGridCell(selectionRef.current, { q, r }, width, height, selectionMode, intent));
+                        }}
+                        onPointerEnter={e => {
+                          if (!selectionMode || selectionMode === 'single' || !pointer.current || !(e.buttons & 1)) return;
+                          pointer.current.dragged = true;
+                          updateSelection(selectGridCell(selectionRef.current, { q, r }, width, height, selectionMode, 'extend'));
+                        }}
+                        onFocus={() => {
+                          if (selectionMode && !pointer.current && !preserveFocusSelection.current) updateSelection(selectGridCell(selectionRef.current, { q, r }, width, height, selectionMode));
+                          preserveFocusSelection.current = false;
+                          onCellFocus?.(q, r);
+                        }}
+                        onBlur={e => {
+                          if (e.target.value !== (formula ?? String(display))) onCellCommit(q, r, e.target.value);
+                        }}
+                        onKeyDown={e => {
+                          if (e.nativeEvent.isComposing) return;
+                          if (selectionMode && selectionMode !== 'single' && e.shiftKey && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                            e.preventDefault();
+                            const d = e.key === 'ArrowUp' ? { q: 0, r: -1 } : e.key === 'ArrowDown' ? { q: 0, r: 1 } : e.key === 'ArrowLeft' ? { q: -1, r: 0 } : { q: 1, r: 0 };
+                            const next = selectGridCell(selectionRef.current, { q: q + d.q, r: r + d.r }, width, height, selectionMode, 'extend');
+                            updateSelection(next);
+                            const active = next.ranges[next.activeRange].active;
+                            const target = tableRef.current?.querySelector<HTMLInputElement>(`input[data-grid-q="${active.q}"][data-grid-r="${active.r}"]`);
+                            if (target && target !== e.currentTarget) { preserveFocusSelection.current = true; target.focus(); }
+                            return;
+                          }
+                          if (e.key !== "Enter") return;
+                          e.preventDefault();
+                          const input = e.currentTarget;
+                          const table = input.closest('table');
+                          const destination = enterDestination(q, r, height);
+                          input.blur(); // Commit once through the existing blur handler.
+                          if (policies.enter === 'down' && table) {
+                            requestAnimationFrame(() => {
+                              // Do not steal focus if the user moved elsewhere after Enter.
+                              if (document.activeElement !== document.body && document.activeElement !== input) return;
+                              table.querySelector<HTMLInputElement>(`input[data-grid-q="${destination.q}"][data-grid-r="${destination.r}"]`)?.focus();
+                            });
+                          }
+                        }}
+                        title={formula ? `${colName(q)}${r + 1}: ${formula}` : `${colName(q)}${r + 1}`}
+                        style={cellCss}
+                        className={`w-full px-1 py-1 ${selected ? 'bg-[rgba(232,255,82,0.14)]' : 'bg-[var(--bg-3)]'} text-[11px] outline-none focus:bg-[var(--bg-4)] ${
+                          formula ? "text-[var(--accent)]" : "text-[var(--text)]"
+                        } ${err ? "text-[#ff8a6b]" : ""}`}
+                      />
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {selectionMode && <div aria-live="polite" className="mt-1 text-[9px] text-[var(--text-dim)]">{selectedCellCount(selection, width, height)} selected</div>}
+        {(derivedErrors ?? []).length > 0 && (
+          <div className="mt-2 p-2 rounded-[8px] bg-[rgba(90,255,140,0.06)] border border-[var(--border)] text-[9px] text-[var(--text-dim)]">
+            <div className="font-bold text-[#ff8a6b]">SHEET ERRORS</div>
+            {(derivedErrors ?? []).map((e, i) => (
+              <div key={i} className="mt-1">
+                • {e}
+              </div>
+            ))}
+          </div>
+        )}
+        {presentationHint && (
+          <div className="mt-1 text-[9px] text-[var(--text-faint)]">{presentationHint}</div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative w-full h-full flex flex-col">
+      {chrome !== false && <div className="flex flex-wrap gap-2 mb-2">
+        <button onClick={() => setShowRegions(!showRegions)} className={`px-2 py-1 rounded-full text-[10px] border ${showRegions ? "bg-[var(--accent)] text-black border-[var(--accent)]" : "bg-[var(--bg-3)] border-[var(--border)]"}`}>REGIONS {showRegions ? "ON" : "OFF"}</button>
+        <button onClick={() => setKnightDemo(!knightDemo)} className={`px-2 py-1 rounded-full text-[10px] border ${knightDemo ? "bg-[#78b4ff] text-black border-[#78b4ff]" : "bg-[var(--bg-3)] border-[var(--border)]"}`}>KNIGHT LEAPS {knightDemo ? "ON" : "OFF"} • offset moves, not dir names</button>
+        {selectedOcc && selectedOcc.span.length > 0 && <button onClick={rotateSelected} className="px-2 py-1 rounded-full text-[10px] border bg-[var(--bg-3)] border-[var(--border)]">ROTATE ⟳ • tiling steps</button>}
+        <span className="text-[10px] text-[var(--text-faint)]">SPAN: {selectedOcc ? `${selectedOcc.span.length + 1} cells • ${selectedOcc.span.length > 0 ? "multi-cell" : "single"}` : "none"} {selectedOcc?.guest ? `• GUEST:${selectedOcc.guest.kind}` : ""}</span>
+      </div>}
+      {pendingPromotion && (
+        <div className="mb-2 flex items-center gap-2 text-[10px]">
+          <span className="font-bold tracking-[0.12em]">PROMOTE TO</span>
+          {pendingPromotion.options.map(t => (
+            <button
+              key={t}
+              onClick={() => choosePromotion(t)}
+              className="px-3 py-1 rounded-full border bg-[var(--bg-3)] border-[var(--accent)]"
+            >
+              {promotionSymbol(t)} {t}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="relative mx-auto mt-2" style={{ width: containerWidth, height: containerHeight, minHeight: containerHeight }}>
+        {Array.from({ length: height }).map((_, r) =>
+          Array.from({ length: width }).map((_, q) => {
+            const { bg, border, isValid, isSelected, isKnightLeap } = getCellStyle(q, r);
+            // Covered span cells collapse into their anchor's box when the
+            // guest renders merged geometry (wide keyboard keys).
+            const occHere = mapOccupant.get(`${q},${r}`);
+            const anchorHere = occHere && occHere.anchor.q === q && occHere.anchor.r === r;
+            if (mergeSpans && occHere && !anchorHere) return null;
+            let left = q * cellSize + staggerForRow(r, stagger);
+            let top = r * cellSize;
+            let spanW = 0;
+            let spanH = 0;
+            if (mergeSpans && anchorHere) {
+              const box = mergedBox(occHere, cellSize);
+              if (box) {
+                spanW = box.w;
+                spanH = box.h;
+                left = box.minQ * cellSize + staggerForRow(r, stagger);
+                top = box.minR * cellSize;
+              }
+            }
+            let clipPath: string | undefined;
+            if (tiling.id === "hexH") {
+              const size = 26;
+              left = q * size * 1.732 + (r % 2 ? size * 0.866 : 0);
+              top = r * size * 1.5;
+              clipPath = "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)";
+            } else if (tiling.id === "hexV") {
+              const size = 26;
+              left = q * size * 1.5;
+              top = r * size * 1.732 + (q % 2 ? size * 0.866 : 0);
+              clipPath = "polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)";
+            }
+            const occ = mapOccupant.get(`${q},${r}`);
+            const isAnchor = occ && occ.anchor.q === q && occ.anchor.r === r;
+            const isInSelectedSpan = selectedOcc && getOccupiedCells(selectedOcc).some(c => c.q === q && c.r === r);
+            const regionHere = showRegions ? ruleSet.regions.find((rg: Region) => rg.cells.some(c => c.q === q && c.r === r)) : null;
+            return (
+              <div
+                key={`${q}-${r}`}
+                onClick={() => handleCellClick(q, r)}
+                className="absolute flex items-center justify-center select-none cursor-pointer transition-all"
+                style={{
+                  left, top,
+                  width: spanW > 0 ? spanW : tiling.shape === "square" ? cellSize - 2 : 44,
+                  height: spanH > 0 ? spanH : tiling.shape === "square" ? cellSize - 2 : 44,
+                  background: bg,
+                  border,
+                  clipPath,
+                  borderRadius: tiling.shape === "square" ? 8 : 0,
+                  zIndex: isSelected ? 3 : isValid ? 2 : (occ?.z || 1),
+                  boxShadow: isValid ? "0 0 0 1px var(--accent), 0 0 16px rgba(232,255,82,0.3)" : isKnightLeap ? "0 0 0 1px #78b4ff" : undefined,
+                  opacity: occ && occ.type === "block" ? 0.9 : 1
+                }}
+              >
+                {regionHere && showRegions && <div className="absolute inset-[2px] rounded-[4px] border border-dashed border-[var(--accent)] pointer-events-none opacity-40" title={regionHere.id} />}
+                {isInSelectedSpan && <div className="absolute inset-0 bg-[rgba(232,255,82,0.12)] pointer-events-none" />}
+                {isValid && !occ && <div className="w-[8px] h-[8px] rounded-full" style={{ background: "var(--accent)", boxShadow: "0 0 8px var(--accent)" }} />}
+                {isKnightLeap && !occ && <div className="w-[6px] h-[6px] rounded-full bg-[#78b4ff]" />}
+                {occ && isAnchor && (
+                  <div className="flex flex-col items-center justify-center leading-none w-full h-full relative">
+                    <span className="text-[14px] font-bold" style={{ color: occ.data?.player === "white" || occ.data?.player === "X" || occ.data?.player === "R" ? "#f5f7fa" : occ.data?.player === "black" || occ.data?.player === "O" || occ.data?.player === "Y" ? "#8a909c" : occ.type === "paint" ? "var(--accent)" : "#e6e8eb" }}>
+                      {occ.data?.symbol || occ.data?.label || (occ.type === "king_w" ? "♔" : occ.type === "king_b" ? "♚" : occ.type.startsWith("man") ? (occ.data.player === "white" ? "○" : "●") : occ.type === "note" ? "◼" : occ.type === "clip" ? "▬" : occ.type === "block" ? "█" : occ.type[0].toUpperCase())}
+                    </span>
+                    {occ.span.length > 0 && <span className="text-[7px] text-[var(--text-faint)]">+{occ.span.length}</span>}
+                    {occ.guest && (
+                      <div className="absolute bottom-[2px] right-[2px] w-[18px] h-[10px] rounded-[3px] bg-[var(--bg-4)] border border-[var(--border)] flex items-center justify-center">
+                        <span className="text-[6px] text-[var(--accent)]">{occ.guest.kind[0]}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {occ && !isAnchor && <div className="w-full h-full bg-[rgba(232,255,82,0.18)] border border-[var(--accent)]/30 flex items-center justify-center text-[8px] text-[var(--accent)]">◍</div>}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {outcome && <div className="mt-6 mx-auto px-4 py-2 rounded-full bg-[var(--accent)] text-black text-[11px] font-bold tracking-widest uppercase flex items-center gap-2"><span className="w-2 h-2 bg-black rounded-full animate-pulse" /> {outcome}</div>}
+
+      {chrome !== false && <div className="mt-4 flex flex-wrap gap-2 justify-center text-[10px] text-[var(--text-faint)]">
+        <span>VALID MOVES DRIVEN BY <b className="text-[var(--text-dim)]">getValidMoves() generic, uses tiling.directionMap + leaps</b></span>
+        <span className="opacity-30">•</span>
+        <span>TILING: {tiling.id} dirs:{tiling.directions.map((d: TilingDir)=>d.name).join(",")}</span>
+        <span className="opacity-30">•</span>
+        <span>TURN: {currentTurn.toUpperCase()} • {ruleSet.turns.type}</span>
+        {chainCaptureActive && <span className="text-[var(--accent)]">• CHAIN CAPTURE ACTIVE — CONTINUE</span>}
+      </div>}
+
+      {selectedOcc?.guest && (
+        <div className="mt-3 panel p-2">
+          <div className="text-[9px] text-[var(--text-faint)]">GUEST INSIDE {selectedOcc.type} • {selectedOcc.guest.kind}</div>
+          <div className="mt-1">
+            {selectedOcc.guest.kind === "Path" && (() => {
+              // Real guest state (§8.4): the points a relation (or the plan)
+              // put there, drawn to their own bounds. A quarantined guest
+              // renders dimmed with its reason; a host data.marker point
+              // (e.g. a bezier.pointAt output) is drawn on the curve.
+              const pts = selectedOcc.guest.state.points ?? [];
+              const quarantine = selectedOcc.guest.state.quarantine;
+              const marker = (selectedOcc.data as any)?.marker as { x: number; y: number } | undefined;
+              if (pts.length === 0) {
+                return <div className="text-[10px] text-[var(--text-faint)]">{quarantine ? `quarantined: ${quarantine}` : "Path guest has no points yet."}</div>;
+              }
+              const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+              const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+              const W = 100, H = 56, PAD = 4;
+              const sx = (x: number) => PAD + ((x - minX) / Math.max(1e-9, maxX - minX)) * (W - 2 * PAD);
+              const sy = (y: number) => PAD + ((y - minY) / Math.max(1e-9, maxY - minY)) * (H - 2 * PAD);
+              const d = pts.map((p, i) => `${i === 0 ? "M" : "L"}${sx(p.x).toFixed(2)} ${sy(p.y).toFixed(2)}`).join(" ");
+              return (
+                <div>
+                  <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-[90px]" style={quarantine ? { opacity: 0.35 } : undefined}>
+                    <path d={d} fill="none" stroke="var(--accent)" strokeWidth={1.5} />
+                    {pts.map((p, i) => (
+                      <circle key={i} cx={sx(p.x)} cy={sy(p.y)} r={i === 0 || i === pts.length - 1 ? 1.8 : 0.7} fill="var(--accent)" />
+                    ))}
+                    {marker && typeof marker.x === "number" && typeof marker.y === "number" && (
+                      <circle cx={sx(marker.x)} cy={sy(marker.y)} r={2.6} fill="#e8ff52" stroke="#12131a" strokeWidth={0.7} />
+                    )}
+                  </svg>
+                  <div className="text-[9px] text-[var(--text-faint)]">
+                    {pts.length} points{typeof (selectedOcc.data as any)?.length === "number" ? ` • length ${(selectedOcc.data as any).length.toFixed(2)}` : ""}
+                    {quarantine ? ` • quarantined: ${quarantine}` : ""}
+                  </div>
+                </div>
+              );
+            })()}
+            {selectedOcc.guest.kind === "Grid" && <div className="grid grid-cols-3 gap-[2px]">{Array.from({length:6}).map((_,i)=><div key={i} className="h-3 bg-[var(--bg-4)] rounded-[2px]"></div>)}</div>}
+            {selectedOcc.guest.kind === "Logic" && <div className="text-[10px]">{(selectedOcc.guest.state as any).triples?.map((t:LogicTriple)=><span key={t.id} className="px-1 py-0.5 bg-[var(--bg-4)] rounded mr-1">{t.s} {t.p} {t.o}</span>)}</div>}
+            {selectedOcc.guest.kind === "Tree" && <div className="text-[10px]">Tree guest root:{(selectedOcc.guest.state as any).rootId}</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,16 @@
+we want Proshade+Gui+Builder+Late to be the basis of our app builder, NCTGraphiteStudio.
+
+1. Grid+Systems+Lab+Print has a small inventory of widgets / controls.
+It explains that we need layout widgets (we may have some)
+2. Everything in Proshade+Gui+Builder+Late should also be accommodated by our layout
+widgets if it isn't there.  This is a more controlled compact UI app than what we
+have elsewhere possibly.  But not every app should look like Proshade+Gui+Builder+Late.
+Some might have larger controls for web app.  It is just the builder and itself
+should be themable in the future, using NCTGraphite to build NCTGraphite apps
+in the studio.  It will not be limited to GUI but also have app logic so that the user
+can build apps in it with an AI agent.  Proshade+Gui+Builder+Late has the kind of
+layout we want to be able to accommodate: it has fonts of different kinds in the
+right places and the design is compact.  Key is that we want our own widgets
+to be able to lay this kind of app out naturally, from the bottom layer with our layout
+widgets all the way to the premade level component of an accordion widget.
+3. Pro+Audio+Control+Lab  shows more controls.y
