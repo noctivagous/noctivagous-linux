@@ -381,9 +381,13 @@ export {
   SCHEME_CATEGORY10,
   treemapHouse,
   treemapHouseColor,
+  treemapCubeFaces,
+  TREEMAP_CUBE_FACES,
 } from './treemap/NCTGraphiteTreemapLayout.js';
 export type {
   TreemapData,
   TreemapRect,
   TreemapNode,
+  TreemapCubeFace,
+  TreemapCubePiece,
 } from './treemap/NCTGraphiteTreemapLayout.js';

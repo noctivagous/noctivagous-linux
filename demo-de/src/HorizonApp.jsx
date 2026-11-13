@@ -210,6 +210,7 @@ export default function HorizonApp() {
           <a className="here" href="./horizon.html">horizon monitor</a>
           <a href="./horizon3d.html">horizon 3D</a>
           <a href="./treemap.html">treemap 3D</a>
+          <a href="./treemap-cube.html">treemap cube</a>
         </nav>
       </div>
       <p className="hz-sub">

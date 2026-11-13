@@ -31,6 +31,7 @@ export default defineConfig({
         horizon3d: fileURLToPath(new URL('./horizon3d.html', import.meta.url)),
         treemap: fileURLToPath(new URL('./treemap.html', import.meta.url)),
         sunburstCylinder: fileURLToPath(new URL('./sunburst-cylinder.html', import.meta.url)),
+        treemapCube: fileURLToPath(new URL('./treemap-cube.html', import.meta.url)),
       },
     },
   },

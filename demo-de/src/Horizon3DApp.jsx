@@ -193,6 +193,7 @@ export default function Horizon3DApp() {
           <a href="./horizon.html">horizon monitor</a>
           <a className="here" href="./horizon3d.html">horizon 3D</a>
           <a href="./treemap.html">treemap 3D</a>
+          <a href="./treemap-cube.html">treemap cube</a>
         </nav>
       </div>
       <p className="h3-sub">

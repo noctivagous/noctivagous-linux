@@ -255,6 +255,62 @@ export function resetCurrents(root: TreemapNode): void {
   }
 }
 
+/**
+ * The cube form. A node's children are spread across the five
+ * open faces of a cube — top, north, east, south, west (the bottom
+ * rests) — in their descending order, cut into five contiguous
+ * groups balanced by value: each face's quota is the value left
+ * when the face starts divided by the faces left, so every face
+ * holds a comparable share of the layer's value and rect area
+ * stays comparable from face to face. Within a face, the group is
+ * tiled with the same binary tiling, in the face's unit square
+ * (u eastward as the face is viewed from outside, v down).
+ */
+export type TreemapCubeFace = "top" | "north" | "east" | "south" | "west";
+export const TREEMAP_CUBE_FACES: TreemapCubeFace[] = ["top", "north", "east", "south", "west"];
+
+export interface TreemapCubePiece {
+  node: TreemapNode;
+  face: TreemapCubeFace;
+  /** The piece's rect in its face's unit square. */
+  rect: TreemapRect;
+}
+
+export function treemapCubeFaces(node: TreemapNode): TreemapCubePiece[] {
+  const kids = node.children;
+  if (kids.length === 0) return [];
+  const total = node.value;
+  const groups: TreemapNode[][] = TREEMAP_CUBE_FACES.map(() => []);
+  // Balanced contiguous groups: each face's quota is the value
+  // remaining when the face starts, divided by the faces left —
+  // so one oversized child takes a face to itself (it cannot be
+  // split) and the rest still spread evenly over the faces left,
+  // instead of leaving a face empty.
+  let faceIdx = 0;
+  let faceAcc = 0;
+  let faceQuota = total / 5;
+  let consumed = 0;
+  for (const kid of kids) {
+    groups[faceIdx].push(kid);
+    faceAcc += kid.value;
+    consumed += kid.value;
+    if (faceIdx < 4 && faceAcc >= faceQuota) {
+      faceIdx++;
+      faceAcc = 0;
+      faceQuota = (total - consumed) / (5 - faceIdx);
+    }
+  }
+  const pieces: TreemapCubePiece[] = [];
+  groups.forEach((group, i) => {
+    if (group.length === 0) return;
+    const rects = binaryTileRects(group.map((c) => c.value), 0, 0, 1, 1);
+    group.forEach((kid, j) => {
+      pieces.push({ node: kid, face: TREEMAP_CUBE_FACES[i], rect: rects[j] });
+    });
+  });
+  return pieces;
+}
+
 /** d3.schemeCategory10, verbatim. */
 export const SCHEME_CATEGORY10: string[] = [
   "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",

@@ -325,6 +325,7 @@ export default function DefinitionApp() {
           <a href="horizon.html">horizon monitor</a>
           <a href="horizon3d.html">horizon 3d</a>
           <a href="treemap.html">treemap 3D</a>
+          <a href="treemap-cube.html">treemap cube</a>
         </nav>
       </div>
       <p className="def-sub">

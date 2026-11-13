@@ -34,6 +34,19 @@ flare-2.json: **all 252 nodes' rects and values are bit-identical**
 the focus rect to the full unit square while outside nodes map
 wholly outside it.
 
+## The cube distribution
+
+`treemapCubeFaces` serves the cube viewer: a node's children are
+spread across a cube's five open faces (top, north, east, south,
+west) as five contiguous groups balanced by value — each face's
+quota is the value remaining when the face starts divided by the
+faces left, so an oversized child takes a face to itself and the
+rest still spread evenly. Each group is tiled with
+`binaryTileRects` in its face's unit square. Verified headlessly:
+every child appears exactly once, every used face tiles fully,
+descending order and face order are preserved, and flare's root
+layer uses all five faces.
+
 ## The one departure
 
 The original is monochrome (root #fff, branches #ccc, leaves #ddd).
