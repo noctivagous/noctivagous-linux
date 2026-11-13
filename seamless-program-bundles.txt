@@ -1,0 +1,39 @@
+seamless-program-bundles
+
+More like the condition and direction of Smalltalk
+at Xerox PARC, the current notion of application
+doesn't have to be here with the applications living in their
+own isolated, sealed off mode of existence.  (See
+"Wiring Up The Windows" for how this was suggested
+for conventional desktop environments) Instead, a bundle of functionality
+and designed features is an "application" but it is something that can
+be launched within the existing environment and work
+with in it, with there being a more seamless transmission
+and routing of data by the user.  A difference from Smalltalk,
+there is recognition that a bundle of software will be made
+by a person or entity so it will have its own UI boundaries 
+but in terms of how it exists, it will be a seamless part of the desktop environment
+that is launched, opened, utilized, or not.  Applications
+will work together when the user wants them to.
+
+- Any application will expose any aspect of
+its operations that would be utilized by other 
+applications, with a certain of functionality and operations 
+set being the standard.  They will allow modification of
+the UI by the user, such as adding buttons, logic, within
+panels, windows.  A bundle of software is something
+customizable in the live environment.  
+
+- Applications will still have boundaries at the operating
+system level and UI design indicators. 
+
+The user will have a grasp that an application is something
+specific, "I opened the Calculator".    But the difference
+is: "I opened the Calculator and every button press
+sends an event to another place I wired up" or "I added
+a button to the Calculator app, "Send" and it sends the
+total to a different application node that receives the value."
+So, 
+
+This is especially relevant to the use of paramorphic 
+components.
