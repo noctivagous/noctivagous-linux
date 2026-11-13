@@ -1,0 +1,14 @@
+wireframe-editing-view-to-rendered-view-toggle
+
+Sometimes it would be preferable on a computer screen
+to type out the document in an unrendered or plain
+wireframe kind of state that is in the form of the computer.  
+So, if the document is to be printed on white paper in serif
+type, in the computer program it may be edited in 
+computer terminal type, a wireframe with sans-serif,
+showing a little more than wireframe state, and then the user
+can toggle to the view.  This will keep the entire GUI
+consistent.  The text will be in the same location but
+the editing of it will be on the side that fits the GUI.
+This way the editing mode will look like the rest of
+the GUI in the computing environment.
