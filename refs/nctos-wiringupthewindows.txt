@@ -1,0 +1,73 @@
+
+Wiring Up The Windows: Breaking Down The Walls Between Desktop Apps
+
+
+The following is one of many software features Noctivagous 
+(noctivagous.github.io) would provide consumers as part of an 
+alternative to Windows and Mac OS. This feature has to be added 
+by the OS vendor.
+
+-
+
+An individual software application carries a lot of capabilities but have you 
+noticed that each one sits in a silo?  Apart from copy and paste, 
+they can't make use of each other despite their immense bodies of
+functionality.  Copy and paste is the sole bridge sitting between 
+software applications.
+
+In the future, the user can flip a window around,
+expose capabilities of the app as ports, and then feed data
+to other windows and apps through patch cords, taking the concept of
+node-based programming and applying it to the entire OS app experience.  
+All windows will carry the ability to act as patches (or nodes), 
+allowing the user to wire up windows across or within apps into functional arrangements.  
+The operating system can provide intermediate patches as well for
+logic, filtering, AI processing of data, etc.  Each app will therefore
+natively support patch-based programming inside its own windows, and
+for the first time it will offer its own functionality to other apps.  
+This will upgrade the state of the entire app ecosystem.
+
+Not only the windows will supply and receive data but all controls will as well.
+The stream from a video playing inside a web browser can be
+connected by the user with a patch cord into another application's window 
+if the operating system supports this, which is the implementation 
+of node-based (also known as patch-based) scripting/programming for 
+all applications and their windows. It's merely that this kind of SDK 
+feature has not been implemented in the application kits provided by
+the vendors.  With just a few tweaks and additions, any application developer 
+will be able to provide this in an app because it is so closely related
+to copy and paste / drag and drop.  What’s more, software developers 
+will be allowed to provide their own patches/nodes for the system for
+anyone to download, shifting the OS’s emphasis away from apps for 
+small utility needs. That is, power users who have no interest in 
+programming will be able to make ad hoc mini apps.
+
+Different applications could easily interact with each other and make
+use of each other's live data and events if the user were allowed to
+flip the window around and decide which port and what type of data
+should be published from that window and/or received by it, thereby
+transforming that window into a node just like Unreal Engine's
+Blueprints or any other node system used today. In the whole of the
+system, text boxes, sliders, and other controls would by default
+support attaching connector wires from within the same application or from other
+applications. When something happens in one application, another could
+be informed of it.  A path of data could travel across three or more
+software applications.  Even the system event of a certain file directory's 
+contents changing could be dispatched.  The limitations of desktop computing in
+the 1990s would then be removed.
+
+For tidiness, in this operating system, applications could choose to
+publish ports to a set of separate switchboard panels provided by
+the system and on these switchboards the user could arrange everything to avoid
+cluttering the screen.  This is a place to set up more permanent 
+relationships or keep them out of view. The flexibility of nodes
+is applied to the whole of all applications; one source of data or 
+events can be published to multiple software applications at the same
+time.   In addition, the receiving application could be an Internet server.
+
+The means of connecting nodes will ideally take place with Noctivagous'
+key-click UI which allows drawing vector lines and using them
+as connector cords in a smooth way: https://noctivagous.github.io/keyclickui/
+
+
+---noctivagous.github.io---

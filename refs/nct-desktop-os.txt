@@ -1,0 +1,351 @@
+
+NOCTIVAGOUS DESKTOP OS
+
+The first ui design changes made to
+the desktop OS will involve 
+
+1) Reversing the layering of 
+the desktop vs. application windows.
+The desktop will be on the top and
+the application windows will be
+underneath.  The bottom layer is
+a customizable UI.
+
+2) Applications and application windows can be
+duplicated inside other applications.
+For example, File Navigator windows will
+be available inside any application's
+window layer. You can use one application
+inside the layer of another.
+
+
+-----
+
+A lot of unrecognized limitations in software GUI 
+are vestiges from the 1980s.  Why is there only 
+one clipboard to copy to?  When you copy something to
+the clipboard, why is there no way to access it
+or look at it?  You don't get even a menu
+indicator.  It doesn't animate the selection
+to tell you that it copied the objects
+to the clipboard.
+
+Why would File Navigator windows be exclusive
+and be unable to be including in the
+app's grouping of windows?  It's a major drawback
+that there is switching of environments going on.
+When you are in an app, on any OS, why can't you bring
+a File Navigator window in with you?
+
+In fact you could have an operation that is
+set up to Control/Command+C "Copy" (
+which is actually copying the data of the
+selected object(s) to a running server
+that is accessible by all programs) straight
+to a file if you were able to set that up.
+It could be the case that the Control/Command+C "Copy"
+command were configurable in the Edit menu to
+send the data to a Scrapbook app or a file or
+make new files with each operation-- instead
+of it being a temporary place for the data.
+
+The desktop itself seems to be a conundrum:
+what is it exactly?  It is more of a bulletin
+board for quick reference.  So when people
+saw that there was a need for more than one
+of them they conceptualized it not as framed 
+boards for the purpose of quick reference but
+as entirely separate workspaces being swapped
+out. For this reason a lot of people find
+multiple desktop workspace functionality of
+operating systems to be unpleasant. It would
+actually be more stable if the "desktop" were
+a carousel of bulletin boards (what it serves 
+as today) that is not associated with a specific
+workspace.  This carousel's loaded bulletin board
+would remained fixed whereas what could exist in
+virtual space outside of the computer monitor
+are the windows, with a conveyor system of moving
+them in and out depending on which area they are in.  
+In this way, a computer screen will be
+regarded as a spatial frame and the limitation
+of the frame would be acknowledged at the 
+bulletin board carousel level, what is now "the 
+desktop", and not having items outside of that
+frame.
+
+ALTERNATIVE TO COPY-AND-PASTE: TAGGING FIELDS
+FOR ROUTING DATA FROM ANOTHER APP
+
+By default, wherever your text cursor is located
+in a text editor will be considered the target
+of data from another app or window.  The OS
+app kit will have a feature that the user 
+can mark a text field, document editing area, or drop area
+for receiving data from another app. (Even so, the user
+can find all available recipients from the other app.)
+
+	1) mark a text field or document window in
+	the app as the recipient
+	2) switch to another app. the operation
+	is
+		- send to OS data recipient (there is only
+		one for all apps)
+		- send to app data recipient 
+			-select app > select recipient
+			
+			
+SWITCHING BETWEEN APPS: THE APP LIST
+
+
+
+BENEFITS OF EXTENSIONS IN THE FILE NAVIGATOR: NON-APPS (FILTERS)
+
+Let's say you download an extension for the File Navigator 
+that is a pack  of image conversion macros that can be installed in
+the File Navigator Extensions directory.  
+They can be based on a scripting language so you can examine 
+them and they can also include binary programs. When you 
+call one of them, they can through the scripting language
+put a dialog box up so that you can convert or operate
+on the selected image or do batch processing.  In this way
+the user can customize the File Navigator to his work.
+
+The goal of the OS is to have everything a user needs.
+But let's say that there is a certain kind
+of file viewing the user wants natively available inside
+the File Navigator. With an extension that serves this role,
+this will be available.
+
+
+THE LIGHTWEIGHT APPS AND UTILITIES AS EXTENSIONS FOR THE FILE NAVIGATOR
+
+In the 1990s every app took a lot of computing resources
+but as time went on every app was treated the same
+even though many can just be built into the File Navigator
+as small extensions, which would reduce the number of
+apps in the app list for a task bar or dock.  An extension
+to the File Navigator also allows for other types of
+small utility programs that may just be for specific
+tasks.
+
+A calculator doesn't have to be opened as a separate app
+inside the File Navigator.  Relatively lightweight
+viewing and editing programs can be embedded into
+the File Navigator.  Viewers and editors for various 
+file types can be installed as extensions and open
+up windows within the File Navigator.
+When the activity is more involved and takes more time, 
+the user can open up an app.
+
+This also holds true for batch operations applied to
+files.  It should be possible in the File Navigator
+to make use of another type of extension which are 
+GUI wrappers for terminal commands and, 
+for example, select 10 images and have the File Navigator
+make a new directory where they are all sized in different
+combinations.  The File Navigator should be much more
+extended.
+
+EXTENDING THE FILE NAVIGATOR
+
+File Navigator --> Workspace (File Navigator + Extended Functions)
+
+Some functionality found in smaller apps, such as text editing 
+and basic photo editing, should be available inside
+the File Navigator without launching a separate app.
+
+	- Make a blank text file and edit it.
+	- Open up a text editor.
+	- Go through a PDF.
+	- Compress or convert an image file in place (copied)
+		- "Image Functions"
+			- "[X] Convert to  [JPG]
+			   [X] Compress	   [80%]
+			   [ ] Crop		   [   ]
+			    OK]
+				"
+	
+
+When a window opens that views or edits files in
+the workspace, it can have a different appearance.
+
+For full spreadsheet editing, the user opens up the
+spreadsheet app.  But for just editing or looking at
+the document in a normal window size, this can be an extension
+to the File Navigator.
+
+Since there will be a lot of windows, it will
+	
+The Finder or File Navigator should be much more capable 
+of producing editing, and processing files.  It should 
+be able to perform editing functions on many file types
+without launching apps.   These would be extensions built
+for the File Navigator.
+
+INTEGRATION OF THE WEB INTO FILES IN THE FILE NAVIGATOR.
+
+If a file contains a link to a website and it ends 
+in .weburl the File Navigator can view the website
+inside the File Navigator (with a WebView) without having 
+to open up a web browser.  But importantly, interactions
+that take place within this WebView can directly connect
+to the File Navigator, allowing the user to make
+a drag-line, for example, from a hyperlink inside
+the WebView to a file system location.
+
+
+APP CONTAINING WINDOWS
+
+The typical File Navigator window of today 
+shows a list of files or links in the leftmost panel
+and then files are navigated to the right.
+A list view in the leftmost panel can be clicked on 
+and maintained.
+
+In fact a window like this, where there is a list
+on the left, can be a container for the smaller apps
+like we just mentioned, with the list being
+various programs that are open that are extensions
+installed in the File Navigator such as calculator
+or lightweight spreadsheet editor.
+
+
+-- FILES AND DIRECTORIES --
+
+FILE AND DIRECTORY GROUPS AND SUBGROUPS
+
+Some files and directories should be in a collection
+within a directory.  And within that one or more subgroups
+can be established.
+
+Additionally, another feature of collections is
+that the user will be able to determine the listing
+order of the files so that they are.
+
+LISTING ORDER OF FILES AND DIRECTORIES WITHIN A DIRECTORY
+
+Even without using groups or collections within
+a directory, it can be possible for the user to determine
+the listing order of files and directories so that
+they show up in an organized way.  This would be
+helpful for establishing the linear presentation of
+a directory in a list view.
+
+
+HARDWARE
+
+Dedicated pad for scrolling horizontally and
+vertically.  
+
+
+
+THE FILE NAVIGATOR MASKS FILES AND DIRECTORIES
+
+The reality is that if a file navigator
+acknowledged configuration files within a directory
+it could render it in any way, including with
+behaviors.
+
+
+
+LAYERING THE CONCEPT OF READ/WRITE FOR GUI
+
+Let's say there is a file type called a form.
+It is read-only unless you open it inside
+a program to edit it.  But what are you editing
+about it?  The arrangement of the form or its values?
+The typical document, with the exception of PDF,
+is either a document you read or one that you edit.
+In a viewer, you are just reading the file
+and you usually can't save any values to it.  
+A PDF, for example, that you have to go into the 
+program that
+
+
+
+
+
+——-----
+2024
+
+
+REPLACING DRAG AND DROP BETWEEN SOFTWARE APPLICATIONS
+instead of drag and drop between applications:
+intermediate spaces
+
+one application: “browse to find file”
+	  	“drag onto this area”
+
+instead 
+——> put flag in flag column or menu
+——> move to place of file 
+——> key-click from flag to the file (or type out what is in the key-label
+
+
+
+
+
+
+
+App icons are not on the windows, which
+would improve the app experience right away.
+
+Window thumbnails could appear in
+the menubar dropdown lists, for any app when it is active, and have
+corresponding keyboard shortcuts displayed.  The
+thumbmails could be much larger than the menubar.
+
+Also, the frontmost window of the app could provide
+thumbnails of other windows in the app or
+references to them in the titlebar.
+The windows are usually not referring to each
+other.  The frontmost window, no matter where it
+is, would make a frame starting from the corner
+that can make the largest rectangle on screen.
+You press a key and all other windows in that
+app are shown as thumbnails.
+
+
+
+
+
+APPLE
+
+—> Windows currently cannot be scaled down
+(shrunk) and moved around in a shrunken state.
+
+—> Folders cannot be made bigger than other
+folders.
+
+—> Image documents cannot be made bigger
+than other image documents.
+
+—> There are no tabbed views on the desktop
+for organizing (unless with add-ons).
+
+
+One section of the keyboard does not apply to
+one section of the screen, with another section
+of the keyboard sending information 
+to another screen.
+
+—
+
+
+
+Grouping or locking windows 
+together so that they move in step or are always available together.
+
+
+	exclusive index selection + horizontal stack —> segm control
+
+	multiple index selection + horizontal stack —> segm control
+
+
+----
+
+
+slider with L and R steppers
+
+
