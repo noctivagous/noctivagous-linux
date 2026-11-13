@@ -185,6 +185,7 @@ export default function TangledApp() {
           <a href="tangled.html" className="here">tangled tree 3d</a>
           <a href="sunburst.html">sunburst 3d</a>
           <a href="horizon.html">horizon monitor</a>
+          <a href="horizon3d.html">horizon 3d</a>
         </nav>
       </div>
       <p className="tg-sub">

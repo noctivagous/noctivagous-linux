@@ -240,3 +240,98 @@ export function createMonitor(
   const rand = mulberry32(seed);
   return lanes.map((lane) => new HorizonSeries(lane, length, rand));
 }
+
+// ——— The 3D form: the horizon chart as terraced relief ———
+
+/**
+ * Geometry options for `horizonReliefGeometry`. Heights are in the
+ * renderer's world units; the colour rule is the horizon chart's
+ * own — the segment of a column that stands in band i wears band
+ * i's colour, so magnitude is read twice: as height and as depth
+ * of colour, the fold made solid.
+ */
+export interface HorizonReliefOptions {
+  bands: number;
+  /** World height of one band. */
+  bandHeight: number;
+  /** World width of the lane (x extent). */
+  laneWidth: number;
+  /** World depth of one time column (z extent). */
+  columnDepth: number;
+  scheme: Record<number, string[]>;
+}
+
+export interface HorizonRelief {
+  /** Non-indexed triangle positions, xyz per vertex. */
+  positions: Float32Array;
+  /** Per-vertex colours, rgb per vertex, matching `positions`. */
+  colors: Float32Array;
+}
+
+function hexRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+}
+
+/**
+ * Build one lane's relief: `columns` time steps sampled evenly from
+ * `data` (oldest first), the newest column standing at the front
+ * (z from −columnDepth to 0) and history receding into −z. Each
+ * column is a stack of band segments — a terraced skyline of the
+ * signal, in the horizon chart's own band colours, with faces
+ * shaded (top brightest) so the terraces read as solid form.
+ */
+export function horizonReliefGeometry(
+  data: ArrayLike<number>,
+  columns: number,
+  opts: HorizonReliefOptions,
+): HorizonRelief {
+  const { bands, bandHeight, laneWidth, columnDepth, scheme } = opts;
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const x0 = -laneWidth / 2;
+  const x1 = laneWidth / 2;
+  const shade = { top: 1.18, front: 1.0, back: 0.7, left: 0.84, right: 0.94 };
+
+  const quad = (
+    a: number[], b: number[], c: number[], d: number[],
+    rgb: [number, number, number], f: number,
+  ) => {
+    const col = rgb.map((v) => Math.min(1, v * f));
+    for (const p of [a, b, c, a, c, d]) {
+      positions.push(p[0], p[1], p[2]);
+      colors.push(col[0], col[1], col[2]);
+    }
+  };
+
+  for (let c = 0; c < columns; c++) {
+    const idx = columns > 1
+      ? Math.round((c * (data.length - 1)) / (columns - 1))
+      : data.length - 1;
+    const v = Math.max(0, Math.min(1, data[idx]));
+    const h = v * bands * bandHeight;
+    if (h < 1e-4) continue;
+    const zFar = -(columns - c) * columnDepth;
+    const zNear = zFar + columnDepth;
+    for (let i = 0; i < bands; i++) {
+      const y0 = i * bandHeight;
+      const y1 = Math.min(h, (i + 1) * bandHeight);
+      if (y1 - y0 < 1e-4) continue;
+      const rgb = hexRgb(horizonBandColor(scheme, bands, i));
+      // top (+Y)
+      quad([x0, y1, zNear], [x1, y1, zNear], [x1, y1, zFar], [x0, y1, zFar], rgb, shade.top);
+      // front (+Z, the newest face)
+      quad([x0, y0, zNear], [x1, y0, zNear], [x1, y1, zNear], [x0, y1, zNear], rgb, shade.front);
+      // back (−Z)
+      quad([x1, y0, zFar], [x0, y0, zFar], [x0, y1, zFar], [x1, y1, zFar], rgb, shade.back);
+      // left (−X)
+      quad([x0, y0, zFar], [x0, y0, zNear], [x0, y1, zNear], [x0, y1, zFar], rgb, shade.left);
+      // right (+X)
+      quad([x1, y0, zNear], [x1, y0, zFar], [x1, y1, zFar], [x1, y1, zNear], rgb, shade.right);
+    }
+  }
+  return {
+    positions: new Float32Array(positions),
+    colors: new Float32Array(colors),
+  };
+}

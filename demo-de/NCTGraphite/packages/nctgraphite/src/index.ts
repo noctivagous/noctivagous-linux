@@ -359,8 +359,11 @@ export {
   ACTIVITY_LANES,
   HorizonSeries,
   createMonitor,
+  horizonReliefGeometry,
 } from './horizon/NCTGraphiteHorizon.js';
 export type {
   HorizonStrip,
   ActivityLane,
+  HorizonReliefOptions,
+  HorizonRelief,
 } from './horizon/NCTGraphiteHorizon.js';

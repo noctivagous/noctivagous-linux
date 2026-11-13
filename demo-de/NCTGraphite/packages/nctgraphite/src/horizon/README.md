@@ -47,3 +47,10 @@ Read from the notebook's own module source:
   tick (strips are short and few), which is visually identical.
 - **Step.** The original's strip height is 29 px and its period
   250 ms; both are parameters of the frame, set on the page.
+- **The 3D form.** `horizonReliefGeometry` stands the chart up:
+  each time column becomes a stack of band segments (terraces),
+  each segment wearing its band's colour, so a lane renders as a
+  terraced skyline — magnitude read as height and as depth of
+  colour at once. Renderer-independent (positions + per-vertex
+  colours out), used by demo-de's horizon3d.html under either a
+  perspective or an isometric camera.
