@@ -25,6 +25,7 @@ export default defineConfig({
       input: {
         react: fileURLToPath(new URL('./react.html', import.meta.url)),
         definition: fileURLToPath(new URL('./definition.html', import.meta.url)),
+        tangled: fileURLToPath(new URL('./tangled.html', import.meta.url)),
       },
     },
   },

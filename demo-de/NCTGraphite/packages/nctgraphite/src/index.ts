@@ -314,3 +314,17 @@ export type {
   DataTree,
   DataTreeStats,
 } from './datatree/NCTGraphiteDataTree.js';
+
+export {
+  constructTangleLayout,
+  TANGLE_PALETTE,
+} from './tangle/NCTGraphiteTangleLayout.js';
+export type {
+  TangleInputNode,
+  TangleBundle,
+  TangleBundleGroup,
+  TangleNode,
+  TangleLink,
+  TangleLayoutResult,
+  TangleLayoutOptions,
+} from './tangle/NCTGraphiteTangleLayout.js';

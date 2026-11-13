@@ -319,6 +319,7 @@ export default function DefinitionApp() {
           <a href="index.html">vanilla demo</a>
           <a href="react.html">react shell</a>
           <a href="definition.html" className="here">definition canvas</a>
+          <a href="tangled.html">tangled tree 3d</a>
         </nav>
       </div>
       <p className="def-sub">
