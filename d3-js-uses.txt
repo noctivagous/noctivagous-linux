@@ -1,6 +1,12 @@
 d3-js-uses
 
--- 
+--- 
+Combination of stationary panels
+and ZUI.  Evaluate relationship and arrangement
+of 3D spatial organization of UI vs. 2D space.
+
+
+---
 
 UI frames 
  - Flat UI frames (2D conventional)
@@ -11,10 +17,19 @@ UI frames
 ------    
 Flat UI 
   - Tree Map - d3.js
-    - File System Navigation 
+     - File System Navigation 
   - Realtime horizon chart 
-    - activity monitor contexts
-
+     - activity monitor contexts
+  - Parallel Sets- 
+	  "Parallel sets are like parallel coordinates, 
+	  but for categorical dimensions. The thickness of each 
+	  curved line represents a quantity that is repeatedly 
+	  subdivided by category."
+	 
+	- Contours / Vector Fields - https://observablehq.com/@d3/contours
+ 		- live 2d activity monitors
+ 
 ZUI viewers:
-- Chord dependency diagram
-- Tangled tree visualization
+ - Sequences Sunburst
+ - Chord dependency diagram
+ - Tangled tree visualization
