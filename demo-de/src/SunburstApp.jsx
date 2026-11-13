@@ -94,7 +94,7 @@ export default function SunburstApp() {
     () => sunburstColourScale(root.children.map((c) => c.name)),
     [root],
   );
-  const { values } = useNCTParameters(PARAM_DEFS);
+  const { values, setValue } = useNCTParameters(PARAM_DEFS);
   const [focusNode, setFocusNode] = useState(root);
   const [centreNode, setCentreNode] = useState(root);
   const [selected, setSelected] = useState(null);
@@ -214,7 +214,7 @@ export default function SunburstApp() {
         <div className="sb-rail">
           <div className="sb-box">
             <h3>PARAMETERS</h3>
-            <NCTParameterPanel definitions={PARAM_DEFS} />
+            <NCTParameterPanel definitions={PARAM_DEFS} values={values} onChange={setValue} />
           </div>
           <div className="sb-box">
             <h3>READOUT</h3>
