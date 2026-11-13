@@ -328,3 +328,22 @@ export type {
   TangleLayoutResult,
   TangleLayoutOptions,
 } from './tangle/NCTGraphiteTangleLayout.js';
+
+export {
+  buildSunburst,
+  descendants as sunburstDescendants,
+  ancestors as sunburstAncestors,
+  zoomTargets,
+  arcVisible,
+  labelVisible,
+  interpolateSlice,
+  colourAncestor,
+  interpolateRainbow,
+  rainbowPalette,
+  sunburstColourScale,
+} from './sunburst/NCTGraphiteSunburstLayout.js';
+export type {
+  SunburstData,
+  SunburstSlice,
+  SunburstNode,
+} from './sunburst/NCTGraphiteSunburstLayout.js';
