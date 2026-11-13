@@ -1684,7 +1684,7 @@ function navigateSim(pageKey, addToHistory = true) {
     currentSimPage = pageKey;
 
     simContent.innerHTML = page.content;
-    simUrl.textContent = page.url;
+    if (simUrl) simUrl.textContent = page.url;
 
     // Special handling for cart page
     if (pageKey === 'cart') {
