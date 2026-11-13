@@ -4,7 +4,10 @@ noctivagous linux
 sandboxes, etc. available at system level and to apps
 in native framework.
 	- tools for AI researchers, native
-	- app/development framework has algorithms built in
+	- app/development framework has graphs, algorithms built in
+	of all kinds.
+	- automatically fetches and sorts models in manager 
+	from existing providers, with logos, modalities.
 - built on top of debian (likely)
 - MetaFont utilized (likely)
 
@@ -30,10 +33,13 @@ File Navigator
 - Git in the File Navigator UI.
 
 Graphics
+- Pro App GUI toolkit, has sliders, panels, etc. of various
+kinds so that software developers can make pro apps.
 - SVG-N - Noctivagous SVG, based off .fmarker files from
 Floating Marker that degrade to base SVG, are viewable
 with hidden tags.  Will support mesh gradients, alternative
 shading methods.
+
 
 App Framework
 - dedicated to bases like paramorphic components
