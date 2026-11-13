@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Keyclicks — Full Viewport Demo</title>
+    <meta name="description" content="Full-viewport interactive demo: keyclicks replace mouse clicks. Move the mouse, press F to click, D to go back.">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        html, body {
+            height: 100%;
+        }
+        body {
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .de-topbar {
+            flex: 0 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.5rem 1rem;
+            background: rgba(15, 23, 42, 0.9);
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            z-index: 20;
+        }
+        .de-topbar strong {
+            color: var(--text);
+            font-family: var(--font-heading);
+            font-weight: 600;
+        }
+        .de-topbar kbd {
+            font-family: var(--font-mono);
+            background: var(--surface-light);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0 0.35rem;
+            color: var(--accent);
+        }
+        .de-topbar a {
+            margin-left: auto;
+            color: var(--primary);
+            text-decoration: none;
+            white-space: nowrap;
+        }
+        .de-topbar a:hover {
+            color: var(--accent);
+        }
+        /* Full-viewport takeover of the copied simulation section */
+        .simulation {
+            flex: 1 1 auto;
+            min-height: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        .simulation-container {
+            max-width: none;
+            margin: 0;
+            border: none;
+            border-radius: 0;
+            box-shadow: none;
+            flex: 1 1 auto;
+            min-height: 0;
+            height: auto;
+        }
+        .sim-browser-bar {
+            border-radius: 0;
+        }
+        .sim-content {
+            border-radius: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="de-topbar">
+        <strong>Keyclicks</strong>
+        <span>Move mouse + press <kbd>F</kbd> to click &nbsp;&bull;&nbsp; <kbd>D</kbd> back &nbsp;&bull;&nbsp; <kbd>/</kbd> search</span>
+        <a href="website/index.html">Back to site &rarr;</a>
+    </div>
+
+    <!-- Simulation markup copied verbatim from website/index.html -->
+    <section class="simulation">
+        <div class="simulation-container" id="sim-container">
+            <div class="sim-browser-bar">
+                <div class="sim-dot red"></div>
+                <div class="sim-dot yellow"></div>
+                <div class="sim-dot green"></div>
+                <div class="sim-address-bar" id="sim-url">https://keypilot.io/explore</div>
+            </div>
+            <div class="sim-flash-message" id="sim-flash"></div>
+            <div class="sim-modal-overlay" id="sim-modal">
+                <div class="sim-modal">
+                    <div class="sim-modal-header">
+                        <h3 class="sim-modal-title" id="sim-modal-title">Confirm Action</h3>
+                    </div>
+                    <div class="sim-modal-message" id="sim-modal-message">Are you sure?</div>
+                    <div class="sim-modal-actions">
+                        <button class="sim-modal-btn cancel" id="sim-modal-cancel" data-action="modal-cancel">Cancel</button>
+                        <button class="sim-modal-btn confirm" id="sim-modal-confirm" data-action="modal-confirm">Confirm</button>
+                    </div>
+                </div>
+            </div>
+            <div class="sim-content" id="sim-content">
+                <!-- Initial mock page content will be injected by JS -->
+            </div>
+            <div class="sim-search-overlay" id="sim-search">
+                <h4 style="margin-bottom: 1rem;">Simulated Search</h4>
+                <input type="text" class="sim-search-input" placeholder="Type here... (Press ESC to close)" id="sim-search-input">
+                <p style="margin-top: 1rem; font-size: 0.8rem; color: var(--text-muted);">This is a mock input. KeyPilot automatically switches to 'Text Focus' mode when you click or focus an input field.</p>
+            </div>
+            <div class="sim-instruction">
+                Move mouse and press <span style="color: var(--accent); font-weight: bold;">F</span> to click &nbsp;&bull;&nbsp; Press <span style="color: var(--accent); font-weight: bold;">D</span> to go back
+            </div>
+        </div>
+    </section>
+
+    <script src="sim.js"></script>
+</body>
+</html>
