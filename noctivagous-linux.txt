@@ -36,9 +36,10 @@ Graphics
 - Pro App GUI toolkit, has sliders, panels, etc. of various
 kinds so that software developers can make pro apps.
 - SVG-N - Noctivagous SVG, based off .fmarker files from
-Floating Marker that degrade to base SVG, are viewable
-with hidden tags.  Will support mesh gradients, alternative
+Floating Marker that descend to base SVG when unsupported, 
+are viewable with hidden tags.  Will support mesh gradients, alternative
 shading methods.
+- Tessellation utilities native to the app framework.
 
 
 App Framework
