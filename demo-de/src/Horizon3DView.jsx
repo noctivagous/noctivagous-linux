@@ -20,10 +20,13 @@ import {
  * so a peak is a physical thing moving down the tape, not a
  * texture repaint. Time is marked either on a ground-plan scale
  * that travels with the tape, or by rods rising from the waves at
- * fixed ages. The default camera is isometric — an orthographic
- * camera for undistorted comparison across the whole depth of the
- * tape — with perspective one parameter away, and continuous
- * rotation and elevation parameters on both.
+ * fixed ages. The lanes sit on a circular platter lettered with
+ * the four directions, and every camera orbit turns about the
+ * platter's centre. The default camera is isometric — an
+ * orthographic camera for undistorted comparison across the whole
+ * depth of the tape — with perspective one parameter away, and
+ * continuous rotation and elevation parameters on both. A
+ * bounding-box wireframe of the data volume is a parameter too.
  */
 
 export const LANE_W = 26;
@@ -33,6 +36,10 @@ export const COLS = 121;
 export const COL_D = 2.2;
 /** Ages (in samples) at which time markers stand. */
 export const TIME_AGES = [20, 40, 60, 80, 100, 120];
+/** The centre of the tape — and of the platter, and of every camera orbit. */
+export const CENTER_Z = -((COLS - 1) * COL_D) / 2;
+/** Radius of the circular platter the lanes sit on. */
+export const PLATTER_R = 205;
 
 export function laneX(i, count) {
   return (i - (count - 1) / 2) * LANE_PITCH;
@@ -50,6 +57,7 @@ export default function Horizon3DView({
   rotation,
   elevation,
   timeMarkers,
+  boundsOn,
   drift,
   labelsOn,
   onFocus,
@@ -59,18 +67,10 @@ export default function Horizon3DView({
   const stateRef = useRef({});
   stateRef.current = {
     monitor, bands, bandHeight, periodMs, running, focusId,
-    rotation, elevation, timeMarkers, labelsOn, onFocus,
+    rotation, elevation, timeMarkers, boundsOn, labelsOn, onFocus,
   };
   const tickRef = useRef(tickCount);
   tickRef.current = tickCount;
-  // Flow phase: how far (0..1 column-depths) the tape has travelled
-  // since the last tick. Reset on each tick, advanced per frame.
-  const phaseRef = useRef(0);
-  const lastFrameRef = useRef(0);
-  useEffect(() => {
-    phaseRef.current = 0;
-    lastFrameRef.current = performance.now();
-  }, [tickCount]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -104,13 +104,36 @@ export default function Horizon3DView({
     rim.position.set(-240, 90, -260);
     scene.add(rim);
 
-    // Ground and per-lane floor plates.
+    // Ground far below, and the circular platter the lanes sit on:
+    // a shallow disc centred on the tape's centre, its rim ringed,
+    // the four directions — N at the back, S at the front, W and E
+    // to the sides — lettered on it (DOM labels, projected per frame).
     const ground = new THREE.Mesh(
-      new THREE.CircleGeometry(760, 64).rotateX(-Math.PI / 2),
+      new THREE.CircleGeometry(900, 64).rotateX(-Math.PI / 2),
       new THREE.MeshStandardMaterial({ color: 0x0d1113, roughness: 1 }),
     );
-    ground.position.set(0, -0.12, -COLS * COL_D * 0.45);
+    ground.position.set(0, -3.6, CENTER_Z);
     scene.add(ground);
+    const platter = new THREE.Group();
+    platter.position.set(0, 0, CENTER_Z);
+    scene.add(platter);
+    const disc = new THREE.Mesh(
+      new THREE.CylinderGeometry(PLATTER_R, PLATTER_R + 7, 3, 96),
+      new THREE.MeshStandardMaterial({ color: 0x12181c, roughness: 0.85 }),
+    );
+    disc.position.y = -2.05; // top face at −0.55, just under the lane plates
+    platter.add(disc);
+    {
+      const rimPts = [];
+      for (let i = 0; i <= 96; i++) {
+        const a = (i / 96) * Math.PI * 2;
+        rimPts.push(new THREE.Vector3(Math.cos(a) * PLATTER_R, -0.5, Math.sin(a) * PLATTER_R));
+      }
+      platter.add(new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(rimPts),
+        new THREE.LineBasicMaterial({ color: 0x3a4a52 }),
+      ));
+    }
     const plateMat = new THREE.MeshStandardMaterial({ color: 0x131a1e, roughness: 0.9 });
     const plateEdge = new THREE.LineBasicMaterial({ color: 0x2c3a41 });
     monitor.forEach((s, i) => {
@@ -165,6 +188,19 @@ export default function Horizon3DView({
       const f = Math.max(0, Math.min(1, pos - i));
       return s.data[i] * (1 - f) + s.data[i + 1] * f;
     };
+
+    // Bounding-box wireframe of the whole data volume (a parameter):
+    // a unit cube's edges, scaled per frame to the lane span, the
+    // current full relief height, and the tape's length, centred on
+    // the platter centre.
+    const boundsBox = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
+      new THREE.LineBasicMaterial({ color: 0x7fd4c1, transparent: true, opacity: 0.55 }),
+    );
+    boundsBox.position.set(0, 0, CENTER_Z);
+    scene.add(boundsBox);
+    const tapeW = laneX(monitor.length - 1, monitor.length) - laneX(0, monitor.length) + LANE_W;
+    const tapeD = COLS * COL_D + COL_D;
 
     // One relief mesh per lane, rebuilt on each tick.
     const meshes = monitor.map((s, i) => {
@@ -251,9 +287,35 @@ export default function Horizon3DView({
       return { el, age };
     });
 
+    // Compass letters on the platter: N at the back (−Z), S at the
+    // front (+Z), W and E to the sides, inset from the rim.
+    const compassEls = [
+      { t: "N", x: 0, z: CENTER_Z - PLATTER_R + 17 },
+      { t: "S", x: 0, z: CENTER_Z + PLATTER_R - 17 },
+      { t: "W", x: -PLATTER_R + 17, z: CENTER_Z },
+      { t: "E", x: PLATTER_R - 17, z: CENTER_Z },
+    ].map(({ t, x, z }) => {
+      const el = document.createElement("div");
+      el.className = "h3-compass";
+      el.textContent = t;
+      if (t === "N") { el.style.color = "#ffa726"; el.style.fontWeight = "bold"; }
+      labelsEl.appendChild(el);
+      return { el, x, z };
+    });
+
     let raf = 0;
-    let camX = 0;
     let sway = 0;
+    // Flow phase, kept on ONE clock: this loop watches the tick
+    // counter itself and re-anchors the phase in the very frame it
+    // rebuilds the geometry. (The earlier version accumulated the
+    // phase from frame times in one place and reset it from a React
+    // effect in another, while ticks arrived on the app's interval —
+    // three clocks, and at every tick they disagreed by a frame or a
+    // fraction, which the lanes showed as a slight jitter.)
+    let lastTickSeen = tickRef.current;
+    let anchor = performance.now();
+    let phase = 0;
+    let wasRunning = true;
     const v3 = new THREE.Vector3();
     const tick = () => {
       raf = requestAnimationFrame(tick);
@@ -265,18 +327,28 @@ export default function Horizon3DView({
       }
       camera = projection === "iso" ? ortho : persp;
 
-      // Flow: advance the phase while time runs, and slide the tape
-      // toward the back by that fraction of a column. When the next
-      // tick rebuilds the geometry from the shifted buffer and the
-      // phase resets to 0, every column lands where the slide left
+      // Flow: the phase is the elapsed fraction of the current tick,
+      // measured from the anchor this loop set when it saw the tick
+      // change — the same frame the geometry was rebuilt above. The
+      // tape slides toward the back by that fraction of a column;
+      // when the next tick rebuilds from the shifted buffer and the
+      // phase restarts at 0, every column lands where the slide left
       // it — the motion is continuous, the data really travels.
       const now = performance.now();
-      const dt = Math.min(100, now - (lastFrameRef.current || now));
-      lastFrameRef.current = now;
-      if (st.running) {
-        phaseRef.current = Math.min(1, phaseRef.current + dt / Math.max(1, st.periodMs));
+      if (tickRef.current !== lastTickSeen) {
+        lastTickSeen = tickRef.current;
+        anchor = now;
+        phase = 0;
       }
-      const phase = phaseRef.current;
+      if (st.running) {
+        if (!wasRunning) {
+          anchor = now - phase * Math.max(1, st.periodMs);
+          wasRunning = true;
+        }
+        phase = Math.min(1, (now - anchor) / Math.max(1, st.periodMs));
+      } else {
+        wasRunning = false;
+      }
       const flowZ = -phase * COL_D;
       for (const m of meshes) m.position.z = flowZ;
       timeGroup.position.z = flowZ;
@@ -296,37 +368,42 @@ export default function Horizon3DView({
         rodGeo.attributes.position.needsUpdate = true;
       }
 
-      // Camera: ease toward the focused lane; drift sways gently.
-      // Rotation and elevation are continuous parameters, applied as
-      // offsets around each projection's home position.
+      // Bounding box: fit the current full relief height.
+      const fullH = st.bands * st.bandHeight;
+      boundsBox.visible = Boolean(st.boundsOn);
+      boundsBox.scale.set(tapeW, fullH, tapeD);
+      boundsBox.position.y = fullH / 2;
+
+      // Camera: ONE centre for everything — the platter's centre.
+      // The orbit position and the look-at both use it, so rotation
+      // turns about the middle of the platter (the earlier version
+      // orbited one point and looked at another, and let the centre
+      // drift toward the focused lane). Focus closes in instead of
+      // travelling sideways. Drift sways the azimuth gently.
       const focusIdx = st.focusId ? monitor.findIndex((s) => s.lane.id === st.focusId) : -1;
-      const targetX = focusIdx >= 0 ? laneX(focusIdx, monitor.length) * 0.72 : 0;
-      camX += (targetX - camX) * 0.05;
       if (drift) sway += 0.0006;
       const swayA = Math.sin(sway) * 0.05;
       const rot = THREE.MathUtils.degToRad(st.rotation ?? 0) + swayA;
       const tilt = THREE.MathUtils.degToRad(st.elevation ?? 0);
-      const midZ = -COLS * COL_D * 0.46;
       if (camera === persp) {
-        const horiz = focusIdx >= 0 ? 451 : 506;
-        const baseY = focusIdx >= 0 ? 138 : 165;
-        const elev = Math.max(0.08, Math.min(1.3, Math.atan2(baseY, horiz) + tilt));
+        const radius = focusIdx >= 0 ? 472 : 532;
+        const elev = Math.max(0.08, Math.min(1.3, Math.atan2(165, 506) + tilt));
         camera.position.set(
-          camX + Math.sin(rot) * horiz,
-          horiz * Math.tan(elev),
-          midZ + Math.cos(rot) * horiz,
+          Math.sin(rot) * Math.cos(elev) * radius,
+          Math.sin(elev) * radius,
+          CENTER_Z + Math.cos(rot) * Math.cos(elev) * radius,
         );
-        camera.lookAt(camX * 0.9, 0, midZ);
+        camera.lookAt(0, 0, CENTER_Z);
       } else {
-        const horiz = 790;
-        const elev = Math.max(0.08, Math.min(1.3, Math.atan2(574, horiz) + tilt));
+        const radius = 1000;
+        const elev = Math.max(0.08, Math.min(1.3, Math.atan2(574, 790) + tilt));
         const az = Math.PI / 4 + rot;
         camera.position.set(
-          camX + Math.sin(az) * horiz,
-          horiz * Math.tan(elev),
-          midZ + Math.cos(az) * horiz,
+          Math.sin(az) * Math.cos(elev) * radius,
+          Math.sin(elev) * radius,
+          CENTER_Z + Math.cos(az) * Math.cos(elev) * radius,
         );
-        camera.lookAt(camX, 0, midZ);
+        camera.lookAt(0, 0, CENTER_Z);
         camera.zoom = focusIdx >= 0 ? 1.25 : 1.0;
         camera.updateProjectionMatrix();
       }
@@ -365,6 +442,15 @@ export default function Horizon3DView({
         el.style.transform = `translate(-50%, -100%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
       }
 
+      // Project the compass letters (fixed to the platter, so they
+      // travel with it as the camera orbits).
+      for (const c of compassEls) {
+        v3.set(c.x, 0.5, c.z).project(camera);
+        const sx = (v3.x * 0.5 + 0.5) * mount.clientWidth;
+        const sy = (-v3.y * 0.5 + 0.5) * mount.clientHeight;
+        c.el.style.transform = `translate(-50%, -50%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
+      }
+
       renderer.render(scene, camera);
     };
     tick();
@@ -396,6 +482,14 @@ export default function Horizon3DView({
       });
       rodGeo.dispose();
       rodGroup.material.dispose();
+      platter.traverse((o) => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) o.material.dispose();
+      });
+      ground.geometry.dispose();
+      ground.material.dispose();
+      boundsBox.geometry.dispose();
+      boundsBox.material.dispose();
       renderer.dispose();
       mount.removeChild(renderer.domElement);
       labelsEl.innerHTML = "";

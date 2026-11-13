@@ -59,6 +59,7 @@ const PARAM_DEFS = [
       { value: "off", label: "Off" },
     ],
   },
+  { id: "boundsOn", label: "Bounding box", type: "boolean", defaultValue: false },
   { id: "running", label: "Running", type: "boolean", defaultValue: true },
   { id: "labelsOn", label: "Lane labels", type: "boolean", defaultValue: true },
   { id: "drift", label: "Camera drift", type: "boolean", defaultValue: true },
@@ -106,6 +107,8 @@ const css = `
 .h3-val { font-family:Consolas, monospace; font-size:11px; color:#a9f0dd; text-shadow:0 1px 5px #000; }
 .h3-time-label { position:absolute; left:0; top:0; font-family:Consolas, monospace; font-size:10px; color:#ffa726;
   text-shadow:0 1px 5px #000; pointer-events:none; will-change:transform; white-space:nowrap; }
+.h3-compass { position:absolute; left:0; top:0; font-family:Tahoma, sans-serif; font-size:14px; letter-spacing:1px;
+  color:#8fa3ab; text-shadow:0 1px 6px #000; pointer-events:none; will-change:transform; }
 .figcap { margin:8px 20px 0; font-size:11.5px; line-height:17px; color:#8fa3ab; }
 .figcap b { color:#cfd8dc; letter-spacing:1.5px; font-size:10.5px; }
 .print { margin:24px 20px 34px; border-top:3px double #45565e; padding-top:18px; color:#d7dee2; font-family:Georgia, 'Times New Roman', serif; }
@@ -195,9 +198,11 @@ export default function Horizon3DApp() {
         each lane a terraced skyline whose folds stand as solid terraces in the horizon
         chart's own colours. Load is read as height <i>and</i> as depth of colour. The
         data really flows — each column is born at the front and travels to the back —
-        and a time scale on the ground plan travels with it. The camera defaults to
-        isometric, with perspective a parameter away and continuous rotation and
-        elevation beside it. Keys <b>1–8</b> focus a lane; <b>Space</b> halts time.
+        and a time scale on the ground plan travels with it. The lanes sit on a circular
+        platter lettered with the four directions, and every orbit turns about its
+        centre. The camera defaults to isometric, with perspective a parameter away and
+        continuous rotation and elevation beside it. Keys <b>1–8</b> focus a lane;{" "}
+        <b>Space</b> halts time.
       </p>
       <div className="h3-main">
         <div className="h3-stage">
@@ -213,6 +218,7 @@ export default function Horizon3DApp() {
             rotation={Number(values.rotation)}
             elevation={Number(values.elevation)}
             timeMarkers={String(values.timeMarkers)}
+            boundsOn={Boolean(values.boundsOn)}
             drift={Boolean(values.drift)}
             labelsOn={Boolean(values.labelsOn)}
             onFocus={toggleFocus}
@@ -245,7 +251,7 @@ export default function Horizon3DApp() {
           <div className="h3-box">
             <h3>KEY-CLICKS</h3>
             <p className="h3-keyline">
-              <b>1–8</b> / <b>A–H</b> focus a lane — the camera travels to it{" · "}<b>Space</b>{" "}
+              <b>1–8</b> / <b>A–H</b> focus a lane — the camera closes in{" · "}<b>Space</b>{" "}
               {running ? "halt" : "resume"} time{" · "}<b>Esc</b> release focus
             </p>
           </div>
@@ -263,8 +269,9 @@ export default function Horizon3DApp() {
         <h2>The monitor, standing in space</h2>
         <p className="standfirst">
           The flat horizon monitor reads by colour alone. In space its folds become
-          terraces and its signal becomes terrain — eight skylines of machine activity,
-          running away into the dark, the present moment at your feet.
+          terraces and its signal becomes terrain — eight skylines of machine activity
+          on a circular platter lettered with the four directions, the present moment
+          at your feet.
         </p>
         <div className="rule" />
         <div className="cols">
@@ -301,9 +308,10 @@ export default function Horizon3DApp() {
             <p>
               The monitor's operation carries over unchanged, because it was built for
               keys from the first: 1 to 8, or A to H, takes a lane into focus — here that
-              means the other lanes dim and the camera travels along the row to stand
-              before the chosen skyline, while the readout states its present value, its
-              window's mean and peak. Space halts time in space as it did on the flat
+              means the other lanes dim and the camera closes in on the chosen skyline,
+              while the readout states its present value, its window's mean and peak.
+              Rotation, when you turn it, turns about the platter's centre — the
+              instrument's middle, where an orbit belongs. Space halts time in space as it did on the flat
               tape. Time itself is marked on the ground plan: a scale beside the lanes,
               ticked and labelled in seconds, travelling with the tape — or, as a
               setting alternative, by rods that rise from each wave at fixed ages,
