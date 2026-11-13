@@ -30,7 +30,8 @@ import {
 
 export const CUBE_S = 176;
 export const PLATTER_R = 198;
-const THICK = 6;
+const LEAF_THICK = 10; // leaves stand proud of the shell
+const BRANCH_THICK = 5; // branches sit flush — they are doors, not tiles
 const GAP = 2.4;
 const CUBE_CY = CUBE_S / 2; // cube centre height (bottom rests at 0)
 
@@ -53,8 +54,9 @@ const FACE_NORMAL = {
 };
 
 /** World placement of a face piece: centre position + box scale. */
-function piecePlacement(face, rect) {
+function piecePlacement(face, rect, isLeaf) {
   const S = CUBE_S;
+  const T = isLeaf ? LEAF_THICK : BRANCH_THICK;
   const uc = (rect.x0 + rect.x1) / 2;
   const vc = (rect.y0 + rect.y1) / 2;
   const w = Math.max(0.6, (rect.x1 - rect.x0) * S - GAP);
@@ -62,17 +64,17 @@ function piecePlacement(face, rect) {
   const y = (0.5 - vc) * S + CUBE_CY;
   switch (face) {
     case "top":
-      return { pos: [(uc - 0.5) * S, S, (vc - 0.5) * S], scale: [w, THICK, d] };
+      return { pos: [(uc - 0.5) * S, S, (vc - 0.5) * S], scale: [w, T, d] };
     case "north":
-      return { pos: [(uc - 0.5) * S, y, -S / 2], scale: [w, d, THICK] };
+      return { pos: [(uc - 0.5) * S, y, -S / 2], scale: [w, d, T] };
     case "south":
-      return { pos: [(0.5 - uc) * S, y, S / 2], scale: [w, d, THICK] };
+      return { pos: [(0.5 - uc) * S, y, S / 2], scale: [w, d, T] };
     case "east":
-      return { pos: [S / 2, y, (0.5 - uc) * S], scale: [THICK, d, w] };
+      return { pos: [S / 2, y, (0.5 - uc) * S], scale: [T, d, w] };
     case "west":
-      return { pos: [-S / 2, y, (uc - 0.5) * S], scale: [THICK, d, w] };
+      return { pos: [-S / 2, y, (uc - 0.5) * S], scale: [T, d, w] };
     default:
-      return { pos: [0, CUBE_CY, 0], scale: [w, THICK, d] };
+      return { pos: [0, CUBE_CY, 0], scale: [w, T, d] };
   }
 }
 
@@ -216,7 +218,7 @@ export default function TreemapCubeView({
       chipEls.set(node, chip);
       const nm = document.createElement("div");
       nm.className = "tc-name";
-      nm.textContent = node.name;
+      nm.textContent = node.children.length ? `${node.name} ▸` : node.name;
       labelsEl.appendChild(nm);
       nameEls.set(node, nm);
     }
@@ -238,16 +240,25 @@ export default function TreemapCubeView({
     infoEl.style.display = "none";
     labelsEl.appendChild(infoEl);
 
-    // Piece sets: current layer + exiting layer.
+    // Piece sets: current layer + exiting layer. Leaves and
+    // branches must read differently at a glance: a leaf is a
+    // bright, glossy tile standing proud of the shell; a branch is
+    // a dark, flush door with a bright frame — it opens.
     const pieceMat = (node) => {
-      const c = new THREE.Color(treemapHouseColor(root, node));
-      if (node.children.length) c.multiplyScalar(0.52);
+      const base = new THREE.Color(treemapHouseColor(root, node));
+      if (node.children.length) {
+        return new THREE.MeshStandardMaterial({
+          color: base.clone().multiplyScalar(0.4), roughness: 0.85,
+          metalness: 0.05, transparent: true,
+        });
+      }
       return new THREE.MeshStandardMaterial({
-        color: c, roughness: 0.6, metalness: 0.08, transparent: true,
+        color: base, roughness: 0.32, metalness: 0.12, transparent: true,
+        emissive: base.clone().multiplyScalar(0.22),
       });
     };
-    let curSet = new Map(); // node -> {mesh, piece, basePos, normal}
-    let exiting = []; // {mesh, t0, basePos, normal}
+    let curSet = new Map(); // node -> {mesh, piece, basePos, normal, edges}
+    let exiting = []; // {mesh, t0, basePos, normal, edges}
     let curFocus = null;
     let bornAt = 0;
     let addressMap = new Map();
@@ -255,15 +266,28 @@ export default function TreemapCubeView({
     const buildSet = (focus) => {
       const set = new Map();
       for (const piece of treemapCubeFaces(focus)) {
+        const isLeaf = piece.node.children.length === 0;
         const mesh = new THREE.Mesh(unitBox, pieceMat(piece.node));
-        const { pos, scale } = piecePlacement(piece.face, piece.rect);
+        const { pos, scale } = piecePlacement(piece.face, piece.rect, isLeaf);
         mesh.position.set(pos[0], pos[1], pos[2]);
         mesh.scale.set(scale[0], scale[1], scale[2]);
         mesh.userData.node = piece.node;
         mesh.userData.baseScale = scale;
+        let edges = null;
+        if (!isLeaf) {
+          edges = new THREE.LineSegments(
+            new THREE.EdgesGeometry(unitBox),
+            new THREE.LineBasicMaterial({
+              color: new THREE.Color(treemapHouseColor(root, piece.node)),
+              transparent: true, opacity: 0.9,
+            }),
+          );
+          edges.scale.set(1.06, 1.06, 1.06);
+          mesh.add(edges);
+        }
         scene.add(mesh);
         set.set(piece.node, {
-          mesh, piece,
+          mesh, piece, edges,
           basePos: new THREE.Vector3(pos[0], pos[1], pos[2]),
           normal: FACE_NORMAL[piece.face],
         });
@@ -319,8 +343,8 @@ export default function TreemapCubeView({
 
       // A new focus re-forms the cube.
       if (st.focusNode !== curFocus) {
-        for (const { mesh, basePos, normal } of curSet.values()) {
-          exiting.push({ mesh, t0: now, basePos, normal });
+        for (const { mesh, basePos, normal, edges } of curSet.values()) {
+          exiting.push({ mesh, t0: now, basePos, normal, edges });
         }
         curSet = buildSet(st.focusNode);
         curFocus = st.focusNode;
@@ -363,7 +387,7 @@ export default function TreemapCubeView({
 
       // Current pieces: grow out of the core as they form; the
       // opened leaf's piece slides further out along its normal.
-      for (const { mesh, basePos, normal } of curSet.values()) {
+      for (const { mesh, basePos, normal, edges } of curSet.values()) {
         const node = mesh.userData.node;
         const pull = node === pullNode ? easeOut(pullRise) * 17 : 0;
         const out = -7 * (1 - grow) + pull;
@@ -376,9 +400,10 @@ export default function TreemapCubeView({
         const f = 0.35 + 0.65 * grow;
         mesh.scale.set(sx * (normal.x ? 1 : f), sy * (normal.y ? 1 : f), sz * (normal.z ? 1 : f));
         mesh.material.opacity = grow;
+        if (edges) edges.material.opacity = 0.9 * grow;
       }
       // Exiting pieces sink into the core and fade.
-      exiting = exiting.filter(({ mesh, t0, basePos, normal }) => {
+      exiting = exiting.filter(({ mesh, t0, basePos, normal, edges }) => {
         const t = clamp01((now - t0) / 450);
         const e = easeInOut(t);
         mesh.position.set(
@@ -387,9 +412,11 @@ export default function TreemapCubeView({
           basePos.z - normal.z * 10 * e,
         );
         mesh.material.opacity = 1 - e;
+        if (edges) edges.material.opacity = 0.9 * (1 - e);
         if (t >= 1) {
           scene.remove(mesh);
           mesh.material.dispose();
+          if (edges) { edges.geometry.dispose(); edges.material.dispose(); }
           return false;
         }
         return true;

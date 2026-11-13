@@ -171,8 +171,16 @@ export default function SunburstCylinderApp() {
 
   useEffect(() => {
     const onKey = (e) => {
-      const tag = (e.target?.tagName || "").toLowerCase();
-      if (tag === "input" || tag === "select" || tag === "textarea" || e.metaKey || e.ctrlKey || e.altKey) return;
+      // Only genuinely text-entering controls keep their keys — a
+      // slider, checkbox or select holding focus must not swallow
+      // the key-clicks (see the cube page, where this made F look
+      // broken after touching a parameter control).
+      const el = e.target;
+      const tag = (el?.tagName || "").toLowerCase();
+      const type = (el?.type || "").toLowerCase();
+      const textLike = tag === "textarea" || Boolean(el?.isContentEditable) ||
+        (tag === "input" && ["text", "search", "password", "email", "url", "number"].includes(type));
+      if (textLike || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "Escape") {
         setBuffer("");
         if (open) setOpen(null);
@@ -203,6 +211,7 @@ export default function SunburstCylinderApp() {
         const next = buffer + letter;
         const exact = nodeByKey.get(next);
         const isPrefix = [...nodeByKey.keys()].some((k) => k.length > next.length && k.startsWith(next));
+        if (exact || isPrefix) e.preventDefault(); // keep a focused select from jumping
         if (exact && !isPrefix) {
           setTarget(exact);
           setBuffer("");

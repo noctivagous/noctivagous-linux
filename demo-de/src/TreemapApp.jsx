@@ -143,8 +143,16 @@ export default function TreemapApp() {
 
   useEffect(() => {
     const onKey = (e) => {
-      const tag = (e.target?.tagName || "").toLowerCase();
-      if (tag === "input" || tag === "select" || tag === "textarea" || e.metaKey || e.ctrlKey || e.altKey) return;
+      // Only genuinely text-entering controls keep their keys — a
+      // slider, checkbox or select holding focus must not swallow
+      // the key-clicks (see the cube page, where this made F look
+      // broken after touching a parameter control).
+      const el = e.target;
+      const tag = (el?.tagName || "").toLowerCase();
+      const type = (el?.type || "").toLowerCase();
+      const textLike = tag === "textarea" || Boolean(el?.isContentEditable) ||
+        (tag === "input" && ["text", "search", "password", "email", "url", "number"].includes(type));
+      if (textLike || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "Escape") {
         if (openLeaf) setOpenLeaf(null);
         else setTarget(null);
@@ -167,6 +175,7 @@ export default function TreemapApp() {
         ({ exact, longer } = attempt(buf));
       }
       clearTimeout(bufferTimer.current);
+      if (exact || longer) e.preventDefault(); // keep a focused select from jumping
       if (exact && !longer) {
         setTarget(exact.node);
         bufferRef.current = "";

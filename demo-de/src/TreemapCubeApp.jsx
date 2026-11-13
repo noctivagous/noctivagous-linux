@@ -140,8 +140,18 @@ export default function TreemapCubeApp() {
 
   useEffect(() => {
     const onKey = (e) => {
-      const tag = (e.target?.tagName || "").toLowerCase();
-      if (tag === "input" || tag === "select" || tag === "textarea" || e.metaKey || e.ctrlKey || e.altKey) return;
+      // Only genuinely text-entering controls keep their keys. A
+      // slider, checkbox or select must NOT swallow the key-clicks:
+      // the natural first act on this page is to drag Rotation, and
+      // a handler that dies whenever a control holds focus makes F
+      // look broken. (That was a real bug: touch any parameter
+      // control and every key on the page went dead.)
+      const el = e.target;
+      const tag = (el?.tagName || "").toLowerCase();
+      const type = (el?.type || "").toLowerCase();
+      const textLike = tag === "textarea" || Boolean(el?.isContentEditable) ||
+        (tag === "input" && ["text", "search", "password", "email", "url", "number"].includes(type));
+      if (textLike || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "Escape") {
         if (openLeaf) setOpenLeaf(null);
         else setTarget(null);
@@ -164,6 +174,7 @@ export default function TreemapCubeApp() {
         ({ exact, longer } = attempt(buf));
       }
       clearTimeout(bufferTimer.current);
+      if (exact || longer) e.preventDefault(); // keep a focused select from jumping
       if (exact && !longer) {
         setTarget(exact.node);
         bufferRef.current = "";
@@ -278,6 +289,7 @@ export default function TreemapCubeApp() {
             <p className="tc-keyline">
               <b>key</b> target a piece{" · "}<b>F</b> click it — re-form the cube, or
               slide a leaf out{" · "}<b>D</b> go back{" · "}<b>Esc</b> release
+              <br />bright thick tile = leaf{" · "}dark framed door ▸ = opens
             </p>
           </div>
         </div>
@@ -323,8 +335,10 @@ export default function TreemapCubeApp() {
               over the faces that remain. Each group is binary-tiled on its face, and
               each child stands as a shallow piece of the shell over a dark core: the
               cube is close to a cube, never solid, its faces aligned to the compass
-              letters on the platter it rests on. Branches wear a darker shade of their
-              house colour; leaves wear it full.
+              letters on the platter it rests on. The two kinds of piece read differently
+              at a glance: a leaf is a bright, glossy tile standing proud of the shell,
+              lit from within; a branch is a dark, flush door in a bright frame of its
+              house colour — it is the kind that opens.
             </p>
           </div>
           <div>
