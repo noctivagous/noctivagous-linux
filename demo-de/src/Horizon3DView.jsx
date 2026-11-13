@@ -14,16 +14,25 @@ import {
  * and history recedes. Every lane is the horizon module's terraced
  * relief — each time column a stack of band segments, wearing the
  * horizon chart's own band colours, so load reads as both height
- * and depth of colour. The camera question the page leaves open —
- * perspective or isometric — is a parameter: perspective for
- * presence, an orthographic isometric camera for undistorted
- * comparison across the whole depth of the tape.
+ * and depth of colour. The columns themselves travel: between
+ * ticks each mesh slides one column-depth toward the back, and the
+ * tick's rebuilt geometry lands exactly where the slide left it,
+ * so a peak is a physical thing moving down the tape, not a
+ * texture repaint. Time is marked either on a ground-plan scale
+ * that travels with the tape, or by rods rising from the waves at
+ * fixed ages. The default camera is isometric — an orthographic
+ * camera for undistorted comparison across the whole depth of the
+ * tape — with perspective one parameter away, and continuous
+ * rotation and elevation parameters on both.
  */
 
 export const LANE_W = 26;
 export const LANE_PITCH = 35;
-export const COLS = 120;
+/** Visible columns: the newest 121 samples, one column per sample. */
+export const COLS = 121;
 export const COL_D = 2.2;
+/** Ages (in samples) at which time markers stand. */
+export const TIME_AGES = [20, 40, 60, 80, 100, 120];
 
 export function laneX(i, count) {
   return (i - (count - 1) / 2) * LANE_PITCH;
@@ -34,8 +43,13 @@ export default function Horizon3DView({
   bands,
   bandHeight,
   tickCount,
+  periodMs,
+  running,
   focusId,
   projection,
+  rotation,
+  elevation,
+  timeMarkers,
   drift,
   labelsOn,
   onFocus,
@@ -43,9 +57,20 @@ export default function Horizon3DView({
   const mountRef = useRef(null);
   const labelsRef = useRef(null);
   const stateRef = useRef({});
-  stateRef.current = { monitor, bands, bandHeight, focusId, labelsOn, onFocus };
+  stateRef.current = {
+    monitor, bands, bandHeight, periodMs, running, focusId,
+    rotation, elevation, timeMarkers, labelsOn, onFocus,
+  };
   const tickRef = useRef(tickCount);
   tickRef.current = tickCount;
+  // Flow phase: how far (0..1 column-depths) the tape has travelled
+  // since the last tick. Reset on each tick, advanced per frame.
+  const phaseRef = useRef(0);
+  const lastFrameRef = useRef(0);
+  useEffect(() => {
+    phaseRef.current = 0;
+    lastFrameRef.current = performance.now();
+  }, [tickCount]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -103,6 +128,44 @@ export default function Horizon3DView({
       scene.add(edge);
     });
 
+    // Ground-plan time scale: a ruler on the floor beside the lanes,
+    // ticked every 10 samples, travelling with the tape (its group
+    // takes the same flow offset as the relief meshes).
+    const rulerX = laneX(monitor.length - 1, monitor.length) + LANE_W / 2 + 13;
+    const timeGroup = new THREE.Group();
+    scene.add(timeGroup);
+    {
+      const pts = [];
+      pts.push(rulerX, 0.15, 2, rulerX, 0.15, -(COLS - 1) * COL_D);
+      for (let age = 0; age < COLS; age += 10) {
+        const len = age % 20 === 0 ? 8 : 4.5;
+        pts.push(rulerX - len, 0.15, -age * COL_D, rulerX + len, 0.15, -age * COL_D);
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(pts), 3));
+      timeGroup.add(new THREE.LineSegments(
+        g, new THREE.LineBasicMaterial({ color: 0xffa726, transparent: true, opacity: 0.7 }),
+      ));
+    }
+
+    // Label rods: vertical lines rising from each lane's surface at
+    // the marker ages. Positions are recomputed per frame from the
+    // interpolated signal at age + phase, so a rod tracks the same
+    // physical point of the wave as it travels.
+    const rodGeo = new THREE.BufferGeometry();
+    const rodPos = new Float32Array(monitor.length * TIME_AGES.length * 2 * 3);
+    rodGeo.setAttribute("position", new THREE.BufferAttribute(rodPos, 3));
+    const rodGroup = new THREE.LineSegments(
+      rodGeo, new THREE.LineBasicMaterial({ color: 0xffa726, transparent: true, opacity: 0.85 }),
+    );
+    scene.add(rodGroup);
+    const sampleAge = (s, ageFloat) => {
+      const pos = s.data.length - 1 - ageFloat;
+      const i = Math.max(0, Math.min(s.data.length - 2, Math.floor(pos)));
+      const f = Math.max(0, Math.min(1, pos - i));
+      return s.data[i] * (1 - f) + s.data[i + 1] * f;
+    };
+
     // One relief mesh per lane, rebuilt on each tick.
     const meshes = monitor.map((s, i) => {
       const mat = new THREE.MeshStandardMaterial({
@@ -118,7 +181,7 @@ export default function Horizon3DView({
     const rebuild = () => {
       const { bands: b, bandHeight: bh, focusId: f } = stateRef.current;
       monitor.forEach((s, i) => {
-        const geo = horizonReliefGeometry(s.data, COLS, {
+        const geo = horizonReliefGeometry(s.data.subarray(s.data.length - COLS), COLS, {
           bands: b,
           bandHeight: bh,
           laneWidth: LANE_W,
@@ -178,6 +241,16 @@ export default function Horizon3DView({
       return { wrap, val, lane: s };
     });
 
+    // Time-marker labels: one per marker age, projected each frame —
+    // on the ground ruler in ground mode, on the label lane's rods
+    // in rods mode.
+    const timeLabelEls = TIME_AGES.map((age) => {
+      const el = document.createElement("div");
+      el.className = "h3-time-label";
+      labelsEl.appendChild(el);
+      return { el, age };
+    });
+
     let raf = 0;
     let camX = 0;
     let sway = 0;
@@ -192,21 +265,67 @@ export default function Horizon3DView({
       }
       camera = projection === "iso" ? ortho : persp;
 
+      // Flow: advance the phase while time runs, and slide the tape
+      // toward the back by that fraction of a column. When the next
+      // tick rebuilds the geometry from the shifted buffer and the
+      // phase resets to 0, every column lands where the slide left
+      // it — the motion is continuous, the data really travels.
+      const now = performance.now();
+      const dt = Math.min(100, now - (lastFrameRef.current || now));
+      lastFrameRef.current = now;
+      if (st.running) {
+        phaseRef.current = Math.min(1, phaseRef.current + dt / Math.max(1, st.periodMs));
+      }
+      const phase = phaseRef.current;
+      const flowZ = -phase * COL_D;
+      for (const m of meshes) m.position.z = flowZ;
+      timeGroup.position.z = flowZ;
+      timeGroup.visible = st.timeMarkers === "ground";
+      rodGroup.visible = st.timeMarkers === "rods";
+      if (rodGroup.visible) {
+        let rp = 0;
+        monitor.forEach((s, i) => {
+          const x = laneX(i, monitor.length);
+          for (const age of TIME_AGES) {
+            const h = sampleAge(s, age + phase) * st.bands * st.bandHeight;
+            const z = -(age + phase) * COL_D;
+            rodPos[rp++] = x; rodPos[rp++] = 0; rodPos[rp++] = z;
+            rodPos[rp++] = x; rodPos[rp++] = h + 7; rodPos[rp++] = z;
+          }
+        });
+        rodGeo.attributes.position.needsUpdate = true;
+      }
+
       // Camera: ease toward the focused lane; drift sways gently.
+      // Rotation and elevation are continuous parameters, applied as
+      // offsets around each projection's home position.
       const focusIdx = st.focusId ? monitor.findIndex((s) => s.lane.id === st.focusId) : -1;
       const targetX = focusIdx >= 0 ? laneX(focusIdx, monitor.length) * 0.72 : 0;
       camX += (targetX - camX) * 0.05;
       if (drift) sway += 0.0006;
       const swayA = Math.sin(sway) * 0.05;
+      const rot = THREE.MathUtils.degToRad(st.rotation ?? 0) + swayA;
+      const tilt = THREE.MathUtils.degToRad(st.elevation ?? 0);
       const midZ = -COLS * COL_D * 0.46;
       if (camera === persp) {
-        const dist = focusIdx >= 0 ? 330 : 385;
-        camera.position.set(camX + Math.sin(swayA) * 60, focusIdx >= 0 ? 138 : 165, dist);
+        const horiz = focusIdx >= 0 ? 451 : 506;
+        const baseY = focusIdx >= 0 ? 138 : 165;
+        const elev = Math.max(0.08, Math.min(1.3, Math.atan2(baseY, horiz) + tilt));
+        camera.position.set(
+          camX + Math.sin(rot) * horiz,
+          horiz * Math.tan(elev),
+          midZ + Math.cos(rot) * horiz,
+        );
         camera.lookAt(camX * 0.9, 0, midZ);
       } else {
-        const d = 700;
-        const az = Math.PI / 4 + swayA;
-        camera.position.set(camX + Math.sin(az) * d, d * 0.82, Math.cos(az) * d);
+        const horiz = 790;
+        const elev = Math.max(0.08, Math.min(1.3, Math.atan2(574, horiz) + tilt));
+        const az = Math.PI / 4 + rot;
+        camera.position.set(
+          camX + Math.sin(az) * horiz,
+          horiz * Math.tan(elev),
+          midZ + Math.cos(az) * horiz,
+        );
         camera.lookAt(camX, 0, midZ);
         camera.zoom = focusIdx >= 0 ? 1.25 : 1.0;
         camera.updateProjectionMatrix();
@@ -225,6 +344,25 @@ export default function Horizon3DView({
         const sy = (-v3.y * 0.5 + 0.5) * mount.clientHeight;
         wrap.style.transform = `translate(-50%, -100%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
         wrap.classList.toggle("focus", st.focusId === lane.lane.id);
+      }
+
+      // Project the time-marker labels.
+      const mode = st.timeMarkers;
+      const labelLane = focusIdx >= 0 ? focusIdx : monitor.length - 1;
+      for (const { el, age } of timeLabelEls) {
+        if (mode === "off" || !show) { el.style.display = "none"; continue; }
+        el.style.display = "";
+        el.textContent = `−${Math.round((age * st.periodMs) / 1000)}s`;
+        if (mode === "ground") {
+          v3.set(rulerX, 1.5, -(age + phase) * COL_D);
+        } else {
+          const h = sampleAge(monitor[labelLane], age + phase) * st.bands * st.bandHeight;
+          v3.set(laneX(labelLane, monitor.length), h + 13, -(age + phase) * COL_D);
+        }
+        v3.project(camera);
+        const sx = (v3.x * 0.5 + 0.5) * mount.clientWidth;
+        const sy = (-v3.y * 0.5 + 0.5) * mount.clientHeight;
+        el.style.transform = `translate(-50%, -100%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
       }
 
       renderer.render(scene, camera);
@@ -252,6 +390,12 @@ export default function Horizon3DView({
         m.geometry.dispose();
         m.material.dispose();
       }
+      timeGroup.traverse((o) => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) o.material.dispose();
+      });
+      rodGeo.dispose();
+      rodGroup.material.dispose();
       renderer.dispose();
       mount.removeChild(renderer.domElement);
       labelsEl.innerHTML = "";

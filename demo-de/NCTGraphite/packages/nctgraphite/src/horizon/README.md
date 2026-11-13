@@ -52,5 +52,9 @@ Read from the notebook's own module source:
   each segment wearing its band's colour, so a lane renders as a
   terraced skyline — magnitude read as height and as depth of
   colour at once. Renderer-independent (positions + per-vertex
-  colours out), used by demo-de's horizon3d.html under either a
-  perspective or an isometric camera.
+  colours out), used by demo-de's horizon3d.html under an isometric
+  camera by default (perspective a parameter away). The page makes
+  the tape really travel: it builds the geometry from the newest
+  samples one column per sample, slides the mesh one column-depth
+  toward the back between ticks, and the tick's rebuild lands
+  exactly where the slide left it.

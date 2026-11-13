@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import Horizon3DView from "./Horizon3DView.jsx";
+import Horizon3DView, { COLS as VISIBLE_COLS } from "./Horizon3DView.jsx";
 import {
   ACTIVITY_LANES,
   createMonitor,
@@ -16,13 +16,16 @@ import {
  * terms of d3-js-uses.txt's 3D Spatial frame: the lanes become
  * terraced skylines running away from the viewer, time flowing
  * toward you, each fold of the horizon chart standing as a physical
- * terrace in the band's own colour. Whether such an instrument
- * should be seen in perspective or isometrically is left as a
- * parameter — perspective distorts with depth but gives presence;
- * the isometric camera compares magnitudes undistorted across the
- * whole tape. Operation is the monitor's own, unchanged: 1–8 / A–H
- * focus a lane and the camera travels to it, Space halts time,
- * Esc releases.
+ * terrace in the band's own colour. The default camera is
+ * isometric — it compares magnitudes undistorted across the whole
+ * tape — with perspective one parameter away, and continuous
+ * rotation and elevation parameters on both. The data really
+ * flows: each column travels from the front of the tape to the
+ * back over its life, and time is marked on a ground-plan scale
+ * that travels with it (or, as a setting alternative, by rods
+ * rising from the waves at fixed ages). Operation is the monitor's
+ * own, unchanged: 1–8 / A–H focus a lane and the camera travels
+ * to it, Space halts time, Esc releases.
  */
 
 const SAMPLES = 480;
@@ -40,10 +43,20 @@ const PARAM_DEFS = [
     ],
   },
   {
-    id: "projection", label: "Projection", type: "select", defaultValue: "perspective",
+    id: "projection", label: "Projection", type: "select", defaultValue: "iso",
     options: [
-      { value: "perspective", label: "Perspective" },
       { value: "iso", label: "Isometric" },
+      { value: "perspective", label: "Perspective" },
+    ],
+  },
+  { id: "rotation", label: "Rotation", type: "number", min: -180, max: 180, step: 1, defaultValue: 0 },
+  { id: "elevation", label: "Elevation", type: "number", min: -25, max: 50, step: 1, defaultValue: 0 },
+  {
+    id: "timeMarkers", label: "Time markers", type: "select", defaultValue: "ground",
+    options: [
+      { value: "ground", label: "Ground plan" },
+      { value: "rods", label: "Label rods" },
+      { value: "off", label: "Off" },
     ],
   },
   { id: "running", label: "Running", type: "boolean", defaultValue: true },
@@ -91,6 +104,8 @@ const css = `
 .h3-label.focus .h3-chip { background:#ffa726; color:#0b0e10; font-weight:bold; }
 .h3-name { font-size:9.5px; letter-spacing:1.5px; color:#cfd8dc; margin-top:3px; text-shadow:0 1px 5px #000; }
 .h3-val { font-family:Consolas, monospace; font-size:11px; color:#a9f0dd; text-shadow:0 1px 5px #000; }
+.h3-time-label { position:absolute; left:0; top:0; font-family:Consolas, monospace; font-size:10px; color:#ffa726;
+  text-shadow:0 1px 5px #000; pointer-events:none; will-change:transform; white-space:nowrap; }
 .figcap { margin:8px 20px 0; font-size:11.5px; line-height:17px; color:#8fa3ab; }
 .figcap b { color:#cfd8dc; letter-spacing:1.5px; font-size:10.5px; }
 .print { margin:24px 20px 34px; border-top:3px double #45565e; padding-top:18px; color:#d7dee2; font-family:Georgia, 'Times New Roman', serif; }
@@ -158,7 +173,7 @@ export default function Horizon3DApp() {
   const focus = monitor.find((s) => s.lane.id === focusId) ?? null;
   const busiest = monitor.reduce((a, b) => (b.current > a.current ? b : a), monitor[0]);
   const quietest = monitor.reduce((a, b) => (b.current < a.current ? b : a), monitor[0]);
-  const windowSec = Math.round((SAMPLES * periodMs) / 1000);
+  const windowSec = Math.round((VISIBLE_COLS * periodMs) / 1000);
 
   return (
     <div className="h3-page">
@@ -177,10 +192,12 @@ export default function Horizon3DApp() {
       </div>
       <p className="h3-sub">
         The horizon activity monitor in space: eight labelled lanes recede into the dark,
-        time flowing toward you, each lane a terraced skyline whose folds stand as solid
-        terraces in the horizon chart's own colours. Load is read as height <i>and</i> as
-        depth of colour. The camera is a question — perspective, or isometric — and is
-        left as a parameter. Keys <b>1–8</b> focus a lane; <b>Space</b> halts time.
+        each lane a terraced skyline whose folds stand as solid terraces in the horizon
+        chart's own colours. Load is read as height <i>and</i> as depth of colour. The
+        data really flows — each column is born at the front and travels to the back —
+        and a time scale on the ground plan travels with it. The camera defaults to
+        isometric, with perspective a parameter away and continuous rotation and
+        elevation beside it. Keys <b>1–8</b> focus a lane; <b>Space</b> halts time.
       </p>
       <div className="h3-main">
         <div className="h3-stage">
@@ -189,8 +206,13 @@ export default function Horizon3DApp() {
             bands={bands}
             bandHeight={bandHeight}
             tickCount={tickCount}
+            periodMs={periodMs}
+            running={running}
             focusId={focusId}
             projection={String(values.projection)}
+            rotation={Number(values.rotation)}
+            elevation={Number(values.elevation)}
+            timeMarkers={String(values.timeMarkers)}
             drift={Boolean(values.drift)}
             labelsOn={Boolean(values.labelsOn)}
             onFocus={toggleFocus}
@@ -231,9 +253,9 @@ export default function Horizon3DApp() {
       </div>
       <p className="figcap">
         <b>FIG. 1</b> — The activity monitor as terrain: {periodMs} ms a sample,{" "}
-        {windowSec} seconds on the tape, the newest moment at the front of each lane.
-        Each column of the skyline is terraced at the horizon chart's folds — the same
-        bands, the same colours, standing up.
+        {windowSec} seconds on the tape, the newest moment born at the front of each
+        lane and travelling to the back. Each column of the skyline is terraced at the
+        horizon chart's folds — the same bands, the same colours, standing up.
       </p>
 
       <div className="print">
@@ -254,24 +276,24 @@ export default function Horizon3DApp() {
               the folds become what they always implied — terraces. Each moment of a lane's
               history is a column; each column is sliced at the fold heights; each slice
               wears its band's colour. The value is now told twice, in height and in hue,
-              and the whole two minutes of a lane's life is a skyline you can read from
-              across the room: the high dark ridge is the busy hour, the low pale flats
-              are the idle night.
+              and a lane's visible life is a skyline you can read from across the room:
+              the high dark ridge is the busy spell, the low pale flats are the idle
+              night. Nor is the skyline a repaint: each column is one sample, born at
+              the front of the tape and travelling steadily to the back, so a peak is a
+              physical thing you can watch make the journey.
             </p>
           </div>
           <div>
-            <h3>PERSPECTIVE, OR ISOMETRIC</h3>
+            <h3>ISOMETRIC, AND PERSPECTIVE</h3>
             <p>
-              Whether an instrument like this should be seen in perspective is a genuine
-              question, and the page declines to settle it in advance. Perspective gives
-              the lanes presence — the near moment looms, history diminishes — but it
-              taxes comparison: a column far down the tape is the same height as one at
-              the front and does not look it. The isometric camera, orthographic and
-              corner-on, abolishes the tax: equal values stand equal anywhere on the
-              tape, at the cost of the scene's depth and drama. Both cameras are here, one
-              parameter apart, because the environment's arrangement of 2D and 3D — the
-              open question in <i>d3-js-uses.txt</i> — will be settled by looking, not by
-              argument.
+              The default camera is isometric, and on reflection that is right for an
+              instrument: the isometric camera, orthographic and corner-on, abolishes
+              the comparison tax — equal values stand equal anywhere on the tape.
+              Perspective remains one parameter away, for when presence matters more:
+              the near moment looms, history diminishes, and a column far down the tape
+              is the same height as one at the front without looking it. Around both
+              cameras sit continuous rotation and elevation parameters, so the view is
+              not two presets but a space of viewpoints the hand can travel.
             </p>
           </div>
           <div>
@@ -282,9 +304,12 @@ export default function Horizon3DApp() {
               means the other lanes dim and the camera travels along the row to stand
               before the chosen skyline, while the readout states its present value, its
               window's mean and peak. Space halts time in space as it did on the flat
-              tape. The lanes remain synthetic walks with each quantity's temperament;
-              bound to real counters, this is what the distribution's activity surface
-              could feel like from inside it.
+              tape. Time itself is marked on the ground plan: a scale beside the lanes,
+              ticked and labelled in seconds, travelling with the tape — or, as a
+              setting alternative, by rods that rise from each wave at fixed ages,
+              labelled along one lane. The lanes remain synthetic walks with each
+              quantity's temperament; bound to real counters, this is what the
+              distribution's activity surface could feel like from inside it.
             </p>
           </div>
         </div>
