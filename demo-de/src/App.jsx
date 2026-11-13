@@ -11,6 +11,8 @@
 // plain CSS so the proportions can be tuned before anything is wired to
 // the vendored components.
 
+import PanelizationView from './PanelizationView.jsx';
+
 const COLUMNS = 6;
 const GAP_PX = 24;
 const BASELINE_PX = 16;
@@ -45,6 +47,20 @@ export default function App() {
             Column {i + 1}
           </div>
         ))}
+      </section>
+      <section style={{ marginTop: 32 }}>
+        <h2 style={{ fontSize: 16, marginBottom: 4 }}>
+          Panelization — iGeo tutorial 59, ported to TypeScript
+        </h2>
+        <p style={{ maxWidth: 560, lineHeight: `${BASELINE_PX * 1.5}px`, marginTop: 0 }}>
+          A swarm of boids (orange) skims a NURBS sheet; the hexagonal
+          panels tilt their funnels and shift color where the swarm
+          pushes them. The simulation lives in the NCTGraphite copy
+          (src/panelization); this view is three.js.
+        </p>
+        <div style={{ border: '1px solid #234', background: '#04080a' }}>
+          <PanelizationView />
+        </div>
       </section>
     </main>
   );

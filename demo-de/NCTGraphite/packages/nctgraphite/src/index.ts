@@ -256,3 +256,61 @@ export type {
 export { buildLayoutCatalog, editablePropsFor } from './xml/NCTGraphiteLayoutCatalog.js';
 export type { LayoutCatalogEntry } from './xml/NCTGraphiteLayoutCatalog.js';
 export { NCTGraphiteLayoutView, parseNCTOptionList } from './xml/NCTGraphiteLayoutReact.js';
+
+export {
+  PanelNode,
+  PanelAgent,
+  SwarmBoid,
+  PanelizationSimulation,
+  mulberry32,
+} from './panelization/NCTGraphitePanelization.js';
+export type {
+  PanelColor,
+  PanelGeometry,
+  PanelAttractor,
+  PanelizationConfig,
+  PanelizationMesh,
+} from './panelization/NCTGraphitePanelization.js';
+export {
+  NCTGraphiteNurbsSurface,
+  createFlatSheetSurface,
+  createDemoSheetSurface,
+} from './panelization/NCTGraphiteNurbsSurface.js';
+export type {
+  NCTGraphiteNurbsSurfaceSpec,
+  NCTGraphiteSurfaceFrame,
+} from './panelization/NCTGraphiteNurbsSurface.js';
+export {
+  vec3,
+  vAdd,
+  vSub,
+  vScale,
+  vMid,
+  vDot,
+  vCross,
+  vLen,
+  vDist,
+  vUnit,
+  vWithLen,
+} from './panelization/NCTGraphiteVec3.js';
+export type { NCTGraphiteVec3 } from './panelization/NCTGraphiteVec3.js';
+
+export {
+  makeDataTree,
+  groupToTree,
+  treeItems,
+  treeBranch,
+  flattenTree,
+  graftTree,
+  simplifyTree,
+  mapTree,
+  treeStats,
+  formatDataPath,
+  compareDataPaths,
+} from './datatree/NCTGraphiteDataTree.js';
+export type {
+  DataPath,
+  DataBranch,
+  DataTree,
+  DataTreeStats,
+} from './datatree/NCTGraphiteDataTree.js';

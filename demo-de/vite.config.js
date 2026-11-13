@@ -2,17 +2,29 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
 
-// demo-de is two things at once:
-//  - index.html — the original vanilla key-clicks demo (sim.js / style.css),
-//    served as a plain static page and left untouched by this build.
-//  - react.html — the React app entry (src/main.jsx), built by Vite.
-// Keeping the React entry under its own name is what lets both coexist.
+// demo-de is a multi-page lab served by ONE Vite server:
+//
+//  - index.html      — the original vanilla key-clicks demo (sim.js /
+//                      style.css). Left untouched; the dev server
+//                      serves it as a plain page at `/`.
+//  - react.html      — the React shell (src/main.jsx): grid-systems
+//                      foundation + the panelization view.
+//  - definition.html — the Grasshopper-style definition strip
+//                      (src/definition-main.jsx).
+//
+// Pages are separate explorations in different directions; the ones
+// that prove out get promoted into the main file later. `appType:
+// 'mpa'` keeps each page at its own URL with no SPA fallback, and
+// the build emits the two React pages (index.html stays a source
+// file served by the dev server / any static host of the repo).
 export default defineConfig({
   plugins: [react()],
+  appType: 'mpa',
   build: {
     rollupOptions: {
       input: {
         react: fileURLToPath(new URL('./react.html', import.meta.url)),
+        definition: fileURLToPath(new URL('./definition.html', import.meta.url)),
       },
     },
   },
