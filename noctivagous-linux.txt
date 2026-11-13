@@ -11,7 +11,15 @@ codebase in TypeScript to be ported to a real desktop environment.
 dual mode:
    - based on key-clicks (bimodal control ui theory).
    - mouse-click work
-   
+
+keyboard modes 
+	- key-click mode - navigating the UI
+	- text entry mode - entering text (using the keyboard for text).
+
+the keypilot chrome extension will be a major 
+reference for handling different situations as
+well as Floating Marker for its "sparse database
+lookup" for key-clicks
 
 ----
 

@@ -1,6 +1,8 @@
 # Dependencies
 node_modules/
 
+refs-scrapbook/
+
 # Vite build output
 dist/
 dist-ssr/
