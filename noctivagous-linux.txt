@@ -6,6 +6,9 @@ in native framework.
 	- tools for AI researchers, native
 	- app/development framework has graphs, algorithms built in
 	of all kinds.
+		- much of the noctivagous linux desktop environment
+		will be driven by live graphs. and the File Navigator
+		will be rendering from a graph.
 	- automatically fetches and sorts models in manager 
 	from existing providers, with logos, modalities.
 - built on top of debian (likely)
@@ -54,3 +57,7 @@ Paramorphic Components Runtime bridges to system framework.
 - built-in support for AI - mcp servers, sandboxing
 in settings.
 - fork of Gnome -
+
+Apps
+	- example app: photo editor with many AI features
+	and operations in it. 
