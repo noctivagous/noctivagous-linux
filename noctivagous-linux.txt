@@ -8,6 +8,13 @@ in native framework.
 - built on top of debian (likely)
 - MetaFont utilized (likely)
 
+Commonly Needed Managers (GUI)
+	separate apps that manage versions, packages,
+	dependences.
+	Python
+	Node
+	PHP
+
 UI
 - custom layout engine, noct-layout-engine.
 	- base layer: noct-layout-engine
@@ -21,6 +28,12 @@ when necessary.
 
 File Navigator
 - Git in the File Navigator UI.
+
+Graphics
+- SVG-N - Noctivagous SVG, based off .fmarker files from
+Floating Marker that degrade to base SVG, are viewable
+with hidden tags.  Will support mesh gradients, alternative
+shading methods.
 
 App Framework
 - dedicated to bases like paramorphic components
