@@ -65,7 +65,7 @@ export const OBJECTS = [
   { id: "definition", name: "Definition", group: "instruments",
     blurb: "The Grasshopper-style definition: nodes and wires, geometry as a value travelling the graph." },
   { id: "knot", name: "Trefoil data knot", group: "graphs",
-    blurb: "A trefoil whose parts contain data — eight arcs of one closed curve, each holding a system's datum, its thickness the size of what it holds. Hover a part, then F zooms into it." },
+    blurb: "A trefoil whose parts contain data — eight arcs of one closed curve, each holding a system's datum; the tube is one continuous surface that swells and narrows with the size of what each part holds. Hover a part, then F zooms into it." },
   { id: "crystal", name: "Living crystal", group: "graphs",
     blurb: "An octahedron that is alive: its eight faces carry eight values, each face's distance from the centre set by its value, so the shape is the chart. It turns slowly on its pedestal, and the faces regrow as the values drift." },
   { id: "tree", name: "Data tree", group: "graphs",

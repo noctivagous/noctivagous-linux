@@ -1735,14 +1735,31 @@ export default function SpaceApp() {
                       The DATA KNOT works by a new convention: a trefoil is one closed curve, and
                       here its tube is glass because it contains things — the arc is divided into
                       eight parts, each part holding one datum of a system's life (ingress, cache,
-                      render, index, queue, store, sync, egress), the tube's thickness the size of
-                      what the part holds, a bright core ghosting through the glass. Make the knot
+                      render, index, queue, store, sync, egress). The tube is ONE CONTINUOUS
+                      SURFACE whose girth swells and narrows with the size of what each part
+                      holds — the change blended smoothly across each boundary, so a part's
+                      share reads along the curve's whole length, not at a marker. Make the knot
                       current and its parts become addresses: hover one to name it, and F zooms
                       the camera into that part of the curve to read what it carries. D backs out
                       to the knot again. Two further knots stand on pedestals at the rim as pure
                       atmosphere — a (4,3) torus knot and a cinquefoil — turning slowly, holding
                       nothing, there for the feel of the place. Knot forms after the classic
                       torus-knot parametrizations; see Stemkoski's Parameterized Knots gallery.
+                    </p>
+                    <p>
+                      The knot's surface is a SWEEP, and the sweep is a general instrument here:
+                      a 2D contour carried along a 3D path. At each step the contour sits in the
+                      plane given by the path's PARALLEL-TRANSPORT frame — each frame turned by
+                      the smallest rotation from the last, never spun by the curve's own torsion
+                      — and the cross-section may SCALE, ROTATE and SHEAR at every vertex, so a
+                      single operation yields tapers, drill-bit twists and sheared tubes as
+                      readily as plain ones. The data knot is a circular contour swept along the
+                      trefoil with its radius driven by the data; the rim knots are the same
+                      sweep wearing a gentle periodic swell for a profile. Ported to TypeScript
+                      as sweeps.js from Linas Vepstas's GLE tubing and extrusion library (1991).
+                      GLE's JOIN STYLES — its mitered, rounded and beveled geometry for sharp
+                      path corners — are the part not yet ported: a sweep here rounds a corner
+                      only as finely as the path itself is sampled.
                     </p>
                     <p>
                       Crystals work two ways here. At the eastern rim stands the CRYSTAL CLUSTER —

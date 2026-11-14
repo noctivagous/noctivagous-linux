@@ -45,12 +45,12 @@ import {
   KNOT_FORMS,
   KNOT_PARTS,
   torusKnotPoint,
-  partArc,
   partMidT,
   radiusFor,
   partById,
   partShare,
 } from "./knots.js";
+import { tubeAlong } from "./sweeps.js";
 import {
   buildCrystal,
   formPlanes,
@@ -870,86 +870,154 @@ export const KNOT_SCALE = 6;
 /** Height of the data knot's centre above its plot. */
 export const KNOT_CY = 12.5;
 
-class KnotCurve extends THREE.Curve {
-  constructor(p, q, scale) {
-    super();
-    this.p = p; this.q = q; this.scale = scale;
-  }
-  getPoint(t, target = new THREE.Vector3()) {
-    const [x, y, z] = torusKnotPoint(this.p, this.q, t * Math.PI * 2);
-    return target.set(x * this.scale, z * this.scale, y * this.scale);
-  }
+/** A sweeps.js geometry payload as a three.js BufferGeometry. */
+function sweepGeometry(g) {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(g.positions, 3));
+  geo.setAttribute("normal", new THREE.Float32BufferAttribute(g.normals, 3));
+  geo.setAttribute("uv", new THREE.Float32BufferAttribute(g.uvs, 2));
+  if (g.colors) geo.setAttribute("color", new THREE.Float32BufferAttribute(g.colors, 3));
+  geo.setIndex(g.indices);
+  return geo;
 }
 
-/** One part's arc of a knot, as a curve for its tube segment. */
-class KnotArcCurve extends THREE.Curve {
-  constructor(p, q, t0, t1, scale) {
-    super();
-    this.p = p; this.q = q; this.t0 = t0; this.t1 = t1; this.scale = scale;
+/* The data knot's sweep sampling: 256 rings around the loop, 12
+ * points around the tube. The radius and the hue are BLENDED
+ * across each part boundary over ±3% of the loop (smoothstepped,
+ * so the blend is C1 in radius — no step, no crease, at a seam),
+ * and the parts' weights below drive both, so girth and colour
+ * change together exactly where one part hands over to the next. */
+const KNOT_RINGS = 256;
+const KNOT_RADIAL = 12;
+const KNOT_BLEND = 0.03;
+
+const smooth01 = (x) => {
+  x = Math.min(1, Math.max(0, x));
+  return x * x * (3 - 2 * x);
+};
+
+/** [[partIndex, weight], …] at loop fraction tau (0..1). */
+function knotPartBlend(tau) {
+  const count = KNOT_PARTS.length;
+  const u = (((tau % 1) + 1) % 1) * count; // position in part units
+  const w = KNOT_BLEND * count; // blend half-window, same units
+  const own = Math.floor(u) % count;
+  const frac = u - Math.floor(u);
+  if (frac < w) {
+    const s = smooth01((frac + w) / (2 * w));
+    return [[(own + count - 1) % count, 1 - s], [own, s]];
   }
-  getPoint(t, target = new THREE.Vector3()) {
-    const [x, y, z] = torusKnotPoint(this.p, this.q, this.t0 + (this.t1 - this.t0) * t);
-    return target.set(x * this.scale, z * this.scale, y * this.scale);
+  if (frac > 1 - w) {
+    const s = smooth01((frac - (1 - w)) / (2 * w));
+    return [[own, 1 - s], [(own + 1) % count, s]];
   }
+  return [[own, 1]];
 }
 
 /**
- * The DATA KNOT. Its tube is built per part — one TubeGeometry per
- * arc, radius from the part's value (knots.js radiusFor) — and,
- * per the opacity law, the tube is SEMI-TRANSPARENT because it
- * contains data: glass in the part's hue at 0.45, with a bright
- * solid DATA CORE (a bead at the arc midpoint) ghosting through.
- * The part materials are NOT in the Rig's glow list: this component
- * drives them itself, so a hovered or focused part can brighten
- * beyond the knot's own tier. The whole knot turns slowly on its
- * own (a living sculpture, independent of the turntable), pausing
- * while it is inspected or a part is zoomed. Parts report their
- * hover through ctx (the App gates it on the knot being current).
+ * The DATA KNOT. One continuous SWEEP (sweeps.js): a circular
+ * contour carried around the trefoil by parallel transport, its
+ * radius at every ring set by the part that owns that arc —
+ * radiusFor on the part's value — blended across the boundaries,
+ * so the curve itself swells and narrows with what its parts
+ * hold, along one surface with no joins. Per-vertex colours carry
+ * the parts' hues through the same blend. (There used to be a
+ * bright core bead at each arc's midpoint, faking the emphasis
+ * the radius now states directly; the beads are gone.) Per the
+ * opacity law the tube is SEMI-TRANSPARENT because it contains
+ * data: glass at 0.45, clearing toward 0.72 while a part is
+ * addressed. The material is NOT in the Rig's glow list: this
+ * component drives it itself — the knot's own tier lifts the
+ * whole surface through the material colour, and a hovered or
+ * focused part brightens past it by REWRITING THE VERTEX COLOURS
+ * (the data tree's trick): the addressed part's rings ×2.1, the
+ * others ×0.55, base colours kept to restore. The whole knot
+ * turns slowly on its own (a living sculpture, independent of
+ * the turntable), pausing while it is inspected or a part is
+ * zoomed. Parts are addressed off the single mesh: the sweep
+ * stores each vertex's arc fraction as uv.x, so an intersection
+ * names its part directly (the App gates the report on the knot
+ * being current).
  */
 function MiniKnot({ lib, matFor, ctx }) {
   const spin = useRef(null);
-  const parts = useMemo(() => {
+  const lastHi = useRef(undefined);
+  const data = useMemo(() => {
     const form = KNOT_FORMS.trefoil;
-    return KNOT_PARTS.map((part, i) => {
-      const [t0, t1] = partArc(i);
-      const radius = radiusFor(part.value);
-      const geo = new THREE.TubeGeometry(
-        new KnotArcCurve(form.p, form.q, t0, t1, KNOT_SCALE), 42, radius, 10, false,
-      );
-      const mid = torusKnotPoint(form.p, form.q, partMidT(i));
-      const hue = new THREE.Color().setHSL(part.hue / 360, 0.55, 0.55);
-      const glass = new THREE.MeshStandardMaterial({
-        color: hue, roughness: 0.25, metalness: 0.1,
-        transparent: true, opacity: 0.45, depthWrite: false,
-        emissive: hue, emissiveIntensity: 0,
-      });
-      const core = new THREE.MeshStandardMaterial({
-        color: hue, roughness: 0.3, metalness: 0.05,
-        emissive: hue, emissiveIntensity: 0.5,
-      });
-      return {
-        part, geo, radius, glass, core,
-        midV: new THREE.Vector3(mid[0] * KNOT_SCALE, mid[2] * KNOT_SCALE, mid[1] * KNOT_SCALE),
-      };
+    const radii = KNOT_PARTS.map((p) => radiusFor(p.value));
+    const hues = KNOT_PARTS.map((p) => new THREE.Color().setHSL(p.hue / 360, 0.55, 0.55));
+    const path = [];
+    for (let i = 0; i < KNOT_RINGS; i++) {
+      const [x, y, z] = torusKnotPoint(form.p, form.q, (i / KNOT_RINGS) * Math.PI * 2);
+      path.push([x * KNOT_SCALE, z * KNOT_SCALE, y * KNOT_SCALE]);
+    }
+    const swept = tubeAlong(path, (t) => {
+      let r = 0;
+      for (const [k, w] of knotPartBlend(t)) r += w * radii[k];
+      return r;
+    }, {
+      radialSegments: KNOT_RADIAL,
+      closed: true,
+      colorAt: (t) => {
+        let r = 0, g = 0, b = 0;
+        for (const [k, w] of knotPartBlend(t)) {
+          const c = hues[k];
+          r += w * c.r; g += w * c.g; b += w * c.b;
+        }
+        return [r, g, b];
+      },
     });
+    const geo = sweepGeometry(swept);
+    const mat = new THREE.MeshStandardMaterial({
+      vertexColors: true, roughness: 0.25, metalness: 0.1,
+      transparent: true, opacity: 0.45, depthWrite: false,
+    });
+    // Which part owns each ring (the seam ring, KNOT_RINGS, closes
+    // the loop inside the last part's arc).
+    const ringPart = new Int16Array(KNOT_RINGS + 1);
+    for (let r = 0; r <= KNOT_RINGS; r++) {
+      ringPart[r] = Math.min(
+        KNOT_PARTS.length - 1,
+        Math.floor((r / KNOT_RINGS) * KNOT_PARTS.length),
+      );
+    }
+    return {
+      geo, mat, ringPart,
+      baseColors: Float32Array.from(swept.colors),
+      contourPts: KNOT_RADIAL + 1,
+    };
   }, []);
 
   useEffect(() => {
     ctx.frame.knotSpinRef = spin.current;
     return () => {
       if (ctx.frame.knotSpinRef === spin.current) ctx.frame.knotSpinRef = null;
-      for (const p of parts) { p.geo.dispose(); p.glass.dispose(); p.core.dispose(); }
+      data.geo.dispose();
+      data.mat.dispose();
     };
-  }, [ctx, parts]);
+  }, [ctx, data]);
+
+  const applyPartColours = (hi) => {
+    const attr = data.geo.getAttribute("color");
+    const C = data.contourPts;
+    for (let r = 0; r < data.ringPart.length; r++) {
+      const pid = KNOT_PARTS[data.ringPart[r]].id;
+      const f = !hi ? 1 : pid === hi ? 2.1 : 0.55;
+      for (let j = 0; j < C; j++) {
+        const o = (r * C + j) * 3;
+        attr.array[o] = data.baseColors[o] * f;
+        attr.array[o + 1] = data.baseColors[o + 1] * f;
+        attr.array[o + 2] = data.baseColors[o + 2] * f;
+      }
+    }
+    attr.needsUpdate = true;
+  };
 
   useFrame((_, dtRaw) => {
     const dt = Math.min(0.05, dtRaw || 0.016);
     const st = ctx.stateRef.current;
     const paused = st.inspectedId === "knot" || Boolean(st.partFocus && st.partFocus.partId);
     if (spin.current && !paused && st.ambientOn !== false) spin.current.rotation.y += dt * 0.25;
-    // The knot's own glow tier is the parts' base light; a hovered
-    // part lifts past it, a focused part lifts further — and its
-    // glass clears as it brightens, so the core reads through.
     const base = glowLevel({
       entered: st.cardId === "knot",
       current: st.currentId === "knot",
@@ -958,16 +1026,35 @@ function MiniKnot({ lib, matFor, ctx }) {
     });
     const hov = st.currentId === "knot" ? st.partHoverId : null;
     const foc = st.partFocus && st.partFocus.objectId === "knot" ? st.partFocus.partId : null;
-    for (const p of parts) {
-      const boost = p.part.id === foc ? 0.55 : p.part.id === hov ? 0.4 : 0;
-      p.glass.emissiveIntensity = damp(p.glass.emissiveIntensity, base * 0.7 + boost, 10, dt);
-      const targetOpacity = p.part.id === hov || p.part.id === foc ? 0.72 : 0.45;
-      p.glass.opacity = damp(p.glass.opacity, targetOpacity, 10, dt);
-      p.core.emissiveIntensity = damp(p.core.emissiveIntensity, 0.5 + base * 0.5 + boost, 10, dt);
+    // The knot's own tier lifts the whole surface (the material
+    // colour multiplies the vertex colours); the addressed part
+    // lifts past it in the vertex colours themselves, rewritten
+    // only when the addressed part changes (the tree's pattern).
+    const lift = damp(data.mat.color.r, 1 + base * 0.6, 10, dt);
+    data.mat.color.setScalar(lift);
+    data.mat.opacity = damp(data.mat.opacity, hov || foc ? 0.72 : 0.45, 10, dt);
+    const hi = foc || hov || null;
+    if (hi !== lastHi.current) {
+      lastHi.current = hi;
+      applyPartColours(hi);
     }
   });
 
   const st = () => ctx.stateRef.current;
+  const reportPart = (e) => {
+    if (!st().onPartHover) return;
+    let t = e.uv ? e.uv.x : null;
+    if (t == null && e.face) {
+      t = Math.floor(e.face.a / data.contourPts) / KNOT_RINGS;
+    }
+    if (t == null) return;
+    const idx = Math.min(
+      KNOT_PARTS.length - 1,
+      Math.floor((((t % 1) + 1) % 1) * KNOT_PARTS.length),
+    );
+    st().onPartHover(KNOT_PARTS[idx].id);
+  };
+  const clearPart = () => { if (st().onPartHover) st().onPartHover(null); };
   return (
     <group>
       <mesh position={[0, 2, 0]}>
@@ -975,18 +1062,13 @@ function MiniKnot({ lib, matFor, ctx }) {
         <primitive object={matFor(0x27313a, { rough: 0.85 })} attach="material" />
       </mesh>
       <group ref={spin} position={[0, KNOT_CY, 0]}>
-        {parts.map((p) => (
-          <group
-            key={p.part.id}
-            onPointerOver={() => { if (st().onPartHover) st().onPartHover(p.part.id); }}
-            onPointerOut={() => { if (st().onPartHover) st().onPartHover(null); }}
-          >
-            <mesh geometry={p.geo} material={p.glass} />
-            <mesh position={p.midV} material={p.core}>
-              <sphereGeometry args={[p.radius * 1.02, 14, 14]} />
-            </mesh>
-          </group>
-        ))}
+        <mesh
+          geometry={data.geo}
+          material={data.mat}
+          onPointerOver={reportPart}
+          onPointerMove={reportPart}
+          onPointerOut={clearPart}
+        />
       </group>
     </group>
   );
@@ -994,23 +1076,39 @@ function MiniKnot({ lib, matFor, ctx }) {
 
 /**
  * Atmosphere knots (SCENERY): the gallery's other two forms as
- * single-tube sculptures on low pedestals at the rim — a (4,3)
+ * single-sweep sculptures on low pedestals at the rim — a (4,3)
  * torus knot in teal at the south-east rim, a cinquefoil in amber
  * at the north-west. Dim emissive, thin tubes, turning slowly at
- * slightly different rates. They hold no data and take no address:
+ * slightly different rates. Each is a sweep too (sweeps.js), with
+ * a gentle radius profile — base 0.8 swelling by ±16% through
+ * `swell` full waves around the loop, phase-free constants on the
+ * table below — so the technique shows on the scenery as well as
+ * on the citizen. They hold no data and take no address:
  * no pointer handlers, and they render inside the scenery stratum,
  * so the SCENERY layer hides them with the platter.
  */
 const ATMOS_KNOTS = [
-  { form: "torus43", pos: [133.5, -97], tilt: 0.55, rate: 0.12, color: 0x9fd8cf, emissive: 0x2e7d74, ei: 0.5 },
-  { form: "cinquefoil", pos: [-133.5, 97], tilt: 0.85, rate: -0.09, color: 0xd8b25c, emissive: 0xffa726, ei: 0.35 },
+  { form: "torus43", pos: [133.5, -97], tilt: 0.55, rate: 0.12, color: 0x9fd8cf, emissive: 0x2e7d74, ei: 0.5, swell: 3 },
+  { form: "cinquefoil", pos: [-133.5, 97], tilt: 0.85, rate: -0.09, color: 0xd8b25c, emissive: 0xffa726, ei: 0.35, swell: 5 },
 ];
+const ATMOS_BASE_R = 0.8;
+const ATMOS_SWELL = 0.16;
 
 function AtmosphereKnots({ ctx }) {
   const spins = useRef([]);
   const geos = useMemo(() => ATMOS_KNOTS.map((k) => {
     const f = KNOT_FORMS[k.form];
-    return new THREE.TubeGeometry(new KnotCurve(f.p, f.q, 3.4), 220, 0.8, 10, true);
+    const SAMPLES = 220;
+    const path = [];
+    for (let i = 0; i < SAMPLES; i++) {
+      const [x, y, z] = torusKnotPoint(f.p, f.q, (i / SAMPLES) * Math.PI * 2);
+      path.push([x * 3.4, z * 3.4, y * 3.4]);
+    }
+    return sweepGeometry(tubeAlong(
+      path,
+      (t) => ATMOS_BASE_R * (1 + ATMOS_SWELL * Math.sin(t * Math.PI * 2 * k.swell)),
+      { radialSegments: 10, closed: true },
+    ));
   }), []);
   useEffect(() => () => { for (const g of geos) g.dispose(); }, [geos]);
   useFrame((_, dtRaw) => {
