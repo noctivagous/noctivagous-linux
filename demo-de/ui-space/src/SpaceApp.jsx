@@ -67,6 +67,13 @@ import {
   partById,
   partShare,
 } from "./knots.js";
+import { buildDataTree, dataBranchById } from "./lsystems.js";
+import { FLARE } from "../../src/sunburst-data.js";
+
+// Slice 7: the data tree's own bookkeeping for panels and readout —
+// the same buildDataTree(FLARE) the view grows in the scene
+// (deterministic, so the two builds agree node for node).
+const DATA_TREE = buildDataTree(FLARE);
 
 import {
   NCTParameterPanel,
@@ -76,7 +83,7 @@ import {
 /**
  * UI Space — an early form of the environment.
  *
- * Eleven of the lab's frames stand on one platter as miniature
+ * Twelve of the lab's frames stand on one platter as miniature
  * citizens, and for the first time they are not pages to visit but
  * objects in a space. Addressing is the key-click model: the
  * object under the cursor is the addressee, F is the click, Tab
@@ -199,6 +206,7 @@ const KEY_GROUPS = [
       ["C / I", "here I inspects and C copies — KeyPilot's stock I-copy lives on C in this layout"],
       ["F on a card / tray", "inspects it, like I"],
       ["knot parts", "with the knot current, hover a part — F zooms into it, D backs out to the knot"],
+      ["tree branches", "with the tree current, hover a depth-1 branch — F zooms to the subtree, D backs out to the tree"],
     ],
   },
 ];
@@ -380,6 +388,11 @@ export default function SpaceApp() {
   // and the part under the cursor while the knot is current.
   const [partFocus, setPartFocus] = useState(() => createPartFocus());
   const [partHoverId, setPartHoverId] = useState(null);
+  // Slice 7: the data tree's depth-1 branch under the cursor while
+  // the tree is current — the branch analogue of partHoverId, and
+  // branch focus reuses the partFocus state above ({objectId:
+  // "tree", partId: the depth-1 node's id}).
+  const [branchHoverId, setBranchHoverId] = useState(null);
   const [dynText, setDynText] = useState("");
   const dynTimer = useRef(null);
   // The overlay shell: parameters and the guide are stationary
@@ -442,10 +455,20 @@ export default function SpaceApp() {
     setPartHoverId(currentId === "knot" ? partId : null);
   };
 
-  // Part focus belongs to the knot being current: if the current
-  // thing changes away from the focused object, the focus ends.
+  // A tree branch is hovered only while the tree is current — the
+  // branches are sub-addresses of the current tree, like the knot's
+  // parts are of the knot. The view reports every branch crossing.
+  const onBranchHover = (branchId) => {
+    setBranchHoverId(currentId === "tree" ? branchId : null);
+  };
+
+  // Part/branch focus belongs to its object being current: if the
+  // current thing changes away from the focused object, the focus
+  // ends. The D/Esc chain treats both at ONE level (see doBack):
+  // sub-address focus → patch → card → selection.
   useEffect(() => {
     if (currentId !== "knot") setPartHoverId(null);
+    if (currentId !== "tree") setBranchHoverId(null);
     setPartFocus((f) => (f.partId && f.objectId !== currentId ? endPartFocus() : f));
   }, [currentId]);
 
@@ -494,6 +517,7 @@ export default function SpaceApp() {
       hoverId,
       currentId,
       partId: partHoverId && partById(partHoverId) ? partHoverId : null,
+      branchId: branchHoverId && dataBranchById(DATA_TREE, branchHoverId) ? branchHoverId : null,
       inspectIds: [...MEDIA_IDS, "clipboard"],
     });
     switch (action.type) {
@@ -503,6 +527,14 @@ export default function SpaceApp() {
       case "partFocus":
         // F on a hovered part of the knot zooms INTO the part —
         // the part focus, one level deeper than entering the knot.
+        setCurrentId(action.targetId);
+        setPartFocus(beginPartFocus(partFocus, action.targetId, action.partId));
+        setCardId(null);
+        return;
+      case "branchFocus":
+        // F on a hovered depth-1 branch of the tree zooms INTO
+        // the subtree — the same focus state and the same level
+        // of the release chain as the knot's part focus.
         setCurrentId(action.targetId);
         setPartFocus(beginPartFocus(partFocus, action.targetId, action.partId));
         setCardId(null);
@@ -520,8 +552,10 @@ export default function SpaceApp() {
     }
   };
   const doBack = () => {
-    // The release chain: a part focus backs out to its knot first,
-    // then a live patch, then the entered card, then the selection.
+    // The release chain: a sub-address focus (a knot part, a tree
+    // branch — one level, one state) backs out to its object
+    // first, then a live patch, then the entered card, then the
+    // selection.
     if (partFocus.partId) { setPartFocus(endPartFocus()); return; }
     if (pendingId) { setPendingId(null); return; }
     if (cardId) { setCardId(null); return; }
@@ -879,7 +913,7 @@ export default function SpaceApp() {
         e.preventDefault();
         // Esc order: an axis lock releases first, then the drag
         // cancels (nothing was committed), then label mode, then
-        // the release chain (patch → card → selection). The
+        // the release chain (focus → patch → card → selection). The
         // command line's Esc never reaches here — its machine
         // consumed it above.
         if (lockRef.current && sharedRef.current.axisLock) { clearAxisLock(); touch(); return; }
@@ -899,7 +933,7 @@ export default function SpaceApp() {
       if (e.key === "Tab") {
         e.preventDefault();
         if (!pendingId) {
-          // Order: the eleven objects, then the library's cards
+          // Order: the twelve objects, then the library's cards
           // (while open), then the clipboard tray (while summoned)
           // — filtered through the layers, like every other path.
           const ids = addressableList(layers, {
@@ -1031,12 +1065,17 @@ export default function SpaceApp() {
     : dragLock ? "DRAG-LOCKED"
     : cmd.armed ? "COMMAND LINE"
     : pendingId ? "PATCHING — a cable is live"
-    : partFocus.partId ? `PART FOCUS — ${partById(partFocus.partId)?.name || ""}`
+    : partFocus.partId
+      ? partFocus.objectId === "tree"
+        ? `BRANCH FOCUS — ${dataBranchById(DATA_TREE, partFocus.partId)?.name || ""}`
+        : `PART FOCUS — ${partById(partFocus.partId)?.name || ""}`
     : cardId ? "ENTERED — the card is open"
     : uiMode.labelMode ? "LABEL MODE"
     : currentId ? "TARGETED"
     : "AT REST";
-  const focusPart = partFocus.partId ? partById(partFocus.partId) : null;
+  const focusPart = partFocus.partId && partFocus.objectId !== "tree" ? partById(partFocus.partId) : null;
+  const focusBranch = partFocus.partId && partFocus.objectId === "tree"
+    ? dataBranchById(DATA_TREE, partFocus.partId) : null;
   const addressedName = thingName(addressedId(hoverId, currentId));
   const nextText = inspection.inspectedId
     ? `${thingName(inspection.inspectedId)} is at the inspection position — D / Esc sends it home`
@@ -1045,7 +1084,9 @@ export default function SpaceApp() {
       : pendingId
         ? `patch live from ${pending?.name || thingName(pendingId)} — address a second thing, then G / F / click`
         : partFocus.partId
-          ? `${focusPart?.name || "part"} focused — D backs out to the knot`
+          ? partFocus.objectId === "tree"
+            ? `${focusBranch?.name || "branch"} focused — D backs out to the tree`
+            : `${focusPart?.name || "part"} focused — D backs out to the knot`
           : cardId
             ? `${thingName(cardId)} is open — D flies back to the world seat`
             : addressedName
@@ -1095,6 +1136,20 @@ export default function SpaceApp() {
           "an octahedron whose 8 faces carry 8 values — the shape is the chart",
           ...vals.map((v) => `${v.label} — ${v.value.toFixed(2)}`),
           "faces advance and retreat as the values drift",
+          "D / Esc — send it home, exactly as it was",
+        ],
+      };
+    }
+    if (id === "tree") {
+      const o = objectById(id);
+      return {
+        title: o.name,
+        lines: [
+          `kind — object · ${o.group} · a grown dataset`,
+          `total value — ${DATA_TREE.totalValue}`,
+          `leaves — ${DATA_TREE.leafCount} · depth ${DATA_TREE.maxDepth} · ${DATA_TREE.branches.length} branches`,
+          "grown from the flare hierarchy by L-system rules",
+          "depth-1 branches are sub-addresses — hover one, F zooms to the subtree",
           "D / Esc — send it home, exactly as it was",
         ],
       };
@@ -1158,11 +1213,13 @@ export default function SpaceApp() {
             inspectRot={inspectRot}
             partFocus={partFocus}
             partHoverId={partHoverId}
+            branchHoverId={branchHoverId}
             pastes={pastes}
             inspectPanel={inspectPanel}
             sharedRef={sharedRef}
             onHover={onHover}
             onPartHover={onPartHover}
+            onBranchHover={onBranchHover}
             onObjectClick={onObjectClick}
             onSelect={onSelect}
             onTouch={touch}
@@ -1219,6 +1276,11 @@ export default function SpaceApp() {
             {focusPart ? (
               <>
                 <span className="k">PART</span>{"     "}{focusPart.name} — value {focusPart.value} · {(partShare(focusPart) * 100).toFixed(1)}% of the knot{"\n"}
+              </>
+            ) : null}
+            {focusBranch ? (
+              <>
+                <span className="k">BRANCH</span>{"   "}{focusBranch.name} — value {focusBranch.value} · {(focusBranch.share * 100).toFixed(1)}% of the tree · {focusBranch.leafCount} leaves · depth 1{"\n"}
               </>
             ) : null}
             <span className="k">LIBRARY</span>{"  "}{libraryOpen ? "OPEN" : "CLOSED"} · {MEDIA_ITEMS.length} items{"\n"}
@@ -1298,7 +1360,7 @@ export default function SpaceApp() {
                       summons the clipboard tray.
                     </p>
                     <p>
-                      <b>FIG. 1</b> — The space at rest in the RING layout: eleven miniature frames
+                      <b>FIG. 1</b> — The space at rest in the RING layout: twelve miniature frames
                       on the platter, each one a working object — the mesa and drum really are the
                       sunburst layout, the tray and cube really are the treemap, tiled by the same
                       NCTGraphite modules as their own pages. Left alone for eight seconds the
@@ -1374,6 +1436,28 @@ export default function SpaceApp() {
                       pedestal, with the values pinned to its faces while you hold it. Crystal
                       forms generated by point-group symmetry, after OpenGeology's Mineralogy:
                       Crystal Morphology and Symmetry.
+                    </p>
+                    <p>
+                      The trees are grown, not modelled, by L-SYSTEMS: a grammar rewrites a
+                      string of symbols in parallel, generation after generation, and a turtle
+                      walks the final string in 3D — F draws a segment, brackets fork and
+                      return, + − & ^ \ and / turn its frame — while da Vinci's pipe model
+                      gives every branch its thickness: a parent's radius is the square root
+                      of the sum of its children's squared radii, so the wood's cross-section
+                      is conserved at every fork. Two uses, as with the knots and crystals. At
+                      the western rim a BOTANICAL TREE stands on its mound as scenery, grown
+                      from a small stochastic grammar — no data, only the feel of a grown
+                      thing, swaying almost imperceptibly. The second use is a citizen: the
+                      DATA TREE, flare's hierarchy generating the branching directly — each
+                      child spirals off its parent at a golden angle, its length set by its
+                      share of the whole, its tips budded with the leaves it aggregates. Its
+                      depth-1 branches are sub-addresses, like the knot's parts: with the tree
+                      current, hover a branch to light its whole subtree, and F zooms the
+                      camera to that subtree to read its value, its share and its leaf count;
+                      D backs out. In label mode the branches name themselves at their forks.
+                      Depth-2 branches are not separately addressable in this slice — the
+                      depth-1 branch is the unit of address. After Lindenmayer (1968);
+                      Prusinkiewicz &amp; Lindenmayer, The Algorithmic Beauty of Plants.
                     </p>
                     <h4>The Operation</h4>
                     <p>

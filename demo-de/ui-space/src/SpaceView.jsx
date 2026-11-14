@@ -47,11 +47,16 @@ import {
   distanceForValue,
   FACE_DATA,
 } from "./crystals.js";
+import {
+  buildBotanicalTree,
+  buildDataTree,
+  createRng,
+} from "./lsystems.js";
 
 /**
  * UI Space — SpaceView: the R3F scene.
  *
- * Eleven miniature frames stand on the platter as citizens of one
+ * Twelve miniature frames stand on the platter as citizens of one
  * space. The scene is declared (one component per object, cables as
  * components), and ONE useFrame driver (the Rig) eases every
  * displayed value toward the pure state in space-state.js: object
@@ -84,6 +89,7 @@ export const COMPASS = [
 export const ANCHOR_H = {
   mesa: 16, drum: 24, tray: 10, cube: 36, tangle: 26,
   horizon3d: 16, horizonflat: 28, arch: 32, definition: 18, knot: 26, crystal: 32,
+  tree: 30,
 };
 
 const DEG = Math.PI / 180;
@@ -306,9 +312,40 @@ function geoLib() {
       new THREE.Vector3(2, 15, 5), new THREE.Vector3(9, 19, 1), new THREE.Vector3(17, 10, -3)), 16, 0.45, 6),
   ];
 
+  // The data tree (slice 7): flare grown by lsystems.js. Segments
+  // are annotated with their depth-1 branch and its house colour —
+  // the same sunburst scale the mesa and drum wear, so a branch of
+  // the tree reads as the same flare family as its wedge.
+  const dataTree = buildDataTree(FLARE, { maxDepth: 3 });
+  const topColour = new Map(sbRoot.children.map((c) => [c.data.name, sbColour(c)]));
+  const branchOf = (node) => {
+    let n = node;
+    while (n && n.depth > 1) n = dataTree.byId.get(n.parentId);
+    return n && n.depth === 1 ? n : null;
+  };
+  const treeSegs = dataTree.segments.map((s) => {
+    const node = dataTree.byId.get(s.nodeId);
+    const branch = node.depth === 0 ? null : branchOf(node);
+    return {
+      ...s,
+      branchId: branch ? branch.id : null,
+      branchColor: branch ? topColour.get(branch.name) : "#6b543a",
+    };
+  });
+  const treeBuds = dataTree.tips.map((n) => {
+    const branch = branchOf(n);
+    return {
+      pos: n.end,
+      branchId: branch ? branch.id : null,
+      color: branch ? topColour.get(branch.name) : "#8a97a5",
+      r: 0.5 + 2.1 * Math.sqrt(Math.max(0, n.value) / dataTree.totalValue),
+    };
+  });
+
   _lib = {
     mesaWedges, drumBlocks, trayPlates, trayCuboids, cubePieces,
     tangleNodes, tangleLineGeo, skyline, bars, wireGeos,
+    dataTree, treeSegs, treeBuds,
     unitBox: new THREE.BoxGeometry(1, 1, 1),
   };
   return _lib;
@@ -1098,6 +1135,132 @@ function CrystalCluster({ ctx }) {
   );
 }
 
+/* ---------- trees: L-systems, grown not modelled (slice 7) ---------- */
+
+/** Compose the instance matrix for one pipe-model segment, grown to
+ *  fraction g of its length (g = 1 at full growth): a unit cylinder
+ *  (radius 1 at the base, 0.55 at the tip) stood along the segment. */
+const _segUp = new THREE.Vector3(0, 1, 0);
+function segMatrix(s, g, M, Q, P, S, D) {
+  D.set(s.to[0] - s.from[0], s.to[1] - s.from[1], s.to[2] - s.from[2]);
+  const len = Math.max(1e-6, D.length());
+  D.divideScalar(len);
+  Q.setFromUnitVectors(_segUp, D);
+  P.set(
+    s.from[0] + D.x * len * g * 0.5,
+    s.from[1] + D.y * len * g * 0.5,
+    s.from[2] + D.z * len * g * 0.5,
+  );
+  const r = Math.max(0.02, s.radius * (0.25 + 0.75 * g));
+  S.set(r, Math.max(0.02, len * g), r);
+  M.compose(P, Q, S);
+  return M;
+}
+
+/**
+ * THE BOTANICAL TREE (SCENERY): a grammar-grown tree on a low earth
+ * mound at the western rim — clear of every layout's plots (the
+ * nearest, the districts tree plot, is ~58 units away), the knot
+ * pedestals, the crystal plinth, the tray spot and the inspection
+ * centre. Segments are instanced tapered cylinders coloured by
+ * depth; the tips carry instanced leaf discs in muted green-teals
+ * with seeded per-leaf variance. It sways a fraction of a degree
+ * through the ambient-motion gate and is still when ambient motion
+ * is off. Non-addressable; lives in the scenery stratum.
+ */
+const BOTANICAL_POS = [-150, -88];
+
+function BotanicalTree({ ctx }) {
+  const sway = useRef(null);
+  const segRef = useRef(null);
+  const leafRef = useRef(null);
+  const amp = useRef(1);
+  const built = useMemo(() => {
+    const { segments, tips } = buildBotanicalTree(7);
+    const segGeo = new THREE.CylinderGeometry(0.55, 1, 1, 6);
+    const barkMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95 });
+    const leafGeo = new THREE.CircleGeometry(1, 6);
+    const leafMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff, roughness: 0.8, side: THREE.DoubleSide,
+    });
+    const rng = createRng(99);
+    const leaves = tips.map((s) => ({
+      pos: s.to,
+      rot: [rng() * Math.PI, rng() * Math.PI, rng() * Math.PI],
+      scale: 1.1 + rng() * 1.3,
+      color: new THREE.Color().setHSL(0.36 + (rng() - 0.5) * 0.12, 0.42, 0.3 + rng() * 0.14),
+    }));
+    return { segments, segGeo, barkMat, leafGeo, leafMat, leaves };
+  }, []);
+  useEffect(() => () => {
+    built.segGeo.dispose(); built.barkMat.dispose();
+    built.leafGeo.dispose(); built.leafMat.dispose();
+  }, [built]);
+  useLayoutEffect(() => {
+    const M = new THREE.Matrix4(), Q = new THREE.Quaternion();
+    const P = new THREE.Vector3(), S = new THREE.Vector3(), D = new THREE.Vector3();
+    const C = new THREE.Color();
+    const sm = segRef.current;
+    if (sm) {
+      built.segments.forEach((s, i) => {
+        sm.setMatrixAt(i, segMatrix(s, 1, M, Q, P, S, D));
+        const f = Math.min(1, s.depth / 9);
+        sm.setColorAt(i, C.setHSL(0.07, 0.32, 0.13 + 0.13 * f));
+      });
+      sm.instanceMatrix.needsUpdate = true;
+      if (sm.instanceColor) sm.instanceColor.needsUpdate = true;
+    }
+    const lm = leafRef.current;
+    if (lm) {
+      const E = new THREE.Euler();
+      built.leaves.forEach((leaf, i) => {
+        E.set(leaf.rot[0], leaf.rot[1], leaf.rot[2]);
+        Q.setFromEuler(E);
+        P.set(leaf.pos[0], leaf.pos[1], leaf.pos[2]);
+        S.setScalar(leaf.scale);
+        M.compose(P, Q, S);
+        lm.setMatrixAt(i, M);
+        lm.setColorAt(i, leaf.color);
+      });
+      lm.instanceMatrix.needsUpdate = true;
+      if (lm.instanceColor) lm.instanceColor.needsUpdate = true;
+    }
+  }, [built]);
+  useFrame((state, dt) => {
+    const a = ambientAmp(amp, ctx, dt);
+    if (sway.current) {
+      const t = state.clock.elapsedTime;
+      sway.current.rotation.z = a * 0.011 * Math.sin(t * 0.45);
+      sway.current.rotation.x = a * 0.008 * Math.sin(t * 0.32 + 1.1);
+    }
+    if (leafRef.current) {
+      const t = state.clock.elapsedTime;
+      const s = 1 + a * 0.03 * Math.sin(t * 1.35);
+      leafRef.current.scale.setScalar(s);
+    }
+  });
+  return (
+    <group position={[BOTANICAL_POS[0], 0, BOTANICAL_POS[1]]}>
+      <mesh position={[0, 1.6, 0]}>
+        <cylinderGeometry args={[15, 19, 3.2, 24]} />
+        <meshStandardMaterial color={0x222a1e} roughness={1} />
+      </mesh>
+      <mesh position={[0, 3.6, 0]}>
+        <cylinderGeometry args={[9.5, 12.5, 1.6, 24]} />
+        <meshStandardMaterial color={0x2a3323} roughness={1} />
+      </mesh>
+      <group position={[0, 4.2, 0]} scale={1.55}>
+        <group ref={sway}>
+          <instancedMesh ref={segRef} args={[undefined, undefined, built.segments.length]}
+            geometry={built.segGeo} material={built.barkMat} />
+          <instancedMesh ref={leafRef} args={[undefined, undefined, built.leaves.length]}
+            geometry={built.leafGeo} material={built.leafMat} />
+        </group>
+      </group>
+    </group>
+  );
+}
+
 /**
  * THE LIVING CRYSTAL — the eleventh citizen. An octahedron whose
  * eight faces carry the FACE_DATA values: face i's plane distance
@@ -1227,10 +1390,180 @@ function MiniCrystal({ lib, matFor, ctx }) {
   );
 }
 
+/**
+ * THE DATA TREE — the twelfth citizen. Flare's hierarchy grown by
+ * lsystems.js into instanced tapered segments on a soil plot, with
+ * an emissive bud at every tip scaled by the value the tip
+ * aggregates. Branch hues are the sunburst house colours (geoLib),
+ * darkened to bark on the wood. It GROWS IN on first mount —
+ * segment lengths staged by depth over ~1.6 s, a one-time
+ * animation; the data state is untouched — and afterwards sways
+ * very slowly through the ambient gate.
+ *
+ * Depth-1 branches are sub-addresses (the knot-part pattern):
+ * instanced pointer events report the instance's branch to the
+ * App, which gates it on the tree being current; the hovered or
+ * focused branch's whole subtree brightens (instance colours)
+ * while the rest dims. The sway group registers as
+ * frame.treeGroupRef and the branches' local spheres as
+ * frame.branchLocal — the Rig turns them into frame.branchWorld
+ * for the focus seat and the overlay chips.
+ */
+function MiniTree({ lib, matFor, ctx }) {
+  const sway = useRef(null);
+  const segRef = useRef(null);
+  const budRef = useRef(null);
+  const amp = useRef(1);
+  const grown = useRef(0);
+  const lastHi = useRef("__init");
+  const data = useMemo(() => ({
+    segMat: matFor(0xffffff, { rough: 0.85 }),
+    budMat: matFor(0xffffff, { rough: 0.35, glowScale: 1.2 }),
+    base: lib.treeSegs.map((s) => new THREE.Color(s.branchColor).multiplyScalar(0.42)),
+    budBase: lib.treeBuds.map((b) => new THREE.Color(b.color)),
+  }), [lib, matFor]);
+
+  useEffect(() => {
+    const frame = ctx.frame;
+    frame.treeGroupRef = sway.current;
+    const local = new Map();
+    for (const b of lib.dataTree.branches) {
+      local.set(b.id, {
+        centre: new THREE.Vector3(...b.sphere.centre),
+        radius: b.sphere.radius,
+        tip: new THREE.Vector3(...b.tipPoint),
+      });
+    }
+    frame.branchLocal = local;
+    return () => {
+      if (frame.treeGroupRef === sway.current) frame.treeGroupRef = null;
+      if (frame.branchLocal === local) frame.branchLocal = null;
+    };
+  }, [ctx, lib]);
+
+  const growthFor = (depth, t) => {
+    const x = Math.min(1, Math.max(0, (t - depth * 0.38) / 0.5));
+    return x * x * (3 - 2 * x);
+  };
+  const writeInstances = (t) => {
+    const M = new THREE.Matrix4(), Q = new THREE.Quaternion();
+    const P = new THREE.Vector3(), S = new THREE.Vector3(), D = new THREE.Vector3();
+    const sm = segRef.current;
+    if (sm) {
+      lib.treeSegs.forEach((s, i) => {
+        sm.setMatrixAt(i, segMatrix(s, growthFor(s.depth, t), M, Q, P, S, D));
+      });
+      sm.instanceMatrix.needsUpdate = true;
+    }
+    const bm = budRef.current;
+    if (bm) {
+      const g = growthFor(lib.dataTree.maxDepth, t);
+      lib.treeBuds.forEach((b, i) => {
+        P.set(b.pos[0], b.pos[1], b.pos[2]);
+        Q.identity();
+        S.setScalar(Math.max(0.02, b.r * g));
+        M.compose(P, Q, S);
+        bm.setMatrixAt(i, M);
+      });
+      bm.instanceMatrix.needsUpdate = true;
+    }
+  };
+  const applyColours = (hiId) => {
+    const C = new THREE.Color();
+    const sm = segRef.current;
+    if (sm) {
+      lib.treeSegs.forEach((s, i) => {
+        const f = !hiId ? 1 : s.branchId === hiId ? 2.1 : 0.55;
+        sm.setColorAt(i, C.copy(data.base[i]).multiplyScalar(f));
+      });
+      if (sm.instanceColor) sm.instanceColor.needsUpdate = true;
+    }
+    const bm = budRef.current;
+    if (bm) {
+      lib.treeBuds.forEach((b, i) => {
+        const f = !hiId ? 1 : b.branchId === hiId ? 1.7 : 0.6;
+        bm.setColorAt(i, C.copy(data.budBase[i]).multiplyScalar(f));
+      });
+      if (bm.instanceColor) bm.instanceColor.needsUpdate = true;
+    }
+  };
+  useLayoutEffect(() => {
+    writeInstances(0);
+    applyColours(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lib]);
+
+  useFrame((state, dtRaw) => {
+    const dt = Math.min(0.05, dtRaw || 0.016);
+    const a = ambientAmp(amp, ctx, dt);
+    if (sway.current) {
+      const t = state.clock.elapsedTime;
+      sway.current.rotation.z = a * 0.009 * Math.sin(t * 0.4);
+      sway.current.rotation.x = a * 0.007 * Math.sin(t * 0.29 + 0.7);
+    }
+    // Grow-in: one pass staged by depth, then the matrices rest.
+    if (grown.current < 2.2) {
+      grown.current += dt;
+      writeInstances(grown.current);
+    }
+    const st = ctx.stateRef.current;
+    const hov = st.currentId === "tree" ? st.branchHoverId : null;
+    const foc = st.partFocus && st.partFocus.objectId === "tree" ? st.partFocus.partId : null;
+    const hi = hov || foc || null;
+    if (hi !== lastHi.current) {
+      lastHi.current = hi;
+      applyColours(hi);
+    }
+  });
+
+  const st = () => ctx.stateRef.current;
+  const reportSeg = (e) => {
+    if (e.instanceId == null) return;
+    const bid = lib.treeSegs[e.instanceId].branchId;
+    if (bid && st().onBranchHover) st().onBranchHover(bid);
+  };
+  const reportBud = (e) => {
+    if (e.instanceId == null) return;
+    const bid = lib.treeBuds[e.instanceId].branchId;
+    if (bid && st().onBranchHover) st().onBranchHover(bid);
+  };
+  const clearReport = () => { if (st().onBranchHover) st().onBranchHover(null); };
+
+  return (
+    <group>
+      <mesh position={[0, 1.1, 0]}>
+        <cylinderGeometry args={[19, 21.5, 2.2, 28]} />
+        <primitive object={matFor(0x2a241b, { rough: 1 })} attach="material" />
+      </mesh>
+      <group ref={sway} position={[0, 2.2, 0]}>
+        <instancedMesh
+          ref={segRef}
+          args={[undefined, undefined, lib.treeSegs.length]}
+          material={data.segMat}
+          onPointerOver={reportSeg}
+          onPointerOut={clearReport}
+        >
+          <cylinderGeometry args={[0.55, 1, 1, 7]} />
+        </instancedMesh>
+        <instancedMesh
+          ref={budRef}
+          args={[undefined, undefined, lib.treeBuds.length]}
+          material={data.budMat}
+          onPointerOver={reportBud}
+          onPointerOut={clearReport}
+        >
+          <sphereGeometry args={[1, 10, 10]} />
+        </instancedMesh>
+      </group>
+    </group>
+  );
+}
+
 const MINIATURES = {
   mesa: MiniMesa, drum: MiniDrum, tray: MiniTray, cube: MiniCube,
   tangle: MiniTangle, horizon3d: MiniSkyline, horizonflat: MiniHorizonPanel,
   arch: MiniArch, definition: MiniDefinition, knot: MiniKnot, crystal: MiniCrystal,
+  tree: MiniTree,
 };
 
 /* ---------- one citizen of the space ---------- */
@@ -1829,6 +2162,26 @@ function Rig({ ctx, cameras }) {
       }
     }
 
+    // The data tree's branches: each depth-1 branch's world
+    // bounding sphere and fork tip, from the sway group's live
+    // matrix — the branch-focus seat and the overlay chips read
+    // where the branch actually is this frame.
+    {
+      const g = frame.treeGroupRef;
+      if (g && frame.branchLocal && frame.disp.has("tree")) {
+        g.updateWorldMatrix(true, false);
+        const sc = new THREE.Vector3();
+        g.getWorldScale(sc);
+        for (const [id, b] of frame.branchLocal) {
+          frame.branchWorld.set(id, {
+            centre: g.localToWorld(b.centre.clone()),
+            radius: b.radius * Math.abs(sc.x),
+            tip: g.localToWorld(b.tip.clone()),
+          });
+        }
+      }
+    }
+
     // The wall cards and the clipboard tray: same easing discipline,
     // different homes — a wall slot inside/outside the cabinet, the
     // tray's front-edge stand or its parked place below the platter.
@@ -1891,10 +2244,25 @@ function Rig({ ctx, cameras }) {
     // distance — so when the transform keys turn the knot while a
     // part is focused, the seat tracks and the part stays framed.
     let seat, look;
-    const partW = st.partFocus && st.partFocus.partId
+    const partW = st.partFocus && st.partFocus.partId && st.partFocus.objectId === "knot"
       ? frame.partWorld.get(st.partFocus.partId) : null;
+    const branchW = st.partFocus && st.partFocus.partId && st.partFocus.objectId === "tree"
+      ? frame.branchWorld.get(st.partFocus.partId) : null;
     const cardBase = st.cardId ? frame.baseWorld.get(st.cardId) : null;
-    if (st.partFocus && st.partFocus.partId && partW) {
+    if (st.partFocus && st.partFocus.partId && branchW) {
+      // Branch focus: seat off the subtree's bounding sphere —
+      // centre + outward (from the tree's own base) by the sphere
+      // radius and a reading margin, looking at the centre.
+      const base = frame.baseWorld.get("tree") || new THREE.Vector3();
+      const dir = branchW.centre.clone().sub(base);
+      dir.y = 0;
+      if (dir.lengthSq() < 1) dir.set(0, 0, 1);
+      dir.normalize();
+      seat = branchW.centre.clone().addScaledVector(dir, branchW.radius + 40)
+        .add(new THREE.Vector3(0, 12, 0));
+      look = branchW.centre.clone();
+      if (camera === cameras.ortho) { camera.zoom = 1.5 / st.zoomMul; camera.updateProjectionMatrix(); }
+    } else if (st.partFocus && st.partFocus.partId && partW) {
       const centre = frame.partWorld.get("__centre") || partW;
       const dir = partW.clone().sub(centre);
       if (dir.lengthSq() < 1) dir.set(0, 0, 1);
@@ -1974,9 +2342,9 @@ export default function SpaceView(props) {
     projection, rotation, elevation, zoomMul,
     turntableOn, pulsesOn, ambientOn, labelsOn, sharedRef,
     libraryOpen, clipHeld, clipSummoned, inspectedId, inspectRot, pastes, inspectPanel,
-    partFocus, partHoverId,
+    partFocus, partHoverId, branchHoverId,
     viewName, snapOn, strata, layers,
-    onHover, onPartHover, onObjectClick, onSelect, onTouch,
+    onHover, onPartHover, onBranchHover, onObjectClick, onSelect, onTouch,
   } = props;
 
   const stateRef = useRef({});
@@ -1985,10 +2353,10 @@ export default function SpaceView(props) {
     projection, rotation, elevation, zoomMul,
     turntableOn, pulsesOn, ambientOn, labelsOn,
     libraryOpen, clipSummoned, inspectedId, inspectRot,
-    partFocus, partHoverId,
+    partFocus, partHoverId, branchHoverId,
     viewName, snapOn, strata, layers,
     shared: sharedRef.current,
-    onHover, onPartHover, onObjectClick, onSelect, onTouch,
+    onHover, onPartHover, onBranchHover, onObjectClick, onSelect, onTouch,
   };
 
   const frameRef = useRef(null);
@@ -1997,6 +2365,7 @@ export default function SpaceView(props) {
       disp: new Map(), outerRefs: new Map(), innerRefs: new Map(),
       ringRefs: new Map(), matsMap: new Map(),
       anchorWorld: new Map(), baseWorld: new Map(), partWorld: new Map(),
+      branchWorld: new Map(), branchLocal: null, treeGroupRef: null,
       camera: null, worldGroup: null, turntabling: false, knotSpinRef: null,
       crystalCores: [], crystalFaces: null,
     };
@@ -2038,6 +2407,8 @@ export default function SpaceView(props) {
   const compassRefs = useRef([]);
   const nameRef = useRef(null);
   const partRef = useRef(null);
+  const branchRef = useRef(null);
+  const branchChipRefs = useRef([]);
   const faceChipRefs = useRef([]);
   const cardFacesRef = useRef(null);
   const cardRef = useRef(null);
@@ -2157,6 +2528,46 @@ export default function SpaceView(props) {
           }
         } else partEl.style.display = "none";
       }
+      const branchEl = branchRef.current;
+      if (branchEl) {
+        // The tree branch chip: pinned at the branch's fork tip on
+        // hover (name only); a FOCUSED branch's chip is its panel —
+        // name, value, share of the tree, leaf count, depth.
+        const focId = st.partFocus && st.partFocus.objectId === "tree" ? st.partFocus.partId : null;
+        const hovId = st.currentId === "tree" ? st.branchHoverId : null;
+        const bid = focId || hovId;
+        const bw = bid ? frame.branchWorld.get(bid) : null;
+        const branch = bid ? lib.dataTree.branches.find((b) => b.id === bid) : null;
+        if (bid && branch && bw && !(st.layers && !isAddressable(st.layers, "tree"))) {
+          const txt = focId
+            ? `${branch.name} — value ${branch.value} · ${(branch.share * 100).toFixed(1)}% of the tree · ${branch.leafCount} leaves · depth 1`
+            : branch.name;
+          if (branchEl.textContent !== txt) branchEl.textContent = txt;
+          branchEl.className = focId ? "us-chip target" : "us-chip";
+          const [sx, sy, front] = project(focId ? bw.centre : bw.tip);
+          if (!front) branchEl.style.display = "none";
+          else {
+            branchEl.style.display = "";
+            branchEl.style.transform = `translate(-50%, -170%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
+          }
+        } else branchEl.style.display = "none";
+      }
+      // Label mode: the depth-1 branches name themselves at their
+      // forks (DOM chips, like the crystal's face values).
+      {
+        const showBranches = st.labelsOn && !(st.layers && !isAddressable(st.layers, "tree"));
+        lib.dataTree.branches.forEach((b, i) => {
+          const el = branchChipRefs.current[i];
+          if (!el) return;
+          const bw = showBranches ? frame.branchWorld.get(b.id) : null;
+          if (!bw) { el.style.display = "none"; return; }
+          const [sx, sy, front] = project(bw.tip);
+          if (!front) { el.style.display = "none"; return; }
+          if (el.textContent !== b.name) el.textContent = b.name;
+          el.style.display = "";
+          el.style.transform = `translate(-50%, -130%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
+        });
+      }
       const inspEl = inspectRef.current;
       if (inspEl) {
         const anchor = st.inspectedId ? frame.anchorWorld.get(st.inspectedId) : null;
@@ -2243,6 +2654,7 @@ export default function SpaceView(props) {
               <primitive object={geo.rim} position={[0, 0.05, 0]} />
               <AtmosphereKnots ctx={ctx} />
               <CrystalCluster ctx={ctx} />
+              <BotanicalTree ctx={ctx} />
             </>
           ) : null}
           {strata?.data ? (
@@ -2314,6 +2726,12 @@ export default function SpaceView(props) {
         ))}
         <div ref={nameRef} className="us-name" style={{ display: "none" }} />
         <div ref={partRef} className="us-chip" style={{ display: "none", pointerEvents: "none" }} />
+        <div ref={branchRef} className="us-chip" style={{ display: "none", pointerEvents: "none" }} />
+        {lib.dataTree.branches.map((b, i) => (
+          <div key={b.id}
+            ref={(el) => { branchChipRefs.current[i] = el; }}
+            className="us-chip" style={{ display: "none", pointerEvents: "none" }} />
+        ))}
         {FACE_DATA.map((f, i) => (
           <div key={f.id}
             ref={(el) => { faceChipRefs.current[i] = el; }}
@@ -2330,6 +2748,12 @@ export default function SpaceView(props) {
               </span>
               {cardObj.id === "crystal" ? (
                 <span ref={cardFacesRef} style={{ display: "block", whiteSpace: "pre-line", marginTop: 4 }} />
+              ) : null}
+              {cardObj.id === "tree" ? (
+                <span style={{ display: "block", marginTop: 4 }}>
+                  total value {lib.dataTree.totalValue} · {lib.dataTree.leafCount} leaves · depth {lib.dataTree.maxDepth}<br />
+                  grown from the flare hierarchy by L-system rules
+                </span>
               ) : null}
             </>
           ) : null}

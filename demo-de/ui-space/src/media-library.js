@@ -6,7 +6,7 @@
  * image on the clipboard. Here the library is a cabinet on the XY
  * datum wall holding seeded item records; the clipboard holds ONE
  * card at a time — a media item, or a text card copied from one of
- * the ten objects — and the newest copy replaces the last.
+ * the twelve objects — and the newest copy replaces the last.
  *
  * Card art is generated in the scene from these records (a coloured
  * panel by hue, initials, a pattern); there are no external images.
@@ -15,8 +15,8 @@
  * label sequence CONTINUING past the citizens (labelForIndex at
  * OBJECTS.length, +1, +2, …) with one skip — M is the library's own
  * operator, so the card that would have been M takes the next
- * label instead. With eleven citizens the cards start at N, so
- * their labels are: N O P Q R S T U (the M skip now guards any
+ * label instead. With twelve citizens the cards start at O, so
+ * their labels are: O P Q R S T U V (the M skip now guards any
  * future count where a card would land on M again).
  */
 
@@ -103,7 +103,7 @@ export function createClipboard() {
   return { held: null };
 }
 
-/** A text card copied from one of the ten objects (C on an object). */
+/** A text card copied from one of the twelve objects (C on an object). */
 export function textCardForObject(object) {
   return {
     id: `text-${object.id}`,

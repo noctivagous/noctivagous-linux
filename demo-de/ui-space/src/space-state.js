@@ -62,6 +62,8 @@ export const OBJECTS = [
     blurb: "A trefoil whose parts contain data — eight arcs of one closed curve, each holding a system's datum, its thickness the size of what it holds. Hover a part, then F zooms into it." },
   { id: "crystal", name: "Living crystal", group: "graphs",
     blurb: "An octahedron that is alive: its eight faces carry eight values, each face's distance from the centre set by its value, so the shape is the chart. It turns slowly on its pedestal, and the faces regrow as the values drift." },
+  { id: "tree", name: "Data tree", group: "graphs",
+    blurb: "The flare hierarchy grown as a branching tree by L-system rules — its depth-1 branches are sub-addresses: hover one, then F zooms into the subtree." },
 ];
 
 export const OBJECT_IDS = OBJECTS.map((o) => o.id);
@@ -173,13 +175,18 @@ export function addressedId(hoverId, currentId) {
  *
  * `inspectIds` names the inspect-on-F targets; `partId` is the
  * hovered knot part, already validated by the caller, and only
- * applies when the addressed target is the knot itself.
+ * applies when the addressed target is the knot itself. `branchId`
+ * (slice 7) is the data tree's analogue: the hovered depth-1 branch,
+ * validated by the caller, applying only when the addressed target
+ * is the tree — it resolves to a branchFocus action that reuses the
+ * part-focus state, with partId = the depth-1 node's id.
  */
 export function resolveFAction({
   pendingId = null,
   hoverId = null,
   currentId = null,
   partId = null,
+  branchId = null,
   inspectIds = [],
 } = {}) {
   const targetId = addressedId(hoverId, currentId);
@@ -191,6 +198,9 @@ export function resolveFAction({
   if (!targetId) return { type: "none", targetId: null };
   if (targetId === "knot" && partId) {
     return { type: "partFocus", targetId, partId };
+  }
+  if (targetId === "tree" && branchId) {
+    return { type: "branchFocus", targetId, partId: branchId };
   }
   if (inspectIds.includes(targetId)) return { type: "inspect", targetId };
   return { type: "open", targetId };
@@ -294,6 +304,7 @@ export const LAYOUTS = {
       tangle: [-30, 72], arch: [38, 52], definition: [92, 86],
       knot: [-100, 34],
       crystal: [-52, 30],
+      tree: [-148, -30],
     },
     scales: {},
   },
@@ -307,6 +318,7 @@ export const LAYOUTS = {
       horizonflat: [-126, -2], arch: [126, -2], definition: [0, -48],
       knot: [-92, 46],
       crystal: [92, 46],
+      tree: [-56, 84],
     },
     scales: { cube: 1.6 },
   },
