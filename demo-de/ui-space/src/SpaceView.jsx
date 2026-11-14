@@ -337,7 +337,32 @@ function cubePiecePlacement(face, rect, isLeaf) {
 
 /* ---------- miniatures (matFor registers every material for the glow) ---------- */
 
-function MiniMesa({ lib, matFor }) {
+/**
+ * AMBIENT MOTION gate, shared by the miniatures' own useFrame
+ * drivers: a 0..1 amplitude eased toward the PARAMETERS toggle
+ * (stateRef.ambientOn), so switching ambient motion off settles
+ * every citizen smoothly home instead of freezing it mid-gesture,
+ * and switching it on fades the life back in. The motion itself is
+ * INTERNAL to each miniature — it never writes the user's transform
+ * state, and the Rig's outer/inner groups (drag, carry, the entered
+ * seat) compose on top of it untouched.
+ */
+function ambientAmp(ampRef, ctx, dt) {
+  const on = ctx.stateRef.current.ambientOn !== false;
+  ampRef.current = damp(ampRef.current, on ? 1 : 0, 3, Math.min(0.05, dt || 0.016));
+  return ampRef.current;
+}
+
+function MiniMesa({ lib, matFor, ctx }) {
+  const sweep = useRef(null);
+  const amp = useRef(1);
+  useFrame((_, dt) => {
+    const a = ambientAmp(amp, ctx, dt);
+    if (sweep.current) {
+      sweep.current.rotation.y -= dt * 0.22 * a;
+      sweep.current.children[0].material.opacity = 0.34 * a;
+    }
+  });
   return (
     <group>
       <mesh position={[0, 3, 0]}>
@@ -347,11 +372,28 @@ function MiniMesa({ lib, matFor }) {
       {lib.mesaWedges.map((w, i) => (
         <mesh key={i} geometry={w.geo} material={matFor(w.color, { opacity: 0.86, glowScale: 0.7, keepDepth: true })} />
       ))}
+      {/* A light sweep travels the rings — the disc itself never turns. */}
+      <group ref={sweep}>
+        <mesh position={[0, 12.7, 0]} rotation-x={-Math.PI / 2}>
+          <ringGeometry args={[3.2, 8.4, 24, 1, 0, 0.85]} />
+          <meshBasicMaterial color={0xffc46b} transparent opacity={0.34} side={THREE.DoubleSide}
+            depthWrite={false} blending={THREE.AdditiveBlending} />
+        </mesh>
+      </group>
     </group>
   );
 }
 
-function MiniDrum({ lib, matFor }) {
+function MiniDrum({ lib, matFor, ctx }) {
+  const band = useRef(null);
+  const amp = useRef(1);
+  useFrame((_, dt) => {
+    const a = ambientAmp(amp, ctx, dt);
+    if (band.current) {
+      band.current.rotation.y += dt * 0.3 * a;
+      band.current.children[0].material.opacity = 0.26 * a;
+    }
+  });
   return (
     <group>
       <mesh position={[0, 0.8, 0]}>
@@ -365,6 +407,14 @@ function MiniDrum({ lib, matFor }) {
       {lib.drumBlocks.map((b, i) => (
         <mesh key={i} geometry={b.geo} position={[0, 1.6, 0]} material={matFor(b.color, { rough: 0.5 })} />
       ))}
+      {/* A light band circles inside the glass, past the blocks. */}
+      <group ref={band}>
+        <mesh position={[9.4, 11.4, 0]} rotation-y={Math.PI / 2}>
+          <planeGeometry args={[1.4, 18]} />
+          <meshBasicMaterial color={0x9fe8dc} transparent opacity={0.26} side={THREE.DoubleSide}
+            depthWrite={false} blending={THREE.AdditiveBlending} />
+        </mesh>
+      </group>
       {/* The drum's wall is glass: the blocks ghost through it. */}
       <mesh position={[0, 11.6, 0]}>
         <cylinderGeometry args={[26.2, 26.2, 20.5, 48, 1, true]} />
@@ -378,11 +428,32 @@ function MiniDrum({ lib, matFor }) {
   );
 }
 
-function MiniTray({ lib, matFor }) {
+function MiniTray({ lib, matFor, ctx }) {
   const W = 54, H = 46;
   const rect = (n) => ({
     cx: ((n.x0 + n.x1) / 2 - 0.5) * W, cz: ((n.y0 + n.y1) / 2 - 0.5) * H,
     w: (n.x1 - n.x0) * W, d: (n.y1 - n.y0) * H,
+  });
+  // Breathing: a handful of cuboids ease up and down in a slow
+  // cycle, each on its own phase — the tray stays a tray.
+  const cuboidRefs = useRef([]);
+  const amp = useRef(1);
+  const chosen = useMemo(() => {
+    const idx = [];
+    const step = Math.max(1, Math.floor(lib.trayCuboids.length / 6));
+    for (let i = 0; i < lib.trayCuboids.length && idx.length < 6; i += step) idx.push(i);
+    return idx;
+  }, [lib]);
+  useFrame((state, dt) => {
+    const a = ambientAmp(amp, ctx, dt);
+    const t = state.clock.elapsedTime;
+    chosen.forEach((ci, k) => {
+      const m = cuboidRefs.current[ci];
+      if (!m) return;
+      const sy = 6 * (1 + a * 0.13 * Math.sin(t * 0.45 + k * 1.93));
+      m.scale.y = sy;
+      m.position.y = 2.2 + sy / 2;
+    });
   });
   return (
     <group>
@@ -401,6 +472,7 @@ function MiniTray({ lib, matFor }) {
         const r = rect(node);
         return (
           <mesh key={`c${i}`} geometry={lib.unitBox} position={[r.cx, 2.2 + 3, r.cz]}
+            ref={(el) => { cuboidRefs.current[i] = el; }}
             scale={[Math.max(0.4, r.w - 1.4), 6, Math.max(0.4, r.d - 1.4)]}
             material={matFor(color, { rough: 0.5 })} />
         );
@@ -409,7 +481,30 @@ function MiniTray({ lib, matFor }) {
   );
 }
 
-function MiniCube({ lib, matFor }) {
+function MiniCube({ lib, matFor, ctx }) {
+  // Breathing: a few leaf tiles swell and settle by a few percent,
+  // each on its own phase — the cube's faces stay formed.
+  const pieceRefs = useRef([]);
+  const amp = useRef(1);
+  const chosen = useMemo(() => {
+    const leaves = lib.cubePieces.map((p, i) => (p.isLeaf ? i : -1)).filter((i) => i >= 0);
+    const idx = [];
+    const step = Math.max(1, Math.floor(leaves.length / 5));
+    for (let i = 0; i < leaves.length && idx.length < 5; i += step) idx.push(leaves[i]);
+    return idx;
+  }, [lib]);
+  useFrame((state, dt) => {
+    const a = ambientAmp(amp, ctx, dt);
+    const t = state.clock.elapsedTime;
+    chosen.forEach((pi, k) => {
+      const m = pieceRefs.current[pi];
+      if (!m) return;
+      const p = lib.cubePieces[pi];
+      const { scale } = cubePiecePlacement(p.face, p.rect, p.isLeaf);
+      const s = 1 + a * 0.05 * Math.sin(t * 0.4 + k * 2.13);
+      m.scale.set(scale[0] * s, scale[1] * s, scale[2] * s);
+    });
+  });
   return (
     <group>
       {/* Glass shell: the face pieces stay solid and ghost through. */}
@@ -422,6 +517,7 @@ function MiniCube({ lib, matFor }) {
         const color = p.isLeaf ? p.color : new THREE.Color(p.color).multiplyScalar(0.45).getHex();
         return (
           <mesh key={i} geometry={lib.unitBox} position={pos} scale={scale}
+            ref={(el) => { pieceRefs.current[i] = el; }}
             material={matFor(color, { rough: p.isLeaf ? 0.4 : 0.85 })} />
         );
       })}
@@ -429,8 +525,48 @@ function MiniCube({ lib, matFor }) {
   );
 }
 
-function MiniTangle({ lib, matFor }) {
+function MiniTangle({ lib, matFor, ctx }) {
   const ref = useRef(null);
+  // Flow: a handful of light points travel the tree's own link
+  // segments, end to end, each on its own offset.
+  const flow = useMemo(() => {
+    const attr = lib.tangleLineGeo.getAttribute("position");
+    const segCount = Math.floor(attr.count / 2);
+    const N = Math.min(10, segCount);
+    const segs = [];
+    for (let k = 0; k < N; k++) {
+      const si = Math.floor((k / N) * segCount) * 2;
+      segs.push({
+        a: [attr.getX(si), attr.getY(si), attr.getZ(si)],
+        b: [attr.getX(si + 1), attr.getY(si + 1), attr.getZ(si + 1)],
+        off: k / N,
+      });
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(N * 3), 3));
+    const mat = new THREE.PointsMaterial({
+      color: 0xffd28a, size: 2.4, transparent: true, opacity: 0.9,
+      depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true,
+    });
+    return { segs, geo, mat };
+  }, [lib]);
+  useEffect(() => () => { flow.geo.dispose(); flow.mat.dispose(); }, [flow]);
+  const amp = useRef(1);
+  useFrame((state, dt) => {
+    const a = ambientAmp(amp, ctx, dt);
+    flow.mat.opacity = 0.9 * a;
+    if (a < 0.02) return;
+    const t = state.clock.elapsedTime;
+    const attr = flow.geo.getAttribute("position");
+    flow.segs.forEach((s, k) => {
+      const f = (t * 0.07 + s.off) % 1;
+      attr.setXYZ(k,
+        s.a[0] + (s.b[0] - s.a[0]) * f,
+        s.a[1] + (s.b[1] - s.a[1]) * f,
+        s.a[2] + (s.b[2] - s.a[2]) * f);
+    });
+    attr.needsUpdate = true;
+  });
   useLayoutEffect(() => {
     const m = ref.current;
     if (!m) return;
@@ -456,6 +592,7 @@ function MiniTangle({ lib, matFor }) {
       <lineSegments geometry={lib.tangleLineGeo}>
         <lineBasicMaterial color={0x6f8894} transparent opacity={0.75} />
       </lineSegments>
+      <points geometry={flow.geo} material={flow.mat} />
       <instancedMesh ref={ref} args={[undefined, undefined, lib.tangleNodes.length]} key={lib.tangleNodes.length}>
         <boxGeometry args={[1.8, 1.8, 1.8]} />
         <primitive object={matFor(0xffffff, { rough: 0.5 })} attach="material" />
@@ -464,8 +601,30 @@ function MiniTangle({ lib, matFor }) {
   );
 }
 
-function MiniSkyline({ lib, matFor }) {
+function MiniSkyline({ lib, matFor, ctx }) {
   const ref = useRef(null);
+  // The monitor lives: every tower's height breathes a few percent
+  // on its own phase, so the lanes keep updating in place.
+  const amp = useRef(1);
+  const scratch = useMemo(() => ({
+    M: new THREE.Matrix4(), Q: new THREE.Quaternion(),
+    S: new THREE.Vector3(), P: new THREE.Vector3(),
+  }), []);
+  useFrame((state, dt) => {
+    const a = ambientAmp(amp, ctx, dt);
+    const m = ref.current;
+    if (!m) return;
+    const t = state.clock.elapsedTime;
+    const { M, Q, S, P } = scratch;
+    lib.skyline.forEach((b, i) => {
+      const h = b.h * (1 + a * 0.07 * Math.sin(t * 0.8 + i * 1.37));
+      P.set(b.x, 1.6 + h / 2, b.z);
+      S.set(4.8, h, 5.2);
+      M.compose(P, Q, S);
+      m.setMatrixAt(i, M);
+    });
+    m.instanceMatrix.needsUpdate = true;
+  });
   useLayoutEffect(() => {
     const m = ref.current;
     if (!m) return;
@@ -498,7 +657,22 @@ function MiniSkyline({ lib, matFor }) {
   );
 }
 
-function MiniHorizonPanel({ lib, matFor }) {
+function MiniHorizonPanel({ lib, matFor, ctx }) {
+  // The flat monitor lives too: its bars ride a slow shimmer,
+  // each on its own phase, feet planted on the panel baseline.
+  const barRefs = useRef([]);
+  const amp = useRef(1);
+  useFrame((state, dt) => {
+    const a = ambientAmp(amp, ctx, dt);
+    const t = state.clock.elapsedTime;
+    lib.bars.forEach((b, i) => {
+      const m = barRefs.current[i];
+      if (!m) return;
+      const h = b.h * (1 + a * 0.09 * Math.sin(t * 1.05 + i * 0.87));
+      m.scale.y = h;
+      m.position.y = -13 + h / 2;
+    });
+  });
   return (
     <group>
       <mesh position={[0, 1, 4]} geometry={lib.unitBox} scale={[50, 2, 10]}
@@ -507,6 +681,7 @@ function MiniHorizonPanel({ lib, matFor }) {
         <mesh geometry={lib.unitBox} scale={[48, 28, 1.6]} material={matFor(0x131a1e, { rough: 0.8 })} />
         {lib.bars.map((b, i) => (
           <mesh key={i} geometry={lib.unitBox} position={[b.x, -13 + b.h / 2, 1.1]} scale={[1.7, b.h, 0.7]}
+            ref={(el) => { barRefs.current[i] = el; }}
             material={matFor(b.alt ? 0x3f6fb5 : 0x2e7d4f, { rough: 0.45 })} />
         ))}
         {/* A glass sheet over the panel face. */}
@@ -517,7 +692,7 @@ function MiniHorizonPanel({ lib, matFor }) {
   );
 }
 
-function MiniArch({ lib, matFor }) {
+function MiniArch({ lib, matFor, ctx }) {
   const panels = [];
   const R = 21, start = -0.95, len = 1.9;
   for (let v = 0; v < 5; v++) {
@@ -530,6 +705,24 @@ function MiniArch({ lib, matFor }) {
       });
     }
   }
+  // The swarm is still at work: each panel drifts a fraction of a
+  // unit in and out along its own radius, almost imperceptibly.
+  const panelRefs = useRef([]);
+  const amp = useRef(1);
+  useFrame((state, dt) => {
+    const a = ambientAmp(amp, ctx, dt);
+    const t = state.clock.elapsedTime;
+    panels.forEach((p, i) => {
+      const m = panelRefs.current[i];
+      if (!m) return;
+      const d = a * 0.32 * Math.sin(t * 0.22 + i * 0.71);
+      m.position.set(
+        p.pos[0] + Math.sin(p.rotY) * d,
+        p.pos[1],
+        p.pos[2] + Math.cos(p.rotY) * d,
+      );
+    });
+  });
   return (
     <group>
       <mesh position={[-17, 1, 12]} geometry={lib.unitBox} scale={[10, 2, 12]}
@@ -545,24 +738,54 @@ function MiniArch({ lib, matFor }) {
       </mesh>
       {panels.map((p, i) => (
         <mesh key={i} geometry={lib.unitBox} position={p.pos} rotation-y={p.rotY} scale={[4.6, 3.4, 0.6]}
+          ref={(el) => { panelRefs.current[i] = el; }}
           material={matFor(p.color, { rough: 0.55 })} />
       ))}
     </group>
   );
 }
 
-function MiniDefinition({ lib, matFor }) {
+function MiniDefinition({ lib, matFor, ctx }) {
   const nodes = [
     { pos: [-16, 11, 0], color: 0x8e6cc8 },
     { pos: [2, 15, 5], color: 0xb8c7cc },
     { pos: [17, 10, -3], color: 0x8e6cc8 },
   ];
+  // Pulses travel the wires: the same two bezier paths the wire
+  // tubes were swept along (geoLib above), one pulse per wire.
+  const curves = useMemo(() => [
+    new THREE.QuadraticBezierCurve3(
+      new THREE.Vector3(-16, 11, 0), new THREE.Vector3(-7, 18, 3), new THREE.Vector3(2, 15, 5)),
+    new THREE.QuadraticBezierCurve3(
+      new THREE.Vector3(2, 15, 5), new THREE.Vector3(9, 19, 1), new THREE.Vector3(17, 10, -3)),
+  ], []);
+  const pulseRefs = useRef([]);
+  const amp = useRef(1);
+  useFrame((state, dt) => {
+    const a = ambientAmp(amp, ctx, dt);
+    const t = state.clock.elapsedTime;
+    pulseRefs.current.forEach((m, k) => {
+      if (!m) return;
+      m.visible = a > 0.02;
+      if (!m.visible) return;
+      const f = (t * 0.055 + k * 0.5) % 1;
+      m.position.copy(curves[k % curves.length].getPoint(f));
+      m.material.opacity = 0.85 * a;
+    });
+  });
   return (
     <group>
       <mesh position={[0, 0.8, 0]} geometry={lib.unitBox} scale={[52, 1.6, 30]}
         material={matFor(0x1a2227, { rough: 0.9 })} />
       {lib.wireGeos.map((g, i) => (
         <mesh key={i} geometry={g} material={matFor(0xb79ce0, { rough: 0.4 })} />
+      ))}
+      {curves.map((_, k) => (
+        <mesh key={`pulse${k}`} ref={(el) => { pulseRefs.current[k] = el; }}>
+          <sphereGeometry args={[0.95, 10, 10]} />
+          <meshBasicMaterial color={k ? 0x7fd4c1 : 0xffc46b} transparent opacity={0.85}
+            depthWrite={false} blending={THREE.AdditiveBlending} />
+        </mesh>
       ))}
       {nodes.map((n, i) => (
         <group key={i} position={n.pos}>
@@ -665,7 +888,7 @@ function MiniKnot({ lib, matFor, ctx }) {
     const dt = Math.min(0.05, dtRaw || 0.016);
     const st = ctx.stateRef.current;
     const paused = st.inspectedId === "knot" || Boolean(st.partFocus && st.partFocus.partId);
-    if (spin.current && !paused) spin.current.rotation.y += dt * 0.25;
+    if (spin.current && !paused && st.ambientOn !== false) spin.current.rotation.y += dt * 0.25;
     // The knot's own glow tier is the parts' base light; a hovered
     // part lifts past it, a focused part lifts further — and its
     // glass clears as it brightens, so the core reads through.
@@ -725,7 +948,7 @@ const ATMOS_KNOTS = [
   { form: "cinquefoil", pos: [-133.5, 97], tilt: 0.85, rate: -0.09, color: 0xd8b25c, emissive: 0xffa726, ei: 0.35 },
 ];
 
-function AtmosphereKnots() {
+function AtmosphereKnots({ ctx }) {
   const spins = useRef([]);
   const geos = useMemo(() => ATMOS_KNOTS.map((k) => {
     const f = KNOT_FORMS[k.form];
@@ -734,6 +957,7 @@ function AtmosphereKnots() {
   useEffect(() => () => { for (const g of geos) g.dispose(); }, [geos]);
   useFrame((_, dtRaw) => {
     const dt = Math.min(0.05, dtRaw || 0.016);
+    if (ctx.stateRef.current.ambientOn === false) return;
     ATMOS_KNOTS.forEach((k, i) => {
       const g = spins.current[i];
       if (g) g.rotation.y += dt * k.rate;
@@ -944,9 +1168,11 @@ function MiniCrystal({ lib, matFor, ctx }) {
     const S = sim.current;
     const paused = st.inspectedId === "crystal"
       || (st.shared.drag && st.shared.drag.id === "crystal");
-    if (spin.current && !paused) spin.current.rotation.y += dt * 3 * DEG;
-    // Drift: tempered walk, stepped at 2 Hz.
-    S.acc += dt;
+    const ambient = st.ambientOn !== false;
+    if (spin.current && !paused && ambient) spin.current.rotation.y += dt * 3 * DEG;
+    // Drift: tempered walk, stepped at 2 Hz. The Ambient motion
+    // toggle stills the crystal too: no drift, no regrowth.
+    S.acc += ambient ? dt : 0;
     if (S.acc >= 0.5) {
       S.acc %= 0.5;
       for (let i = 0; i < 8; i++) {
@@ -1652,7 +1878,9 @@ function Rig({ ctx, cameras }) {
     // own phase — the only motion the still minerals are allowed.
     if (frame.crystalCores) {
       for (const c of frame.crystalCores) {
-        c.mat.emissiveIntensity = c.base + c.amp * Math.sin(state.clock.elapsedTime * c.speed + c.phase);
+        c.mat.emissiveIntensity = st.ambientOn !== false
+          ? c.base + c.amp * Math.sin(state.clock.elapsedTime * c.speed + c.phase)
+          : damp(c.mat.emissiveIntensity, c.base, 4, dt);
       }
     }
 
@@ -1744,7 +1972,7 @@ export default function SpaceView(props) {
   const {
     space, currentId, hoverId, cardId, pendingId,
     projection, rotation, elevation, zoomMul,
-    turntableOn, pulsesOn, labelsOn, sharedRef,
+    turntableOn, pulsesOn, ambientOn, labelsOn, sharedRef,
     libraryOpen, clipHeld, clipSummoned, inspectedId, inspectRot, pastes, inspectPanel,
     partFocus, partHoverId,
     viewName, snapOn, strata, layers,
@@ -1755,7 +1983,7 @@ export default function SpaceView(props) {
   stateRef.current = {
     space, currentId, hoverId, cardId, pendingId,
     projection, rotation, elevation, zoomMul,
-    turntableOn, pulsesOn, labelsOn,
+    turntableOn, pulsesOn, ambientOn, labelsOn,
     libraryOpen, clipSummoned, inspectedId, inspectRot,
     partFocus, partHoverId,
     viewName, snapOn, strata, layers,
@@ -2013,7 +2241,7 @@ export default function SpaceView(props) {
                 <meshStandardMaterial color={0x12181c} roughness={0.85} />
               </mesh>
               <primitive object={geo.rim} position={[0, 0.05, 0]} />
-              <AtmosphereKnots />
+              <AtmosphereKnots ctx={ctx} />
               <CrystalCluster ctx={ctx} />
             </>
           ) : null}

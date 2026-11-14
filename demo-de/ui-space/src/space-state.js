@@ -158,6 +158,45 @@ export function addressedId(hoverId, currentId) {
 }
 
 /**
+ * F is the click, and the click lands on the ADDRESSED thing —
+ * the one under the cursor when there is one, otherwise the
+ * current one. F's decision is pure so the regression the user
+ * hit (hover an object, press F, nothing opens, because only a
+ * previously-clicked current object was consulted) stays caught:
+ *
+ *   - a live patch completes onto the addressed target;
+ *   - the knot with one of its parts hovered focuses that part;
+ *   - an inspect-on-F target (a media card, the clipboard tray)
+ *     inspects;
+ *   - any other addressed thing opens (its card stands in space);
+ *   - nothing addressed is a no-op.
+ *
+ * `inspectIds` names the inspect-on-F targets; `partId` is the
+ * hovered knot part, already validated by the caller, and only
+ * applies when the addressed target is the knot itself.
+ */
+export function resolveFAction({
+  pendingId = null,
+  hoverId = null,
+  currentId = null,
+  partId = null,
+  inspectIds = [],
+} = {}) {
+  const targetId = addressedId(hoverId, currentId);
+  if (pendingId) {
+    return targetId && targetId !== pendingId
+      ? { type: "completePatch", targetId }
+      : { type: "none", targetId: null };
+  }
+  if (!targetId) return { type: "none", targetId: null };
+  if (targetId === "knot" && partId) {
+    return { type: "partFocus", targetId, partId };
+  }
+  if (inspectIds.includes(targetId)) return { type: "inspect", targetId };
+  return { type: "open", targetId };
+}
+
+/**
  * The Tab cycle over EVERYTHING addressable, in a stated order:
  * the objects first, then the media library's cards (only
  * while the library is open — closed, they are inside the cabinet

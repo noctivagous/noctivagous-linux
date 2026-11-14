@@ -28,6 +28,7 @@ import {
   isAddressable,
   addressableList,
   addressedId,
+  resolveFAction,
   applyTransformKey,
   applyTransformPatch,
   applyLayout,
@@ -96,10 +97,19 @@ import {
  * mutually exclusive, and its intents dispatch through the same
  * transitions as the keys.
  *
- * F is still the click: on the current object it flies you in to a
- * close seat and stands its card in the space beside it. That is as
- * far as entering goes in this early form — the objects are
- * manipulated, not yet descended into.
+ * F is still the click: on the ADDRESSED object — the one under
+ * the cursor, or the current one when the cursor addresses
+ * nothing — it flies you in to a close seat and stands its card
+ * in the space beside it. That is as far as entering goes in
+ * this early form — the objects are manipulated, not yet
+ * descended into.
+ *
+ * The shell is the space itself: the scene fills the viewport
+ * and everything that used to be page furniture around it —
+ * parameters, readout, instructions, the citizens index — now
+ * stands inside the viewport as stationary overlay panels in
+ * the environment's own glass-and-amber conventions. The page
+ * never scrolls; panels own their overflow.
  */
 
 const PARAM_DEFS = [
@@ -114,6 +124,7 @@ const PARAM_DEFS = [
   { id: "elevation", label: "Elevation", type: "number", min: -25, max: 50, step: 1, defaultValue: 0 },
   { id: "turntable", label: "Turntable rest", type: "boolean", defaultValue: true },
   { id: "pulses", label: "Cable pulses", type: "boolean", defaultValue: true },
+  { id: "ambientMotion", label: "Ambient motion", type: "boolean", defaultValue: true },
   { id: "labelsOn", label: "Key labels", type: "boolean", defaultValue: true },
   { id: "snap", label: "Snap", type: "boolean", defaultValue: true },
   { id: "layerData", label: "Layer · DATA", type: "boolean", defaultValue: true },
@@ -124,20 +135,154 @@ const PARAM_DEFS = [
   { id: "layerSceneryLock", label: "Lock · SCENERY", type: "boolean", defaultValue: true },
 ];
 
+/** The first moves, as a chip strip standing over the scene at rest. */
+const FIRST_MOVES = [
+  { key: "F", label: "open" },
+  { key: "Tab", label: "cycle" },
+  { key: "1 / 2", label: "zoom out · in" },
+  { key: "Space", label: "carry" },
+  { key: "G", label: "patch" },
+  { key: "M", label: "library" },
+  { key: "Enter", label: "command line" },
+];
+
+/** The whole key-click scheme, grouped by function for the guide. */
+const KEY_GROUPS = [
+  {
+    title: "Address & enter",
+    rows: [
+      ["hover", "the object under the cursor is the addressee"],
+      ["Tab", "cycle everything addressable (Shift+Tab back)"],
+      ["F", "open the addressed object — its card stands in space"],
+      ["D", "back one level: part → patch → card → selection"],
+      ["Esc", "release a level; cancels a drag before it drops"],
+      ["Alt+L", "label mode — letter chips appear, bare letters target"],
+    ],
+  },
+  {
+    title: "Turn & carry",
+    rows: [
+      ["- =", "yaw the addressed object"],
+      ["[ ]", "pitch it"],
+      ["; '", "roll it"],
+      [". /", "scale it"],
+      ["Space", "pick the addressed object up / press again to drop"],
+      ["X / Z", "in a drag: lock movement to that world axis"],
+    ],
+  },
+  {
+    title: "Camera & layouts",
+    rows: [
+      ["1", "zoom out — there is no scroll-wheel zoom"],
+      ["2", "zoom in — and no mouse orbit"],
+      ["3 4 5", "layouts: RING · DISTRICTS · THEATRE"],
+      ["v › t/f/s/h", "named views on the command line: top · front · side · home"],
+    ],
+  },
+  {
+    title: "Patch, media & clipboard",
+    rows: [
+      ["G", "start a patch from the addressed object; G / F / click lands it"],
+      ["X", "strip every cable touching the addressed object"],
+      ["M", "open / close the media library on the XY wall"],
+      ["C", "copy the addressed thing to the clipboard"],
+      ["I", "inspect the addressed thing — it comes to you"],
+      ["Alt+0", "summon / dismiss the clipboard tray"],
+      ["Alt+1 2 3", "layer visibility: DATA / INSTRUMENTS / SCENERY"],
+    ],
+  },
+  {
+    title: "Modes & the command line",
+    rows: [
+      ["Enter", "arm the command line: category › action › argument, ⏎ runs"],
+      ["Alt+L", "in label mode G is the tangled tree and M the living crystal; outside it G only patches and M opens the library"],
+      ["C / I", "here I inspects and C copies — KeyPilot's stock I-copy lives on C in this layout"],
+      ["F on a card / tray", "inspects it, like I"],
+      ["knot parts", "with the knot current, hover a part — F zooms into it, D backs out to the knot"],
+    ],
+  },
+];
+
+const GUIDE_TABS = [
+  { id: "brief", label: "Brief" },
+  { id: "keys", label: "Keys" },
+  { id: "notes", label: "Field notes" },
+  { id: "citizens", label: "Citizens" },
+];
+
 const css = `
-.us-page { background:#0b0e10; color:#cfd8dc; font-family:Tahoma, Verdana, sans-serif; margin:0; min-height:100vh; }
-.us-head { display:flex; align-items:baseline; gap:18px; padding:14px 20px 6px; flex-wrap:wrap; }
-.us-head h1 { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:600; font-size:21px; letter-spacing:.08em; text-transform:uppercase; color:#e8f3ee; margin:0; }
-.us-nav a { color:#7fd4c1; font-size:12px; margin-right:14px; text-decoration:none; }
+html, body, #root { height:100%; margin:0; overflow:hidden; background:#0b0e10; }
+.us-page { position:fixed; inset:0; height:100dvh; overflow:hidden; background:#0b0e10; color:#cfd8dc; font-family:Tahoma, Verdana, sans-serif; margin:0; }
+.us-stage { position:absolute; inset:0; overflow:hidden; background:#0b0e10; }
+.us-stage-view { position:absolute; inset:0; }
+.us-head { position:absolute; z-index:30; top:10px; left:12px; right:12px; min-height:38px; display:flex; align-items:center; gap:16px; padding:5px 10px;
+  border:1px solid rgba(44,58,65,.9); border-radius:6px; background:rgba(13,18,22,.86); backdrop-filter:blur(8px); box-shadow:0 8px 28px rgba(0,0,0,.35); }
+.us-head h1 { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:600; font-size:18px; letter-spacing:.08em; text-transform:uppercase; color:#e8f3ee; margin:0; white-space:nowrap; }
+.us-nav { display:flex; align-items:center; gap:13px; overflow-x:auto; white-space:nowrap; scrollbar-width:none; }
+.us-nav::-webkit-scrollbar { display:none; }
+.us-nav a { color:#7fd4c1; font-size:12px; text-decoration:none; }
 .us-nav a.here { color:#ffa726; }
-.us-sub { padding:0 20px 10px; font-size:12px; color:#8fa3ab; max-width:940px; line-height:1.55; }
+.us-sub { font-size:12px; color:#8fa3ab; line-height:1.55; margin:0 0 10px; }
 .us-sub b { color:#ffa726; }
-.us-main { display:flex; gap:14px; margin:0 20px; align-items:stretch; }
-.us-stage { flex:1; border:1px solid #2c3a41; border-radius:6px; overflow:hidden; min-width:0; height:560px; display:flex; flex-direction:column; background:#0b0e10; }
-.us-stage-view { flex:1; min-height:0; position:relative; }
-.us-rail { width:296px; flex:none; display:flex; flex-direction:column; gap:14px; }
-.us-box { border:1px solid #2c3a41; border-radius:6px; background:#10161a; padding:10px 12px; }
+.us-box { border:1px solid rgba(44,58,65,.95); border-radius:6px; background:rgba(16,22,26,.9); padding:10px 12px; box-shadow:0 10px 30px rgba(0,0,0,.38); backdrop-filter:blur(8px); }
 .us-box h3 { margin:0 0 8px; font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:600; font-size:14px; letter-spacing:.08em; text-transform:uppercase; color:#e8f3ee; }
+.us-overlay-panel { position:absolute; z-index:24; display:flex; flex-direction:column; min-height:0; }
+.us-panel-head { flex:none; display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; }
+.us-panel-head h3 { margin:0; }
+.us-panel-toggle { flex:none; font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:600; font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+  color:#ffa726; background:rgba(255,167,38,.08); border:1px solid rgba(255,167,38,.55); border-radius:3px; padding:2px 7px; cursor:pointer; }
+.us-panel-toggle:hover { background:#ffa726; color:#0b0e10; }
+.us-hud { left:12px; top:60px; width:304px; max-height:min(322px, calc(100dvh - 190px)); }
+.us-hud .us-readout { overflow-y:auto; min-height:0; padding-right:2px; }
+.us-params { right:12px; top:60px; width:308px; max-height:calc(100dvh - 196px); }
+.us-params-body { overflow-y:auto; min-height:0; padding-right:2px; }
+.us-overlay-panel.collapsed { width:auto; }
+.us-overlay-panel.collapsed .us-panel-head { margin-bottom:0; }
+.us-firstmoves { position:absolute; z-index:23; top:60px; left:354px; right:354px; display:flex; justify-content:center; align-items:flex-start; flex-wrap:wrap; gap:5px; pointer-events:none; }
+.us-move { display:inline-flex; align-items:center; gap:6px; padding:3px 7px; border:1px solid rgba(44,58,65,.9); border-radius:3px; background:rgba(13,18,22,.82);
+  font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:500; font-size:12px; letter-spacing:.07em; text-transform:uppercase; color:#8fa3ab; backdrop-filter:blur(6px); }
+.us-move b { color:#ffa726; font-weight:600; }
+.us-guide { left:12px; bottom:118px; width:min(404px, calc(100vw - 24px)); max-height:min(500px, calc(100dvh - 500px)); }
+.us-guide-tabs { flex:none; display:flex; flex-wrap:wrap; gap:5px; margin-bottom:9px; }
+.us-guide-tab { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:600; font-size:12px; letter-spacing:.08em; text-transform:uppercase;
+  color:#8fa3ab; background:#0b0e10; border:1px solid #2c3a41; border-radius:3px; padding:2px 8px; cursor:pointer; }
+.us-guide-tab:hover { color:#e8f3ee; border-color:#45565e; }
+.us-guide-tab.here { color:#0b0e10; background:#ffa726; border-color:#ffa726; }
+.us-guide-body { overflow-y:auto; min-height:0; padding-right:3px; }
+.us-guide-body p { font-size:12.5px; line-height:1.62; color:#b8c7cc; margin:0 0 11px; }
+.us-guide-body p b, .us-guide-body li b { color:#ffa726; }
+.us-guide-body h4 { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:600; font-size:13.5px; letter-spacing:.08em; text-transform:uppercase; color:#7fd4c1; margin:15px 0 6px; }
+.us-guide-body h4:first-child { margin-top:0; }
+.us-keygroup { margin-bottom:13px; }
+.us-keygroup h4 { margin-bottom:5px; }
+.us-keyrow { display:flex; gap:9px; align-items:baseline; padding:3px 0; border-top:1px solid rgba(44,58,65,.55); font-size:12px; line-height:1.45; color:#aebcc2; }
+.us-keyrow:first-of-type { border-top:none; }
+.us-keycap { flex:none; min-width:58px; font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:600; font-size:11.5px; letter-spacing:.06em; color:#ffa726;
+  border:1px solid rgba(255,167,38,.5); border-radius:3px; padding:0 5px; text-align:center; }
+.us-citizen-row { display:flex; gap:8px; align-items:baseline; width:100%; text-align:left; background:none; border:none; border-top:1px solid rgba(44,58,65,.55);
+  color:#cfd8dc; font-family:Tahoma, Verdana, sans-serif; font-size:12px; line-height:1.45; padding:6px 0; cursor:pointer; }
+.us-citizen-row:hover .us-citizen-name { color:#ffa726; text-decoration:underline; }
+.us-citizen-name { flex:none; font-weight:bold; }
+.us-citizen-meta { color:#8fa3ab; font-size:11px; }
+.us-bottomdock { position:absolute; z-index:26; left:0; right:0; bottom:0; display:flex; flex-direction:column; }
+.us-statusbar { flex:none; display:flex; align-items:center; gap:14px; padding:4px 12px; border-top:1px solid rgba(44,58,65,.9); background:rgba(13,18,22,.88);
+  font-family:'IBM Plex Mono', ui-monospace, monospace; font-size:11px; color:#8fa3ab; backdrop-filter:blur(8px); }
+.us-statusbar .mode { color:#ffa726; font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:600; font-size:13px; letter-spacing:.08em; text-transform:uppercase; white-space:nowrap; }
+.us-statusbar .context { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.us-statusbar .dyn { flex:none; max-width:44%; color:#ffa726; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+@media (max-width:1180px) {
+  .us-firstmoves { left:12px; right:12px; top:calc(60px + min(322px, calc(100dvh - 190px)) + 10px); justify-content:flex-start; }
+  .us-hud { width:282px; }
+  .us-params { width:282px; }
+  .us-guide { max-height:min(430px, calc(100dvh - 470px)); }
+}
+@media (max-width:760px) {
+  .us-head h1 { font-size:15px; }
+  .us-hud { display:none; }
+  .us-params { width:min(308px, calc(100vw - 24px)); }
+  .us-guide { bottom:112px; }
+  .us-firstmoves { display:none; }
+}
 .us-readout { font-family:'IBM Plex Mono', ui-monospace, monospace; font-size:11.5px; line-height:1.75; color:#a9f0dd; white-space:pre-wrap; word-break:break-word; }
 .us-readout .k { color:#ffa726; }
 .us-keyline { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:500; font-size:13.5px; letter-spacing:.08em; text-transform:uppercase; color:#8fa3ab; line-height:1.65; }
@@ -237,6 +382,13 @@ export default function SpaceApp() {
   const [partHoverId, setPartHoverId] = useState(null);
   const [dynText, setDynText] = useState("");
   const dynTimer = useRef(null);
+  // The overlay shell: parameters and the guide are stationary
+  // panels over the scene, each collapsible on its own head.
+  const [paramsOpen, setParamsOpen] = useState(true);
+  const [guideOpen, setGuideOpen] = useState(
+    () => typeof window === "undefined" || window.innerWidth > 1400,
+  );
+  const [guideTab, setGuideTab] = useState("brief");
 
   // The layers, as the PARAMETERS panel holds them.
   const layers = layersFromValues(values);
@@ -333,25 +485,39 @@ export default function SpaceApp() {
   const onSelect = (id) => { touch(); onObjectClick(id); };
 
   const doF = () => {
-    if (pendingId) {
-      const target = addressedId(hoverId, currentId);
-      if (target && target !== pendingId) completePatch(pendingId, target);
-      return;
+    // F lands on the ADDRESSED thing: hover wins, current is the
+    // fallback. The decision itself is pure (resolveFAction in
+    // space-state.js) and every branch below works from the local
+    // action — never from a state value it just asked React to set.
+    const action = resolveFAction({
+      pendingId,
+      hoverId,
+      currentId,
+      partId: partHoverId && partById(partHoverId) ? partHoverId : null,
+      inspectIds: [...MEDIA_IDS, "clipboard"],
+    });
+    switch (action.type) {
+      case "completePatch":
+        completePatch(pendingId, action.targetId);
+        return;
+      case "partFocus":
+        // F on a hovered part of the knot zooms INTO the part —
+        // the part focus, one level deeper than entering the knot.
+        setCurrentId(action.targetId);
+        setPartFocus(beginPartFocus(partFocus, action.targetId, action.partId));
+        setCardId(null);
+        return;
+      case "inspect":
+        // Cards and the tray are small: for them, F-enter IS inspect.
+        beginInspectThing(action.targetId);
+        return;
+      case "open":
+        setCurrentId(action.targetId);
+        setCardId(action.targetId);
+        return;
+      default:
+        return;
     }
-    if (!currentId) return;
-    // F on a hovered part of the current knot zooms INTO the part
-    // — the part focus, one level deeper than entering the knot.
-    if (currentId === "knot" && partHoverId && partById(partHoverId)) {
-      setPartFocus(beginPartFocus(partFocus, "knot", partHoverId));
-      setCardId(null);
-      return;
-    }
-    // Cards and the tray are small: for items, F-enter IS inspect.
-    if (isMediaId(currentId) || currentId === "clipboard") {
-      beginInspectThing(currentId);
-      return;
-    }
-    setCardId(currentId);
   };
   const doBack = () => {
     // The release chain: a part focus backs out to its knot first,
@@ -375,7 +541,10 @@ export default function SpaceApp() {
       if (target && target !== pendingId) completePatch(pendingId, target);
       return;
     }
-    if (currentId) { setPendingId(currentId); return; }
+    // No patch live: G starts from the ADDRESSED object — hover
+    // wins, as it does for F — and the source becomes current.
+    const source = addressedId(hoverId, currentId);
+    if (source) { setCurrentId(source); setPendingId(source); return; }
   };
 
   /* ----- the drag lock: Space picks up, Space drops, Esc cancels ----- */
@@ -868,6 +1037,20 @@ export default function SpaceApp() {
     : currentId ? "TARGETED"
     : "AT REST";
   const focusPart = partFocus.partId ? partById(partFocus.partId) : null;
+  const addressedName = thingName(addressedId(hoverId, currentId));
+  const nextText = inspection.inspectedId
+    ? `${thingName(inspection.inspectedId)} is at the inspection position — D / Esc sends it home`
+    : dragLock
+      ? `carrying ${thingName(dragLock.id)} — move the cursor, Space drops, Esc cancels`
+      : pendingId
+        ? `patch live from ${pending?.name || thingName(pendingId)} — address a second thing, then G / F / click`
+        : partFocus.partId
+          ? `${focusPart?.name || "part"} focused — D backs out to the knot`
+          : cardId
+            ? `${thingName(cardId)} is open — D flies back to the world seat`
+            : addressedName
+              ? `${addressedName} addressed — F opens it`
+              : "hover an object, or Tab to one — F opens it";
 
   // The inspected thing's object-born panel: title, kind, and its
   // provenance or state, stood beside it in the space by the view.
@@ -944,78 +1127,346 @@ export default function SpaceApp() {
   return (
     <div className="us-page">
       <style>{css}</style>
-      <div className="us-head">
-        <h1>DEMO-DE · UI SPACE</h1>
-        <nav className="us-nav">
-          <a href="../">key-clicks</a>
-          <a href="../react.html">shell + panelization</a>
-          <a href="../definition.html">definition</a>
-          <a href="../tangled.html">tangled tree 3D</a>
-          <a href="../sunburst.html">sunburst 3D</a>
-          <a href="../sunburst-cylinder.html">sunburst cylinder</a>
-          <a href="../horizon.html">horizon monitor</a>
-          <a href="../horizon3d.html">horizon 3D</a>
-          <a href="../treemap.html">treemap 3D</a>
-          <a href="../treemap-cube.html">treemap cube</a>
-          <a className="here" href="./">ui space</a>
-        </nav>
-      </div>
-      <p className="us-sub">
-        An early form of the UI space: the lab's frames stand on one platter as
-        miniature citizens, and they are worked the bimodal way, entirely by key —
-        there is no scroll-wheel zoom and no mouse orbit. The object under the
-        cursor is the addressee and <b>F</b> is the click (<b>Tab</b> cycles too);
-        turn the addressed object with <b>-</b> <b>=</b> <b>[</b> <b>]</b> <b>;</b>{" "}
-        <b>'</b>, scale it with <b>.</b> <b>/</b>, patch it to another with <b>G</b>,
-        pick it up with a <b>Space</b> press (press again to drop), and rearrange
-        the whole space with the layouts on <b>3</b> <b>4</b> <b>5</b>. Key labels
-        are opt-in: <b>Alt+L</b> shows the letter chips and makes letters into
-        addresses. The stage's footer is a command line — <b>Enter</b> arms it.
-        <b>M</b> opens the MEDIA LIBRARY on the XY wall; <b>C</b> copies the
-        addressed thing to the clipboard, <b>I</b> inspects it, and <b>Alt+0</b>
-        summons the clipboard tray. This is an early form: the objects are
-        manipulated, not yet entered for real — full descent is later work.
-      </p>
-      <div className="us-main">
-        <div className="us-stage">
-          <div className="us-stage-view">
-            <SpaceView
-              space={viewSpace}
-              currentId={currentId}
-              hoverId={hoverId}
-              cardId={cardId}
-              pendingId={pendingId}
-              projection={String(values.projection)}
-              rotation={Number(values.rotation)}
-              elevation={Number(values.elevation)}
-              zoomMul={zoomMul}
-              turntableOn={Boolean(values.turntable)}
-              pulsesOn={Boolean(values.pulses)}
-              labelsOn={Boolean(values.labelsOn) && uiMode.labelMode}
-              viewName={viewName}
-              snapOn={Boolean(values.snap)}
-              strata={{
-                data: layers.data.visible,
-                instruments: layers.instruments.visible,
-                scenery: layers.scenery.visible,
-              }}
-              layers={layers}
-              libraryOpen={libraryOpen}
-              clipHeld={clip.held}
-              clipSummoned={clipSummoned}
-              inspectedId={inspection.inspectedId}
-              inspectRot={inspectRot}
-              partFocus={partFocus}
-              partHoverId={partHoverId}
-              pastes={pastes}
-              inspectPanel={inspectPanel}
-              sharedRef={sharedRef}
-              onHover={onHover}
-              onPartHover={onPartHover}
-              onObjectClick={onObjectClick}
-              onSelect={onSelect}
-              onTouch={touch}
-            />
+      <div className="us-stage">
+        <div className="us-stage-view">
+          <SpaceView
+            space={viewSpace}
+            currentId={currentId}
+            hoverId={hoverId}
+            cardId={cardId}
+            pendingId={pendingId}
+            projection={String(values.projection)}
+            rotation={Number(values.rotation)}
+            elevation={Number(values.elevation)}
+            zoomMul={zoomMul}
+            turntableOn={Boolean(values.turntable)}
+            pulsesOn={Boolean(values.pulses)}
+            ambientOn={values.ambientMotion !== false}
+            labelsOn={Boolean(values.labelsOn) && uiMode.labelMode}
+            viewName={viewName}
+            snapOn={Boolean(values.snap)}
+            strata={{
+              data: layers.data.visible,
+              instruments: layers.instruments.visible,
+              scenery: layers.scenery.visible,
+            }}
+            layers={layers}
+            libraryOpen={libraryOpen}
+            clipHeld={clip.held}
+            clipSummoned={clipSummoned}
+            inspectedId={inspection.inspectedId}
+            inspectRot={inspectRot}
+            partFocus={partFocus}
+            partHoverId={partHoverId}
+            pastes={pastes}
+            inspectPanel={inspectPanel}
+            sharedRef={sharedRef}
+            onHover={onHover}
+            onPartHover={onPartHover}
+            onObjectClick={onObjectClick}
+            onSelect={onSelect}
+            onTouch={touch}
+          />
+        </div>
+
+        <header className="us-head">
+          <h1>DEMO-DE · UI SPACE</h1>
+          <nav className="us-nav" aria-label="demo-de pages">
+            <a href="../">key-clicks</a>
+            <a href="../react.html">shell + panelization</a>
+            <a href="../definition.html">definition</a>
+            <a href="../tangled.html">tangled tree 3D</a>
+            <a href="../sunburst.html">sunburst 3D</a>
+            <a href="../sunburst-cylinder.html">sunburst cylinder</a>
+            <a href="../horizon.html">horizon monitor</a>
+            <a href="../horizon3d.html">horizon 3D</a>
+            <a href="../treemap.html">treemap 3D</a>
+            <a href="../treemap-cube.html">treemap cube</a>
+            <a className="here" href="./">ui space</a>
+          </nav>
+        </header>
+
+        <section className="us-box us-overlay-panel us-hud" data-testid="space-hud" aria-label="Space readout">
+          <div className="us-panel-head">
+            <h3>READOUT</h3>
+            <span className="us-cmdtag">{mode}</span>
+          </div>
+          <div className="us-readout">
+            <span className="k">LAYOUT</span>{"   "}{layout.name}{"\n"}
+            <span className="k">VIEW</span>{"     "}{VIEWS[viewName].name}{"\n"}
+            <span className="k">ZOOM</span>{"     "}distance ×{zoomMul.toFixed(2)}{"\n"}
+            <span className="k">LAYERS</span>{"   "}DATA {layers.data.visible ? "shown" : "hidden"}{layers.data.locked ? " · locked" : ""}{"\n"}
+            <span className="k">LAYERS</span>{"   "}INST {layers.instruments.visible ? "shown" : "hidden"}{layers.instruments.locked ? " · locked" : ""}{"\n"}
+            <span className="k">LAYERS</span>{"   "}SCEN {layers.scenery.visible ? "shown" : "hidden"}{layers.scenery.locked ? " · locked" : ""}{"\n"}
+            {currentId ? (
+              <>
+                <span className="k">CURRENT</span>{"  "}{thingName(currentId)}{current ? ` — ${current.group}` : ""}{currentId === "crystal" ? " · 8 faces · values live" : ""}{"\n"}
+              </>
+            ) : (
+              <>
+                <span className="k">CURRENT</span>{"  "}—{"\n"}
+              </>
+            )}
+            {current && tr ? (
+              <>
+                <span className="k">YAW</span>{"      "}{Math.round(tr.yaw)}°{"  "}
+                <span className="k">PITCH</span> {Math.round(tr.pitch)}°{"  "}
+                <span className="k">ROLL</span> {Math.round(tr.roll)}°{"\n"}
+                <span className="k">SCALE</span>{"    "}{tr.scale.toFixed(2)}×{"\n"}
+              </>
+            ) : null}
+            <span className="k">CABLES</span>{"   "}{space.cables.length}{"\n"}
+            {focusPart ? (
+              <>
+                <span className="k">PART</span>{"     "}{focusPart.name} — value {focusPart.value} · {(partShare(focusPart) * 100).toFixed(1)}% of the knot{"\n"}
+              </>
+            ) : null}
+            <span className="k">LIBRARY</span>{"  "}{libraryOpen ? "OPEN" : "CLOSED"} · {MEDIA_ITEMS.length} items{"\n"}
+            <span className="k">CLIPBOARD</span>{" "}{clipboardTitle(clip) || "—"}{"\n"}
+            {lastPaste ? (
+              <>
+                <span className="k">PASTE</span>{"    "}CLIPBOARD → {thingName(lastPaste.targetId)}: {lastPaste.item.title}{"\n"}
+              </>
+            ) : null}
+            {pending ? (
+              <>
+                <span className="k">PATCH</span>{"    "}from {pending.name}{"\n"}
+              </>
+            ) : null}
+            {dragLock ? (
+              <>
+                <span className="k">CARRYING</span>{" "}{thingName(dragLock.id)}{axisLock ? ` · ${axisLock.toUpperCase()} LOCK` : ""}{"\n"}
+              </>
+            ) : null}
+            <span className="k">LABELS</span>{"   "}{uiMode.labelMode ? "ON" : "off"}{"\n"}
+            <span className="k">MODE</span>{"     "}{mode}
+          </div>
+        </section>
+
+        <div className="us-firstmoves" data-testid="first-moves" aria-label="First moves">
+          {FIRST_MOVES.map((m) => (
+            <span className="us-move" key={m.key}><b>{m.key}</b>{m.label}</span>
+          ))}
+        </div>
+
+        <section className={`us-box us-overlay-panel us-guide${guideOpen ? "" : " collapsed"}`} data-testid="guide-panel" aria-label="UI Space guide">
+          <div className="us-panel-head">
+            <h3>GUIDE</h3>
+            <button
+              type="button"
+              className="us-panel-toggle"
+              aria-expanded={guideOpen}
+              onClick={(e) => { setGuideOpen((v) => !v); e.currentTarget.blur(); }}
+            >
+              {guideOpen ? "Collapse" : "Open"}
+            </button>
+          </div>
+          {guideOpen ? (
+            <>
+              <div className="us-guide-tabs" role="tablist" aria-label="Guide sections">
+                {GUIDE_TABS.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={guideTab === t.id}
+                    className={`us-guide-tab${guideTab === t.id ? " here" : ""}`}
+                    onClick={(e) => { setGuideTab(t.id); e.currentTarget.blur(); }}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              <div className="us-guide-body">
+                {guideTab === "brief" ? (
+                  <div>
+                    <p>
+                      An early form of the UI space: the lab's frames stand on one platter as
+                      miniature citizens, and they are worked the bimodal way, entirely by key —
+                      there is no scroll-wheel zoom and no mouse orbit. The object under the
+                      cursor is the addressee and <b>F</b> is the click (<b>Tab</b> cycles too);
+                      turn the addressed object with <b>-</b> <b>=</b> <b>[</b> <b>]</b> <b>;</b>{" "}
+                      <b>'</b>, scale it with <b>.</b> <b>/</b>, patch it to another with <b>G</b>,
+                      pick it up with a <b>Space</b> press (press again to drop), and rearrange
+                      the whole space with the layouts on <b>3</b> <b>4</b> <b>5</b>.
+                    </p>
+                    <p>
+                      Key labels are opt-in: <b>Alt+L</b> shows the letter chips and makes letters
+                      into addresses. The command line at the foot of the scene — <b>Enter</b> arms
+                      it. <b>M</b> opens the MEDIA LIBRARY on the XY wall; <b>C</b> copies the
+                      addressed thing to the clipboard, <b>I</b> inspects it, and <b>Alt+0</b>
+                      summons the clipboard tray.
+                    </p>
+                    <p>
+                      <b>FIG. 1</b> — The space at rest in the RING layout: eleven miniature frames
+                      on the platter, each one a working object — the mesa and drum really are the
+                      sunburst layout, the tray and cube really are the treemap, tiled by the same
+                      NCTGraphite modules as their own pages. Left alone for eight seconds the
+                      world turns slowly on its platter; any key takes control back.
+                    </p>
+                    <p>
+                      This is an early form: the objects are manipulated, not yet entered for
+                      real — full descent is later work.
+                    </p>
+                  </div>
+                ) : null}
+                {guideTab === "keys" ? (
+                  <div>
+                    {KEY_GROUPS.map((g) => (
+                      <div className="us-keygroup" key={g.title}>
+                        <h4>{g.title}</h4>
+                        {g.rows.map(([key, text]) => (
+                          <div className="us-keyrow" key={`${g.title}-${key}`}>
+                            <span className="us-keycap">{key}</span>
+                            <span>{text}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {guideTab === "notes" ? (
+                  <div>
+                    <h4>The Space</h4>
+                    <p>
+                      The world is the lab's platter, and its citizens are the frames themselves,
+                      miniaturised but not faked: the mesa's terraces are the sunburst partition
+                      of flare, the tray's cuboids are the binary treemap, the cube's faces carry
+                      the treemap's children exactly as the cube page spreads them. Around them
+                      the stylised citizens — the tangled tree's figures on their glass level
+                      sheets, the horizon skyline, the panelization arch, the definition's wired
+                      nodes. Containers are glass — the drum's wall, the cube's shell, the tray —
+                      so what is inside ghosts through before anything is opened. Nothing here is
+                      a picture of the lab; it is the lab, at tabletop scale.
+                    </p>
+                    <p>
+                      At the back stands the first of the principal planes, the XY datum wall,
+                      and on it the environment's first app: the MEDIA LIBRARY, a glass cabinet
+                      (M) whose saved items fold out onto the wall as cards. The clipboard
+                      (Alt+0) is a tray that flies to the platter's front edge; what it holds can
+                      be pasted onto any object with G, and stays held.
+                    </p>
+                    <p>
+                      The DATA KNOT works by a new convention: a trefoil is one closed curve, and
+                      here its tube is glass because it contains things — the arc is divided into
+                      eight parts, each part holding one datum of a system's life (ingress, cache,
+                      render, index, queue, store, sync, egress), the tube's thickness the size of
+                      what the part holds, a bright core ghosting through the glass. Make the knot
+                      current and its parts become addresses: hover one to name it, and F zooms
+                      the camera into that part of the curve to read what it carries. D backs out
+                      to the knot again. Two further knots stand on pedestals at the rim as pure
+                      atmosphere — a (4,3) torus knot and a cinquefoil — turning slowly, holding
+                      nothing, there for the feel of the place. Knot forms after the classic
+                      torus-knot parametrizations; see Stemkoski's Parameterized Knots gallery.
+                    </p>
+                    <p>
+                      Crystals work two ways here. At the eastern rim stands the CRYSTAL CLUSTER —
+                      beta-quartz, a cube, a trapezohedron and a rhombic dodecahedron on a rock
+                      plinth — still, because minerals are: they do not turn, and only their lit
+                      cores breathe, very slowly. None of them was modelled. A crystal form is a
+                      group of faces related by symmetry, so each solid is generated: one seed
+                      face multiplied by its point group — m-3m for the isometric three, 6/mmm for
+                      the beta-quartz — until the faces close into a solid. The second use is a
+                      citizen: the LIVING CRYSTAL, the same machinery turned to data. Its
+                      octahedron's eight faces carry eight values, each face's distance from the
+                      centre set by its value, so the shape is the chart; as the values drift, the
+                      solid regrows, faces advancing and retreating, turning slowly on its
+                      pedestal, with the values pinned to its faces while you hold it. Crystal
+                      forms generated by point-group symmetry, after OpenGeology's Mineralogy:
+                      Crystal Morphology and Symmetry.
+                    </p>
+                    <h4>The Operation</h4>
+                    <p>
+                      The mouse only points. Everything done is done by key, and the scheme is
+                      whole: 1 and 2 move the camera in and out — there is deliberately no
+                      scroll-wheel zoom, because the wheel is not a key-click. An object is
+                      addressed by the cursor's hover or the Tab cycle; its letter joins them
+                      only in label mode (Alt+L), which is off by default — and the command line
+                      addresses everything by name. The addressed object is lit — glow is address,
+                      here as everywhere in this environment — while context stays glass.
+                    </p>
+                    <p>
+                      The punctuation keys are the hands: - and = yaw it on its plot, [ and ]
+                      pitch it toward or away from you, ; and ' roll it, . and / scale it, each
+                      press a small eased step, holding the key a continuous motion. F is the
+                      click: it flies you to a seat before the object and stands its card in the
+                      space. D comes back, one level at a time. F goes to the thing — the camera
+                      flies, the thing stays home. I brings the thing to you: whatever you
+                      address — object, library card, the tray itself — travels to the inspection
+                      position before the camera, turns to face you at a legible size, and stands
+                      its panel beside itself, while every other mode suspends. D or Esc sends it
+                      back to its exact home, position, orientation and scale as they were. The
+                      command line doubles as CAD's dynamic input: while a gesture runs it speaks
+                      the live value being changed, and clears a breath after the gesture ends;
+                      the typed command stays the exact-entry path. Gesture coarsely, line exactly.
+                    </p>
+                    <h4>Patching and Layouts</h4>
+                    <p>
+                      Patching is built in, after the patch-bay demo: with an object addressed, G
+                      grows a live cable from it that follows the cursor; G again, F, or a click
+                      lands it on a second object, and the cable stays — a curved tube between the
+                      two anchors with a pulse of light travelling it, data visibly flowing between
+                      frames. X strips every cable touching the addressed object. Layouts are the
+                      space's arrangements, loaded whole like nibglider's: 3 lays the RING, 4
+                      gathers the DISTRICTS — graphs, monitors and instruments in their quarters —
+                      and 5 sets the THEATRE, the cube centre-stage under a shallow arc of the
+                      rest. Switching eases every object to its new plot over a breath; transforms
+                      and cables persist, and the cables follow their objects as they travel.
+                    </p>
+                    <p>
+                      Two letters carry double duty, and the mode decides what they mean: G and M
+                      are addresses only inside label mode — there G is the tangled tree and M the
+                      living crystal. Outside it, letters are operators: G patches, and M opens
+                      the media library.
+                    </p>
+                  </div>
+                ) : null}
+                {guideTab === "citizens" ? (
+                  <div>
+                    <p className="us-sub">Click a citizen to target it. Its letter is its label-mode address.</p>
+                    {labeledObjects().map(({ object, label }) => (
+                      <button
+                        className="us-citizen-row"
+                        key={object.id}
+                        type="button"
+                        onClick={(e) => { onSelect(object.id); e.currentTarget.blur(); }}
+                      >
+                        <span className="us-keycap">{label}</span>
+                        <span className="us-citizen-name">{object.name}</span>
+                        <span className="us-citizen-meta">{object.group} · {object.blurb}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </>
+          ) : null}
+        </section>
+
+        <section className={`us-box us-overlay-panel us-params${paramsOpen ? "" : " collapsed"}`} data-testid="parameters-panel" aria-label="Parameters">
+          <div className="us-panel-head">
+            <h3>PARAMETERS</h3>
+            <button
+              type="button"
+              className="us-panel-toggle"
+              aria-expanded={paramsOpen}
+              onClick={(e) => { setParamsOpen((v) => !v); e.currentTarget.blur(); }}
+            >
+              {paramsOpen ? "Collapse" : "Open"}
+            </button>
+          </div>
+          {paramsOpen ? (
+            <div className="us-params-body">
+              <NCTParameterPanel definitions={PARAM_DEFS} values={values} onChange={onParam} />
+            </div>
+          ) : null}
+        </section>
+
+        <div className="us-bottomdock">
+          <div className="us-statusbar" data-testid="space-status">
+            <span className="mode">{mode}</span>
+            <span className="context">{nextText}</span>
+            {dynText ? <span className="dyn">{dynText}</span> : null}
           </div>
           {cmd.armed ? (
             <div className="us-cmdchips">
@@ -1029,6 +1480,7 @@ export default function SpaceApp() {
           ) : null}
           <div
             className={`us-cmdbar${cmd.armed ? " armed" : ""}`}
+            data-testid="command-bar"
             onClick={() => { if (!cmd.armed && !pendingId && !lockRef.current) armCmdLine(); }}
             title="Command line — Enter or click to arm"
           >
@@ -1052,221 +1504,6 @@ export default function SpaceApp() {
             </span>
             <span className={`us-cmdecho${echo.error ? " err" : ""}`}>{echo.text}</span>
           </div>
-        </div>
-        <div className="us-rail">
-          <div className="us-box">
-            <h3>PARAMETERS</h3>
-            <NCTParameterPanel definitions={PARAM_DEFS} values={values} onChange={onParam} />
-          </div>
-          <div className="us-box">
-            <h3>READOUT</h3>
-            <div className="us-readout">
-              <span className="k">LAYOUT</span>{"   "}{layout.name}{"\n"}
-              <span className="k">VIEW</span>{"     "}{VIEWS[viewName].name}{"\n"}
-              <span className="k">ZOOM</span>{"     "}distance ×{zoomMul.toFixed(2)}{"\n"}
-              <span className="k">LAYERS</span>{"   "}DATA {layers.data.visible ? "shown" : "hidden"}{layers.data.locked ? " · locked" : ""}{"\n"}
-              <span className="k">LAYERS</span>{"   "}INST {layers.instruments.visible ? "shown" : "hidden"}{layers.instruments.locked ? " · locked" : ""}{"\n"}
-              <span className="k">LAYERS</span>{"   "}SCEN {layers.scenery.visible ? "shown" : "hidden"}{layers.scenery.locked ? " · locked" : ""}{"\n"}
-              {current ? (
-                <>
-                  <span className="k">CURRENT</span>{"  "}{current.name} — {current.group}{current.id === "crystal" ? " · 8 faces · values live" : ""}{"\n"}
-                  <span className="k">YAW</span>{"      "}{Math.round(tr.yaw)}°{"  "}
-                  <span className="k">PITCH</span> {Math.round(tr.pitch)}°{"  "}
-                  <span className="k">ROLL</span> {Math.round(tr.roll)}°{"\n"}
-                  <span className="k">SCALE</span>{"    "}{tr.scale.toFixed(2)}×{"\n"}
-                </>
-              ) : (
-                <>
-                  <span className="k">CURRENT</span>{"  "}—{"\n"}
-                </>
-              )}
-              <span className="k">CABLES</span>{"   "}{space.cables.length}{"\n"}
-              {focusPart ? (
-                <>
-                  <span className="k">PART</span>{"     "}{focusPart.name} — value {focusPart.value} · {(partShare(focusPart) * 100).toFixed(1)}% of the knot{"\n"}
-                </>
-              ) : null}
-              <span className="k">LIBRARY</span>{"  "}{libraryOpen ? "OPEN" : "CLOSED"} · {MEDIA_ITEMS.length} items{"\n"}
-              <span className="k">CLIPBOARD</span>{" "}{clipboardTitle(clip) || "—"}{"\n"}
-              {lastPaste ? (
-                <>
-                  <span className="k">PASTE</span>{"    "}CLIPBOARD → {thingName(lastPaste.targetId)}: {lastPaste.item.title}{"\n"}
-                </>
-              ) : null}
-              {pending ? (
-                <>
-                  <span className="k">PATCH</span>{"    "}from {pending.name}{"\n"}
-                </>
-              ) : null}
-              {dragLock ? (
-                <>
-                  <span className="k">CARRYING</span>{" "}{thingName(dragLock.id)}{axisLock ? ` · ${axisLock.toUpperCase()} LOCK` : ""}{"\n"}
-                </>
-              ) : null}
-              <span className="k">LABELS</span>{"   "}{uiMode.labelMode ? "ON" : "off"}{"\n"}
-              <span className="k">MODE</span>{"     "}{mode}
-            </div>
-          </div>
-          <div className="us-box">
-            <h3>KEY-CLICKS</h3>
-            <p className="us-keyline">
-              <b>hover</b> address{" · "}<b>F</b> enter / click{" · "}<b>Tab</b> cycle{" · "}
-              <b>1</b> zoom out{" · "}<b>2</b> zoom in{" · "}<b>3 4 5</b> layouts{" · "}
-              <b>- =</b> yaw{" · "}<b>[ ]</b> pitch{" · "}<b>; '</b> roll{" · "}<b>. /</b> scale{" · "}
-              <b>G</b> patch{" · "}<b>X</b> strip cables{" · "}
-              <b>Space</b> pick up / drop{" · "}<b>D</b> back{" · "}<b>Esc</b> release a level{" · "}
-              <b>Alt+L</b> label mode — letters target, <b>G</b> = tangled tree, <b>M</b> = living crystal; outside it <b>G</b> only patches and <b>M</b> opens the library{" · "}
-              <b>Enter</b> command line: cat › act › arg, <b>⏎</b> runs{" · "}
-              <b>M</b> media library{" · "}<b>C</b> copy{" · "}<b>I</b> inspect{" · "}<b>Alt+0</b> clipboard tray{" · "}
-              our layout: <b>I</b> inspects, <b>C</b> copies — KeyPilot's stock I-copy lives on <b>C</b> here{" · "}
-              <b>F</b> on a card or the tray inspects it{" · "}
-              with the knot current, hover one of its parts — <b>F</b> zooms into the part, <b>D</b> backs out to the knot{" · "}
-              views on the command line: <b>v › t</b> top{" · "}<b>v › f</b> front{" · "}<b>v › s</b> side{" · "}<b>v › h</b> home{" · "}
-              in a drag: <b>X</b> / <b>Z</b> axis lock — <b>Esc</b> releases the axis before it cancels the drag{" · "}
-              <b>Alt+1 2 3</b> layer visibility: data / instruments / scenery
-            </p>
-          </div>
-        </div>
-      </div>
-      <p className="figcap">
-        <b>FIG. 1</b> — The space at rest in the RING layout: eleven miniature frames on
-        the platter, each one a working object — the mesa and drum really are the
-        sunburst layout, the tray and cube really are the treemap, tiled by the same
-        NCTGraphite modules as their own pages. Left alone for eight seconds the
-        world turns slowly on its platter; any key takes control back.
-      </p>
-
-      <div className="print">
-        <div className="kicker">The environment · an early form of the UI space</div>
-        <h2>One space, worked by hand</h2>
-        <p className="standfirst">
-          Every earlier page in this lab is a single frame, visited alone. Here the
-          frames share a world. The point is not the miniatures — it is the operation:
-          a complete key-click scheme for living among objects, with patching and
-          layouts built in from the start.
-        </p>
-        <div className="rule" />
-        <div className="cols">
-          <div>
-            <h3>THE SPACE</h3>
-            <p>
-              The world is the lab's platter, and its citizens are the frames
-              themselves, miniaturised but not faked: the mesa's terraces are the
-              sunburst partition of flare, the tray's cuboids are the binary treemap,
-              the cube's faces carry the treemap's children exactly as the cube page
-              spreads them. Around them the stylised citizens — the tangled tree's
-              figures on their glass level sheets, the horizon skyline, the
-              panelization arch, the definition's wired nodes. Containers are glass:
-              the drum's wall, the cube's shell, the tray — so what is inside ghosts
-              through before anything is opened. Nothing here is a picture of the
-              lab; it is the lab, at tabletop scale. At the back stands the first
-              of the principal planes, the XY datum wall, and on it the
-              environment's first app: the MEDIA LIBRARY, a glass cabinet (M)
-              whose saved items fold out onto the wall as cards. The clipboard
-              (Alt+0) is a tray that flies to the platter's front edge; what it
-              holds can be pasted onto any object with G, and stays held.
-            </p>
-            <p>
-              The newest citizen works by a new convention: the DATA KNOT. A
-              trefoil is one closed curve, and here its tube is glass because
-              it contains things — the arc is divided into eight parts, each
-              part holding one datum of a system's life (ingress, cache,
-              render, index, queue, store, sync, egress), the tube's
-              thickness the size of what the part holds, a bright core
-              ghosting through the glass. Make the knot current and its parts
-              become addresses: hover one to name it, and F zooms the camera
-              into that part of the curve to read what it carries — the part
-              panel gives its value and its share of the whole knot. D backs
-              out to the knot again. Two further knots stand on pedestals at
-              the rim as pure atmosphere — a (4,3) torus knot and a
-              cinquefoil — turning slowly, holding nothing, there for the
-              feel of the place. Knot forms after the classic torus-knot
-              parametrizations; see Stemkoski's Parameterized Knots
-              gallery.
-            </p>
-            <p>
-              Crystals work two ways here. At the eastern rim stands the
-              CRYSTAL CLUSTER — beta-quartz, a cube, a trapezohedron and a
-              rhombic dodecahedron on a rock plinth — still, because minerals
-              are: they do not turn, and only their lit cores breathe, very
-              slowly. None of them was modelled. A crystal form is a group
-              of faces related by symmetry, so each solid is generated: one
-              seed face multiplied by its point group — m-3m for the
-              isometric three, 6/mmm for the beta-quartz — until the faces
-              close into a solid. (The trapezohedron's 24 faces belong to
-              the isometric {"{211}"} form in this class; trapezohedra in
-              other classes run to 6, 8 or 12, and the class's general form,
-              the hexoctahedron, carries the full 48 — as many faces as the
-              order of the group.) The second use is a citizen: the LIVING
-              CRYSTAL, the same machinery turned to data. Its octahedron's
-              eight faces carry eight values, each face's distance from the
-              centre set by its value, so the shape is the chart; as the
-              values drift, the solid regrows, faces advancing and
-              retreating, turning slowly on its pedestal, with the values
-              pinned to its faces while you hold it. Crystal forms
-              generated by point-group symmetry, after OpenGeology's
-              Mineralogy: Crystal Morphology and Symmetry.
-            </p>
-          </div>
-          <div>
-            <h3>THE OPERATION</h3>
-            <p>
-              The mouse only points. Everything done is done by key, and the scheme is
-              whole: 1 and 2 move the camera in and out — there is deliberately no
-              scroll-wheel zoom, because the wheel is not a key-click. An object is
-              addressed by the cursor's hover or the Tab cycle; its letter joins
-              them only in label mode (Alt+L), which is off by default — and the
-              footer's command line addresses everything by name. The addressed object is lit — glow is address, here as
-              everywhere in this environment — while context stays glass. The
-              punctuation keys are the hands: - and = yaw it on its plot, [ and ]
-              pitch it toward or away from you, ; and ' roll it, . and / scale it,
-              each press a small eased step, holding the key a continuous motion. F
-              is the click: it flies you to a seat before the object and stands its
-              card in the space. D comes back, one level at a time. F goes to the
-              thing — the camera flies, the thing stays home. I brings the thing
-              to you: whatever you address — object, library card, the tray
-              itself — travels to the inspection position before the camera,
-              turns to face you at a legible size, and stands its panel beside
-              itself (provenance for a media item, state for an object), while
-              every other mode suspends. D or Esc sends it back to its exact
-              home, position, orientation and scale as they were. The footer
-              line doubles as CAD's dynamic input: while a gesture runs — a
-              yaw repeating, a drag locked — it speaks the live value being
-              changed, and clears a breath after the gesture ends; the typed
-              command stays the exact-entry path. Gesture coarsely, line
-              exactly.
-            </p>
-          </div>
-          <div>
-            <h3>PATCHING AND LAYOUTS</h3>
-            <p>
-              Patching is built in, after the patch-bay demo: with an object current,
-              G grows a live cable from it that follows the cursor; G again, F, or a
-              click lands it on a second object, and the cable stays — a curved tube
-              between the two anchors with a pulse of light travelling it, data
-              visibly flowing between frames. X strips every cable touching the
-              addressed object. Layouts are the space's arrangements, loaded whole
-              like nibglider's: 3 lays the RING, 4 gathers the DISTRICTS — graphs,
-              monitors and instruments in their quarters — and 5 sets the THEATRE,
-              the cube centre-stage under a shallow arc of the rest. Switching eases
-              every object to its new plot over a breath; transforms and cables
-              persist, and the cables follow their objects as they travel. Two
-              letters carry double duty, and the mode decides what they mean: G
-              and M are addresses only inside label mode — there G is the tangled
-              tree and M the living crystal. Outside it, letters are operators:
-              G patches, and M opens the media library.
-            </p>
-          </div>
-        </div>
-        <div className="index">
-          <h3>THE CITIZENS — CLICK TO TARGET</h3>
-          {labeledObjects().map(({ object, label }) => (
-            <div className="obj-row" key={object.id}>
-              <span className="key">{label}</span>
-              <button onClick={() => onSelect(object.id)}>{object.name}</button>{" "}
-              <span className="meta">— {object.group} · {object.blurb}</span>
-            </div>
-          ))}
         </div>
       </div>
     </div>
