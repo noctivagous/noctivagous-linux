@@ -39,7 +39,24 @@ import {
   objectById,
   labeledObjects,
   zoomStep,
+  createOpenApp,
+  openApp as openAppTo,
+  setAppMode as setAppModeTo,
+  closeApp as closeAppTo,
+  resolveOpenAction,
+  ringItemById,
+  ringItemForLabel,
+  labeledRingItems,
 } from "./space-state.js";
+import {
+  makeTrack,
+  fullWindow,
+  windowZoom,
+  windowDrill,
+  pushNav,
+  popNav,
+  REGION_ZONES,
+} from "./waveform.js";
 import {
   CMD_CATEGORIES,
   createCommandState,
@@ -111,6 +128,18 @@ import {
  * this early form — the objects are manipulated, not yet
  * descended into.
  *
+ * Slice 8 is the first opening of a different kind: the platter
+ * gains a RING, and the ring carries an APP — Waveform, the audio
+ * app. A thing that bears an app does not enter; it OPENS: F
+ * takes it onto the centre stage (the main circle at the
+ * platter's heart, the space remaining around it), E across the
+ * whole platter (the citizens hide). While an app holds the
+ * stage, the ring belongs to the app — its controls, tools,
+ * states and portals ride there — and the keys change scope:
+ * Space plays, 1/2 zoom inside the app's own frame, F activates
+ * and drills, D steps back through the app's own history, and
+ * Esc leaves the app altogether (the big back).
+ *
  * The shell is the space itself: the scene fills the viewport
  * and everything that used to be page furniture around it —
  * parameters, readout, instructions, the citizens index — now
@@ -145,6 +174,7 @@ const PARAM_DEFS = [
 /** The first moves, as a chip strip standing over the scene at rest. */
 const FIRST_MOVES = [
   { key: "F", label: "open" },
+  { key: "E", label: "app · full platter" },
   { key: "Tab", label: "cycle" },
   { key: "1 / 2", label: "zoom out · in" },
   { key: "Space", label: "carry" },
@@ -152,6 +182,23 @@ const FIRST_MOVES = [
   { key: "M", label: "library" },
   { key: "Enter", label: "command line" },
 ];
+
+/**
+ * The open audio app's ring furniture (slice 8): while the app
+ * holds the stage the ring carries its transport, its track
+ * portals and its state tokens. Tab cycles stage → these, in
+ * this order; F (or a click) activates the addressed one.
+ */
+const APP_TOKEN_IDS = ["tok-play", "tok-pulse", "tok-voice", "tok-rain", "tok-zoom", "tok-loop"];
+const TOKEN_NAMES = {
+  "tok-play": "Play / pause",
+  "tok-pulse": "Pulse",
+  "tok-voice": "Voice",
+  "tok-rain": "Rain",
+  "tok-zoom": "Zoom in",
+  "tok-loop": "Loop",
+};
+const TOKEN_TRACKS = { "tok-pulse": "pulse", "tok-voice": "voice", "tok-rain": "rain" };
 
 /** The whole key-click scheme, grouped by function for the guide. */
 const KEY_GROUPS = [
@@ -161,6 +208,8 @@ const KEY_GROUPS = [
       ["hover", "the object under the cursor is the addressee"],
       ["Tab", "cycle everything addressable (Shift+Tab back)"],
       ["F", "open the addressed object — its card stands in space"],
+      ["F on the ring", "opens the Waveform app onto the centre stage"],
+      ["E", "open the addressed app across the whole platter, citizens hidden"],
       ["D", "back one level: part → patch → card → selection"],
       ["Esc", "release a level; cancels a drag before it drops"],
       ["Alt+L", "label mode — letter chips appear, bare letters target"],
@@ -202,11 +251,23 @@ const KEY_GROUPS = [
     title: "Modes & the command line",
     rows: [
       ["Enter", "arm the command line: category › action › argument, ⏎ runs"],
-      ["Alt+L", "in label mode G is the tangled tree and M the living crystal; outside it G only patches and M opens the library"],
+      ["Alt+L", "in label mode G is the tangled tree, M the living crystal and E the sunburst cylinder; outside it G patches, M opens the library and E expands an app"],
       ["C / I", "here I inspects and C copies — KeyPilot's stock I-copy lives on C in this layout"],
       ["F on a card / tray", "inspects it, like I"],
       ["knot parts", "with the knot current, hover a part — F zooms into it, D backs out to the knot"],
       ["tree branches", "with the tree current, hover a depth-1 branch — F zooms to the subtree, D backs out to the tree"],
+    ],
+  },
+  {
+    title: "In an open app",
+    rows: [
+      ["Space", "play / pause — the drag lock waits outside the app"],
+      ["1 / 2", "zoom the window inside the waveform's own frame — the camera stays"],
+      ["F", "activate the addressed ring token; on the waveform, drill into the hovered stretch"],
+      ["Tab", "cycle the stage and the app's ring tokens"],
+      ["D", "back one step in the app's own history (drills, track changes, zoom-token steps)"],
+      ["E", "expand a centre-stage app to the whole platter"],
+      ["Esc", "leave the app — the big back, home again"],
     ],
   },
 ];
@@ -393,6 +454,23 @@ export default function SpaceApp() {
   // branch focus reuses the partFocus state above ({objectId:
   // "tree", partId: the depth-1 node's id}).
   const [branchHoverId, setBranchHoverId] = useState(null);
+  // Slice 8: the open app (pure state in space-state.js), the
+  // audio app's own state — track, window, transport, and its nav
+  // history, which D walks back — and the app's addressing: the
+  // ring token under the cursor, the app's Tab focus (the stage
+  // or a token), and the waveform zone under the cursor.
+  const [openAppState, setOpenAppState] = useState(() => createOpenApp());
+  const [audio, setAudio] = useState(() => ({
+    trackId: "pulse",
+    window: { start: 0, end: 18 },
+    playing: false,
+    loop: false,
+    nav: [],
+  }));
+  const [tokenHoverId, setTokenHoverId] = useState(null);
+  const [appFocusId, setAppFocusId] = useState("stage");
+  const [regionHover, setRegionHover] = useState(null);
+  const camSnapshot = useRef(null);
   const [dynText, setDynText] = useState("");
   const dynTimer = useRef(null);
   // The overlay shell: parameters and the guide are stationary
@@ -411,7 +489,7 @@ export default function SpaceApp() {
     dynTimer.current = setTimeout(() => setDynText(""), 1000);
   };
 
-  const sharedRef = useRef({ lastTouch: 0, drag: null, groundLocal: { x: 0, z: 0 } });
+  const sharedRef = useRef({ lastTouch: 0, drag: null, groundLocal: { x: 0, z: 0 }, audioPos: 0 });
   const lockRef = useRef(null);
   const hoverTimer = useRef(null);
   const touch = () => { sharedRef.current.lastTouch = performance.now(); };
@@ -445,7 +523,7 @@ export default function SpaceApp() {
   };
 
   const thingName = (id) =>
-    objectById(id)?.name || mediaById(id)?.title ||
+    objectById(id)?.name || ringItemById(id)?.name || TOKEN_NAMES[id] || mediaById(id)?.title ||
     (id === "clipboard" ? "Clipboard" : "");
 
   // A knot part is hovered only while the knot is current — the
@@ -472,7 +550,127 @@ export default function SpaceApp() {
     setPartFocus((f) => (f.partId && f.objectId !== currentId ? endPartFocus() : f));
   }, [currentId]);
 
+  /* ----- slice 8: opening apps, and the audio app's own keys ----- */
+
+  const openAudioApp = (mode) => {
+    // The camera seat the app takes is given back on close: the
+    // named view is snapshotted (the seats are computed from
+    // state, so restoring the state restores the seat — the
+    // inspection precedent, one level up).
+    camSnapshot.current = { viewName };
+    setOpenAppState((s) => openAppTo(s, "audio", mode));
+    setCurrentId("audio");
+    setCardId(null);
+    setPendingId(null);
+    setPartFocus(endPartFocus());
+    setPartHoverId(null);
+    setBranchHoverId(null);
+    setAppFocusId("stage");
+    setTokenHoverId(null);
+    setRegionHover(null);
+    if (lockRef.current) lockCancel();
+    sharedRef.current.audioPos = audio.window.start;
+    touch();
+  };
+
+  const closeAudioApp = () => {
+    // Esc — the big back. Play pauses, the citizens return (in
+    // full mode they were hidden), the camera seat is restored,
+    // and the space is exactly as it was, with the ring's app
+    // item current, where the whole excursion began.
+    setOpenAppState((s) => closeAppTo(s));
+    setAudio((a) => ({ ...a, playing: false }));
+    setTokenHoverId(null);
+    setRegionHover(null);
+    setAppFocusId("stage");
+    if (camSnapshot.current) {
+      setViewName(camSnapshot.current.viewName);
+      camSnapshot.current = null;
+    }
+    setCardId(null);
+    setCurrentId("audio");
+    touch();
+  };
+
+  const activateToken = (id) => {
+    touch();
+    if (id === "tok-play") {
+      setAudio((a) => ({ ...a, playing: !a.playing }));
+      return;
+    }
+    if (id === "tok-loop") {
+      setAudio((a) => ({ ...a, loop: !a.loop }));
+      return;
+    }
+    if (id === "tok-zoom") {
+      const t = makeTrack(audio.trackId);
+      const nw = windowZoom(audio.window, 0.5, 0.5, t.seconds);
+      setAudio((a) => ({
+        ...a,
+        nav: pushNav(a.nav, { trackId: a.trackId, window: a.window }),
+        window: nw,
+      }));
+      sharedRef.current.audioPos = nw.start;
+      return;
+    }
+    const tid = TOKEN_TRACKS[id];
+    if (tid) {
+      if (tid === audio.trackId) {
+        setEcho({ text: `${makeTrack(tid).name} is already on the stage`, error: false });
+        return;
+      }
+      const t = makeTrack(tid);
+      setAudio((a) => ({
+        ...a,
+        nav: pushNav(a.nav, { trackId: a.trackId, window: a.window }),
+        trackId: tid,
+        window: fullWindow(t),
+      }));
+      sharedRef.current.audioPos = 0;
+    }
+  };
+
+  const drillRegion = (zone) => {
+    const t = makeTrack(audio.trackId);
+    const nw = windowDrill(
+      audio.window, zone / REGION_ZONES, (zone + 1) / REGION_ZONES, t.seconds,
+    );
+    setAudio((a) => ({
+      ...a,
+      nav: pushNav(a.nav, { trackId: a.trackId, window: a.window }),
+      window: nw,
+    }));
+    sharedRef.current.audioPos = nw.start;
+    touch();
+  };
+
+  const appBack = () => {
+    // D inside the app walks the APP's history — drills, track
+    // changes, zoom-token steps — and nothing else. An empty
+    // stack is a note, not a fall-through to the space's chain:
+    // app scope owns D while the app holds the stage.
+    const { stack, entry } = popNav(audio.nav);
+    if (!entry) {
+      setEcho({ text: "the app has no further back — Esc leaves the app", error: true });
+      return;
+    }
+    setAudio((a) => ({ ...a, nav: stack, trackId: entry.trackId, window: entry.window }));
+    sharedRef.current.audioPos = entry.window.start;
+    touch();
+  };
+
+  const onTokenHover = (id) => {
+    setTokenHoverId(id);
+    if (id) setAppFocusId(id);
+  };
+
   const completePatch = (from, to) => {
+    // The ring's apps open; they do not take cables.
+    if (ringItemById(from) || ringItemById(to)) {
+      setPendingId(null);
+      setEcho({ text: "the ring's apps open — they don't take cables", error: true });
+      return;
+    }
     // A patch completed to or from the clipboard tray is a PASTE,
     // not a cable: the held card attaches onto the other thing's
     // plot, and the clipboard keeps its content (copy, not cut).
@@ -496,6 +694,9 @@ export default function SpaceApp() {
 
   const onObjectClick = (id) => {
     if (!isAddressable(layers, id)) return; // locked/hidden strata don't take clicks
+    // While an app holds the stage, citizen clicks wait — the
+    // stage, its tokens and its keys own the interaction.
+    if (openAppState.appId) return;
     // While inspecting, clicking another thing inspects THAT thing
     // (beginInspect restores the first to its home first).
     if (inspection.inspectedId) {
@@ -508,6 +709,16 @@ export default function SpaceApp() {
   const onSelect = (id) => { touch(); onObjectClick(id); };
 
   const doF = () => {
+    // Slice 8 first: an app-bearing thing (the ring's Waveform)
+    // OPENS instead of entering — F takes it to the centre stage.
+    // A live patch keeps its F: the patch completes onto the
+    // addressed target, as it always has.
+    if (!pendingId) {
+      const open = resolveOpenAction({
+        targetId: addressedId(hoverId, currentId), key: "f", labelMode: uiMode.labelMode,
+      });
+      if (open) { openAudioApp(open.mode); return; }
+    }
     // F lands on the ADDRESSED thing: hover wins, current is the
     // fallback. The decision itself is pure (resolveFAction in
     // space-state.js) and every branch below works from the local
@@ -578,12 +789,21 @@ export default function SpaceApp() {
     // No patch live: G starts from the ADDRESSED object — hover
     // wins, as it does for F — and the source becomes current.
     const source = addressedId(hoverId, currentId);
+    if (source && ringItemById(source)) {
+      setEcho({ text: "Waveform opens — F centre-stage, E full platter; it does not patch", error: true });
+      return;
+    }
     if (source) { setCurrentId(source); setPendingId(source); return; }
   };
 
   /* ----- the drag lock: Space picks up, Space drops, Esc cancels ----- */
 
   const lockOn = (id) => {
+    // The ring's items open — they aren't carried.
+    if (ringItemById(id)) {
+      setEcho({ text: "the ring's items open — F centre-stage, E full platter", error: true });
+      return;
+    }
     // Platter objects lock with their plot as origin. Wall cards
     // and the tray have mount homes instead of plots: they can be
     // carried while locked, but a drop lets them go home (their
@@ -779,6 +999,9 @@ export default function SpaceApp() {
   };
 
   const beginInspectThing = (id) => {
+    // Inspection is for citizens, cards and the tray — the ring's
+    // items open instead (F/E), so they never reach the snapshot.
+    if (!objectById(id) && !isMediaId(id) && id !== "clipboard") return;
     // beginInspect snapshots the home exactly and restores any
     // thing already out (exclusivity) — the view eases it back.
     const { inspection: next } = beginInspect(inspection, id, homeFor(id));
@@ -904,6 +1127,58 @@ export default function SpaceApp() {
         if (!pendingId && !lockRef.current) armCmdLine();
         return;
       }
+      // APP SCOPE (slice 8): while an app holds the stage, the
+      // keys are the app's. The command line (above) and Alt+L
+      // still work — the line stays live and label mode still
+      // toggles — but the space's manipulation keys suspend:
+      // Space is the transport, not the drag lock; 1/2 zoom the
+      // window inside the app's frame, not the camera; the
+      // transform keys do nothing (the app is not a citizen).
+      // Esc here sits after the command line's walk-back (its
+      // machine consumed Esc above) and before the space's
+      // release chain below: Esc is the big back, D the app's.
+      if (openAppState.appId) {
+        const k = e.key;
+        if (k === "Escape") { e.preventDefault(); closeAudioApp(); return; }
+        if (k === " ") {
+          e.preventDefault();
+          if (!e.repeat) setAudio((a) => ({ ...a, playing: !a.playing }));
+          return;
+        }
+        if (k === "Tab") {
+          e.preventDefault();
+          const ids = ["stage", ...APP_TOKEN_IDS];
+          setAppFocusId(cycleInList(ids, appFocusId, e.shiftKey ? -1 : 1));
+          return;
+        }
+        if (k === "1" || k === "2") {
+          e.preventDefault();
+          const t = makeTrack(audio.trackId);
+          const w = audio.window;
+          const pos = sharedRef.current.audioPos ?? w.start;
+          const frac = Math.max(0, Math.min(1, (pos - w.start) / Math.max(0.001, w.end - w.start)));
+          const nw = windowZoom(w, k === "1" ? 1.6 : 1 / 1.6, frac, t.seconds);
+          setAudio((a) => ({ ...a, window: nw }));
+          showDyn(`WINDOW ${nw.start.toFixed(1)}–${nw.end.toFixed(1)}s of ${t.seconds}s`);
+          return;
+        }
+        if (k === "f" || k === "F") {
+          e.preventDefault();
+          const tok = tokenHoverId || (appFocusId !== "stage" ? appFocusId : null);
+          if (tok) activateToken(tok);
+          else if (regionHover != null) drillRegion(regionHover);
+          return;
+        }
+        if (k === "d" || k === "D") { e.preventDefault(); appBack(); return; }
+        if (k === "e" || k === "E") {
+          e.preventDefault();
+          if (openAppState.mode === "center") {
+            setOpenAppState((s) => setAppModeTo(s, "full"));
+          }
+          return;
+        }
+        return; // everything else waits outside the app
+      }
       if (e.key === " ") {
         e.preventDefault(); // always: no page scroll, no button press
         if (!e.repeat) toggleDragLock();
@@ -952,6 +1227,17 @@ export default function SpaceApp() {
         return;
       }
       if (e.key === "f" || e.key === "F") { e.preventDefault(); doF(); return; }
+      if (e.key === "e" || e.key === "E") {
+        // E expands an app across the whole platter — an operator
+        // OUTSIDE label mode only (resolveOpenAction refuses it
+        // inside, where letters are addresses); with no app
+        // addressed it falls through, and in label mode the letter
+        // targeting below picks E up as the cylinder's address.
+        const open = resolveOpenAction({
+          targetId: addressedId(hoverId, currentId), key: "e", labelMode: uiMode.labelMode,
+        });
+        if (open) { e.preventDefault(); openAudioApp(open.mode); return; }
+      }
       if (e.key === "d" || e.key === "D") { e.preventDefault(); doBack(); return; }
       if (e.key === "g" || e.key === "G") { e.preventDefault(); doG(); return; }
       if (e.key === "x" || e.key === "X") {
@@ -1020,6 +1306,14 @@ export default function SpaceApp() {
       if (target && isAddressable(layers, target.id)) {
         e.preventDefault(); setCurrentId(target.id); return;
       }
+      if (uiMode.labelMode) {
+        // The ring's items continue the labeled set past the
+        // citizens (theirs is the letter after the tree's).
+        const rit = ringItemForLabel(e.key);
+        if (rit && isAddressable(layers, rit.id)) {
+          e.preventDefault(); setCurrentId(rit.id); return;
+        }
+      }
       if (uiMode.labelMode && libraryOpen) {
         const item = mediaForLabel(e.key);
         if (item && isAddressable(layers, item.id)) {
@@ -1040,7 +1334,8 @@ export default function SpaceApp() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [space, currentId, hoverId, cardId, pendingId, cmd, uiMode,
-    inspection, inspectRot, libraryOpen, clip, clipSummoned, values]);
+    inspection, inspectRot, libraryOpen, clip, clipSummoned, values,
+    openAppState, audio, tokenHoverId, appFocusId, regionHover, viewName]);
 
   // Dynamic input during a locked drag: the footer follows the
   // drag point (platter units) while the lock holds.
@@ -1065,6 +1360,7 @@ export default function SpaceApp() {
     : dragLock ? "DRAG-LOCKED"
     : cmd.armed ? "COMMAND LINE"
     : pendingId ? "PATCHING — a cable is live"
+    : openAppState.appId ? (openAppState.mode === "full" ? "APP FULL — WAVEFORM" : "APP — WAVEFORM")
     : partFocus.partId
       ? partFocus.objectId === "tree"
         ? `BRANCH FOCUS — ${dataBranchById(DATA_TREE, partFocus.partId)?.name || ""}`
@@ -1077,13 +1373,16 @@ export default function SpaceApp() {
   const focusBranch = partFocus.partId && partFocus.objectId === "tree"
     ? dataBranchById(DATA_TREE, partFocus.partId) : null;
   const addressedName = thingName(addressedId(hoverId, currentId));
+  const audioTrack = makeTrack(audio.trackId);
   const nextText = inspection.inspectedId
     ? `${thingName(inspection.inspectedId)} is at the inspection position — D / Esc sends it home`
     : dragLock
       ? `carrying ${thingName(dragLock.id)} — move the cursor, Space drops, Esc cancels`
       : pendingId
         ? `patch live from ${pending?.name || thingName(pendingId)} — address a second thing, then G / F / click`
-        : partFocus.partId
+        : openAppState.appId
+          ? `${audioTrack.name} holds the stage — Space ${audio.playing ? "pauses" : "plays"} · F drills the hovered stretch · D steps back · Esc leaves the app`
+          : partFocus.partId
           ? partFocus.objectId === "tree"
             ? `${focusBranch?.name || "branch"} focused — D backs out to the tree`
             : `${focusPart?.name || "part"} focused — D backs out to the knot`
@@ -1216,10 +1515,20 @@ export default function SpaceApp() {
             branchHoverId={branchHoverId}
             pastes={pastes}
             inspectPanel={inspectPanel}
+            openApp={openAppState}
+            audio={audio}
+            tokenHoverId={tokenHoverId}
+            appFocusId={appFocusId}
+            regionHover={regionHover}
             sharedRef={sharedRef}
             onHover={onHover}
             onPartHover={onPartHover}
             onBranchHover={onBranchHover}
+            onTokenHover={onTokenHover}
+            onTokenActivate={activateToken}
+            onRegionHover={setRegionHover}
+            onRegionActivate={drillRegion}
+            onAudioEnd={() => setAudio((a) => (a.playing ? { ...a, playing: false } : a))}
             onObjectClick={onObjectClick}
             onSelect={onSelect}
             onTouch={touch}
@@ -1290,6 +1599,12 @@ export default function SpaceApp() {
                 <span className="k">PASTE</span>{"    "}CLIPBOARD → {thingName(lastPaste.targetId)}: {lastPaste.item.title}{"\n"}
               </>
             ) : null}
+            {openAppState.appId ? (
+              <>
+                <span className="k">APP</span>{"      "}Waveform · {openAppState.mode === "full" ? "FULL PLATTER" : "CENTRE STAGE"} · {audioTrack.name}{"\n"}
+                <span className="k">WINDOW</span>{"   "}{audio.window.start.toFixed(1)}–{audio.window.end.toFixed(1)}s of {audioTrack.seconds}s · {audio.playing ? "PLAYING" : "paused"}{audio.loop ? " · LOOP" : ""} · back-stack {audio.nav.length}{"\n"}
+              </>
+            ) : null}
             {pending ? (
               <>
                 <span className="k">PATCH</span>{"    "}from {pending.name}{"\n"}
@@ -1358,6 +1673,14 @@ export default function SpaceApp() {
                       it. <b>M</b> opens the MEDIA LIBRARY on the XY wall; <b>C</b> copies the
                       addressed thing to the clipboard, <b>I</b> inspects it, and <b>Alt+0</b>
                       summons the clipboard tray.
+                    </p>
+                    <p>
+                      The platter wears a <b>ring</b> now, and the ring carries the first app:
+                      <b>Waveform</b>, for audio. Address it and <b>F</b> opens it onto the centre
+                      stage; <b>E</b> opens it across the whole platter. Inside the app the keys
+                      change scope: <b>Space</b> plays, <b>1</b> and <b>2</b> zoom inside the
+                      waveform's own frame, <b>D</b> steps back through the app's history, and
+                      <b>Esc</b> leaves the app altogether.
                     </p>
                     <p>
                       <b>FIG. 1</b> — The space at rest in the RING layout: twelve miniature frames
@@ -1459,6 +1782,45 @@ export default function SpaceApp() {
                       depth-1 branch is the unit of address. After Lindenmayer (1968);
                       Prusinkiewicz &amp; Lindenmayer, The Algorithmic Beauty of Plants.
                     </p>
+                    <h4>Media, the Ring and the Apps</h4>
+                    <p>
+                      Media representations for files matter, because the aim is parity with the
+                      conventional 2D desktop: there, a file is opened by an app and edited in a
+                      window; here, a file wears a 3D form and is edited in the space itself, in
+                      the isometric and perspective views, with d3's conventions underneath —
+                      scales, hierarchies and layouts doing the same work they do on the lab's
+                      flat pages. The first media form is AUDIO, and its app is WAVEFORM.
+                    </p>
+                    <p>
+                      Around the circular platter runs a RING — an annulus of things to open,
+                      one ring to start. At rest it turns slowly, like the platter's own
+                      turntable; it stops when anything on it is addressed, and it stops for an
+                      open app, because an open app's furniture must hold still. Apps open two
+                      ways. F takes an app onto the CENTRE STAGE: the main circle at the
+                      platter's heart, the rest of the space remaining around it. E takes it
+                      across the WHOLE PLATTER: the citizens hide, and the app has the full
+                      disc. In both, THE RING BELONGS TO WHOEVER HOLDS THE STAGE — the app
+                      places its controls, tools, states and portal objects there, addressed
+                      like citizens and worked with F. Esc goes back in a big way: it leaves
+                      the app and returns the space exactly as it was. D goes back only inside
+                      the app: one step of the app's own history at a time.
+                    </p>
+                    <p>
+                      The Waveform app works a track the way the reference describes a waveform:
+                      amplitude, frequency, phase, harmonics, an envelope of attack, decay,
+                      sustain and release, and transients riding on top. On the stage the
+                      AMPLITUDE stands as a fence of peaks over time — honest min/max buckets
+                      of the samples, so zooming never invents detail. Behind it falls the
+                      WATERFALL: frequency across, time into depth, energy as height — the
+                      spectrogram made solid. Three composed tracks are on the ring's portals:
+                      PULSE, a low fundamental and its harmonics under a slow swell, hit by
+                      transients; VOICE, formant stacks in gated phrases, with silence between;
+                      RAIN, seeded patter with weather in it. Zooming changes the zoom WITHIN
+                      THE FRAME — 1 and 2 widen and narrow the window over the samples, F on a
+                      hovered stretch drills into it — and the camera does not move. D walks
+                      the window back out, one step of history at a time. Space plays; the
+                      playhead crosses the fence.
+                    </p>
                     <h4>The Operation</h4>
                     <p>
                       The mouse only points. Everything done is done by key, and the scheme is
@@ -1498,10 +1860,11 @@ export default function SpaceApp() {
                       and cables persist, and the cables follow their objects as they travel.
                     </p>
                     <p>
-                      Two letters carry double duty, and the mode decides what they mean: G and M
-                      are addresses only inside label mode — there G is the tangled tree and M the
-                      living crystal. Outside it, letters are operators: G patches, and M opens
-                      the media library.
+                      Three letters carry double duty, and the mode decides what they mean: G, M
+                      and E are addresses only inside label mode — there G is the tangled tree,
+                      M the living crystal and E the sunburst cylinder. Outside it, letters are
+                      operators: G patches, M opens the media library, and E expands an app
+                      across the whole platter.
                     </p>
                   </div>
                 ) : null}
@@ -1518,6 +1881,21 @@ export default function SpaceApp() {
                         <span className="us-keycap">{label}</span>
                         <span className="us-citizen-name">{object.name}</span>
                         <span className="us-citizen-meta">{object.group} · {object.blurb}</span>
+                      </button>
+                    ))}
+                    <p className="us-sub" style={{ marginTop: 12 }}>
+                      On the ring — not citizens; they open. F centre-stage, E full platter.
+                    </p>
+                    {labeledRingItems().map(({ item, label }) => (
+                      <button
+                        className="us-citizen-row"
+                        key={item.id}
+                        type="button"
+                        onClick={(e) => { onSelect(item.id); e.currentTarget.blur(); }}
+                      >
+                        <span className="us-keycap">{label}</span>
+                        <span className="us-citizen-name">{item.name}</span>
+                        <span className="us-citizen-meta">app · the ring · {item.blurb}</span>
                       </button>
                     ))}
                   </div>

@@ -12,15 +12,16 @@
  * panel by hue, initials, a pattern); there are no external images.
  *
  * Labels: in label mode the cards are addresses too. They take the
- * label sequence CONTINUING past the citizens (labelForIndex at
- * OBJECTS.length, +1, +2, …) with one skip — M is the library's own
- * operator, so the card that would have been M takes the next
- * label instead. With twelve citizens the cards start at O, so
- * their labels are: O P Q R S T U V (the M skip now guards any
- * future count where a card would land on M again).
+ * label sequence CONTINUING past the citizens AND the ring's items
+ * (labelForIndex at OBJECTS.length + RING_ITEMS.length, +1, +2, …)
+ * with one skip — M is the library's own operator, so the card that
+ * would have been M takes the next label instead. With twelve
+ * citizens and one ring item the cards start at P, so their labels
+ * are: P Q R S T U V W (the M skip now guards any future count
+ * where a card would land on M again).
  */
 
-import { labelForIndex, OBJECTS } from "./space-state.js";
+import { labelForIndex, OBJECTS, RING_ITEMS } from "./space-state.js";
 
 /** Eight seeded captures, as if saved from pages the user visited. */
 export const MEDIA_ITEMS = [
@@ -65,7 +66,7 @@ const RESERVED_LABELS = new Set(["M"]);
 
 function cardLabels() {
   const out = [];
-  let i = OBJECTS.length; // the sequence continues past the citizens
+  let i = OBJECTS.length + RING_ITEMS.length; // past the citizens and the ring
   while (out.length < MEDIA_ITEMS.length) {
     const label = labelForIndex(i);
     i += 1;

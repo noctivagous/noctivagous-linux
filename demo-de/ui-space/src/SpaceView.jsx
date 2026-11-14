@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { scaleLinear } from "d3-scale";
 import {
   buildSunburst,
   descendants as sunburstDescendants,
@@ -20,6 +21,10 @@ import {
   OBJECT_IDS,
   objectById,
   labeledObjects,
+  labeledRingItems,
+  ringItemById,
+  ringItemPosition,
+  RING_R,
   PLATTER_R,
   clampGround,
   glowLevel,
@@ -29,6 +34,12 @@ import {
   axisLockPoint,
   isAddressable,
 } from "./space-state.js";
+import {
+  makeTrack,
+  peaksForWindow,
+  bandEnergies,
+  REGION_ZONES,
+} from "./waveform.js";
 import { MEDIA_ITEMS, mediaById, labeledMedia } from "./media-library.js";
 import {
   KNOT_FORMS,
@@ -76,6 +87,16 @@ import {
  * layers and attention (level sheets, the arch sheet, tray and drum
  * and cube shells are glass, so contents ghost through); the
  * addressed object stays solid.
+ *
+ * Slice 8 adds the RING around the platter (a glass annulus that
+ * turns slowly at rest, carrying the Waveform app's token) and
+ * the STAGE the app opens onto: a dais at the platter's centre
+ * (centre mode) or the whole platter (full mode, citizens
+ * hidden), holding the waveform fence and the spectrogram
+ * waterfall. While the app is open the ring stops and carries
+ * the app's own furniture instead — transport, track portals,
+ * zoom and loop tokens. The ring and the stage live in the
+ * INSTRUMENTS stratum with the wall and the tray.
  */
 
 export const COMPASS = [
@@ -118,7 +139,7 @@ export const TRAY_HOME = { x: 0, y: 0, z: 166 };
 export const TRAY_PARKED = { x: 0, y: -95, z: 235 };
 
 export function thingName(id) {
-  return objectById(id)?.name || mediaById(id)?.title ||
+  return objectById(id)?.name || ringItemById(id)?.name || mediaById(id)?.title ||
     (id === "clipboard" ? "Clipboard" : "");
 }
 
@@ -1983,6 +2004,505 @@ function PendingCable({ ctx }) {
   );
 }
 
+/* ---------- the ring and the open app's stage (slice 8) ---------- */
+
+/** The app tokens' places on the ring while an app holds the
+ *  stage: an arc across the front of the annulus, transport at
+ *  the centre, portals and states spread either side. */
+const TOKEN_SLOTS = [
+  { id: "tok-loop", deg: 165 },
+  { id: "tok-rain", deg: 135 },
+  { id: "tok-pulse", deg: 105 },
+  { id: "tok-play", deg: 75 },
+  { id: "tok-voice", deg: 45 },
+  { id: "tok-zoom", deg: 15 },
+];
+
+/** Token captions for the overlay: the state tokens speak their
+ *  state, so the ring reads at a glance. */
+export const APP_TOKEN_UI = [
+  { id: "tok-play", caption: (a) => (a.playing ? "❚❚ PAUSE" : "▶ PLAY") },
+  { id: "tok-pulse", caption: () => "PULSE" },
+  { id: "tok-voice", caption: () => "VOICE" },
+  { id: "tok-rain", caption: () => "RAIN" },
+  { id: "tok-zoom", caption: (a) => `ZOOM ${(a.window.end - a.window.start).toFixed(1)}s` },
+  { id: "tok-loop", caption: (a) => (a.loop ? "LOOP ON" : "LOOP OFF") },
+];
+
+const TRACK_HUES = { pulse: 0x2e7d74, voice: 0x8e6cc8, rain: 0x5b8fd6 };
+
+function stdMat(color, opts = {}) {
+  const m = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(color),
+    roughness: opts.rough ?? 0.55,
+    metalness: 0.08,
+    transparent: opts.opacity != null,
+    opacity: opts.opacity ?? 1,
+    emissive: new THREE.Color(color),
+    emissiveIntensity: 0,
+  });
+  if (opts.opacity != null) m.depthWrite = false;
+  return m;
+}
+
+/** A tiny peak fence for a slab top: `buckets` bars of a track's
+ *  full-window peaks, written into an instanced mesh once. */
+function writeMiniFence(mesh, track, buckets, width, maxH, baseY) {
+  if (!mesh || !track) return;
+  const peaks = peaksForWindow(track.samples, track.rate, 0, track.seconds, buckets);
+  const M = new THREE.Matrix4(), Q = new THREE.Quaternion();
+  const P = new THREE.Vector3(), S = new THREE.Vector3(), C = new THREE.Color();
+  peaks.forEach((p, i) => {
+    const peak = Math.max(Math.abs(p.min), Math.abs(p.max));
+    const h = 0.5 + peak * maxH;
+    P.set(-width / 2 + ((i + 0.5) * width) / buckets, baseY + h / 2, 0);
+    S.set(Math.max(0.4, width / buckets - 0.35), h, 1.6);
+    M.compose(P, Q, S);
+    mesh.setMatrixAt(i, M);
+    mesh.setColorAt(i, C.setRGB(0.16 + 0.84 * peak, 0.42 + 0.23 * peak, 0.38 - 0.23 * peak));
+  });
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+}
+
+/**
+ * THE RING: a glass annulus floating just above the platter's
+ * level, centred on RING_R. It turns SLOWLY — 1.5°/s — as part of
+ * the space's rest behaviour, under this rule: rotation pauses
+ * while its item is hovered or current, while an app is open
+ * (either mode — an app's controls must hold still), and for
+ * three seconds after any interaction (the turntable-rest
+ * lastTouch pattern). At rest at home it carries one item: the
+ * WAVEFORM app's token, a slab with a miniature peak fence.
+ * While an app holds the stage the ring belongs to the app: the
+ * home token withdraws, the ring eases to its canonical angle,
+ * and the app's furniture — transport, three track portals, the
+ * zoom and loop state tokens — stands on the arc instead, each
+ * hovered and clicked like a citizen, each wearing a caption
+ * that speaks its state.
+ */
+function PlatterRing({ ctx }) {
+  const group = useRef(null);
+  const homeFence = useRef(null);
+  const trackFences = useRef({});
+  const playTri = useRef(null);
+  const playBars = useRef(null);
+  const mats = useMemo(() => ({
+    band: stdMat(0x9fd8e8, { opacity: 0.13 }),
+    slab: stdMat(0x2b3941, { rough: 0.6 }),
+    homeSlab: stdMat(0x39434b, { rough: 0.55 }),
+    homeBars: stdMat(0xffffff, { rough: 0.5 }),
+    playButton: stdMat(0xffa726, { rough: 0.35 }),
+    glyph: new THREE.MeshBasicMaterial({ color: 0xffc46b, side: THREE.DoubleSide }),
+    loop: stdMat(0x7fd4c1, { rough: 0.4 }),
+    zoom: stdMat(0xb79ce0, { rough: 0.4 }),
+    track: {
+      pulse: stdMat(TRACK_HUES.pulse, { rough: 0.5 }),
+      voice: stdMat(TRACK_HUES.voice, { rough: 0.5 }),
+      rain: stdMat(TRACK_HUES.rain, { rough: 0.5 }),
+    },
+    trackBars: {
+      pulse: stdMat(0xffffff, { rough: 0.5 }),
+      voice: stdMat(0xffffff, { rough: 0.5 }),
+      rain: stdMat(0xffffff, { rough: 0.5 }),
+    },
+  }), []);
+  const triGeo = useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(
+      [0, 0, -5.6, -3.6, 0, 4.2, 3.6, 0, 4.2], 3));
+    g.computeVertexNormals();
+    return g;
+  }, []);
+  const pulse = useMemo(() => makeTrack("pulse"), []);
+
+  useEffect(() => () => {
+    for (const m of Object.values(mats)) {
+      if (m && typeof m.dispose === "function") m.dispose();
+    }
+    for (const m of Object.values(mats.track)) m.dispose();
+    for (const m of Object.values(mats.trackBars)) m.dispose();
+    triGeo.dispose();
+  }, [mats, triGeo]);
+
+  useLayoutEffect(() => {
+    writeMiniFence(homeFence.current, pulse, 28, 25, 3.4, 3.8);
+  }, [pulse]);
+
+  useFrame((_, dtRaw) => {
+    const dt = Math.min(0.05, dtRaw || 0.016);
+    const st = ctx.stateRef.current;
+    const frame = ctx.frame;
+    const g = group.current;
+    if (!g) return;
+    const appOpen = Boolean(st.openApp && st.openApp.appId);
+    if (appOpen) {
+      // The app's furniture must stand at its designed slots:
+      // ease the ring to the nearest whole turn (angle 0).
+      const target = Math.round(frame.ringAngle / (Math.PI * 2)) * Math.PI * 2;
+      frame.ringAngle = damp(frame.ringAngle, target, 4, dt);
+    } else {
+      const still = st.turntableOn === false
+        || st.hoverId === "audio" || st.currentId === "audio"
+        || performance.now() - (st.shared.lastTouch || 0) <= 3000;
+      if (!still) frame.ringAngle += dt * 1.5 * DEG;
+    }
+    g.rotation.y = frame.ringAngle;
+    // Home token glow: the citizens' two tiers, on its own slab.
+    const homeT = appOpen ? 0 : glowLevel({
+      current: st.currentId === "audio",
+      hovered: st.hoverId === "audio",
+    });
+    mats.homeSlab.emissiveIntensity = damp(mats.homeSlab.emissiveIntensity, homeT, 10, dt);
+    mats.homeBars.emissiveIntensity = damp(mats.homeBars.emissiveIntensity, homeT * 0.7, 10, dt);
+    if (appOpen && st.audio) {
+      // The transport glyph flips with the state.
+      if (playTri.current) playTri.current.visible = !st.audio.playing;
+      if (playBars.current) playBars.current.visible = Boolean(st.audio.playing);
+      const addressed = (id) => (st.tokenHoverId === id || st.appFocusId === id) ? 0.55 : 0;
+      mats.playButton.emissiveIntensity = damp(mats.playButton.emissiveIntensity,
+        Math.max(addressed("tok-play"), st.audio.playing ? 0.3 : 0), 10, dt);
+      mats.loop.emissiveIntensity = damp(mats.loop.emissiveIntensity,
+        Math.max(addressed("tok-loop"), st.audio.loop ? 0.5 : 0), 10, dt);
+      mats.zoom.emissiveIntensity = damp(mats.zoom.emissiveIntensity, addressed("tok-zoom"), 10, dt);
+      for (const tid of Object.keys(mats.trackBars)) {
+        const tokId = `tok-${tid}`;
+        const lit = st.audio.trackId === tid ? 0.45 : 0;
+        mats.trackBars[tid].emissiveIntensity = damp(
+          mats.trackBars[tid].emissiveIntensity, Math.max(addressed(tokId), lit), 10, dt);
+      }
+    }
+  });
+
+  const st = () => ctx.stateRef.current;
+  const frame = ctx.frame;
+  const appOpen = Boolean(ctx.stateRef.current.openApp && ctx.stateRef.current.openApp.appId);
+  const home = ringItemPosition(0, 1, 0);
+  const slotPos = (deg) => {
+    const a = deg * DEG;
+    return [Math.cos(a) * RING_R, 0, Math.sin(a) * RING_R];
+  };
+  const slotRot = (deg) => {
+    const a = deg * DEG;
+    return Math.atan2(-Math.cos(a), -Math.sin(a));
+  };
+
+  return (
+    <group ref={group}>
+      {/* The annulus itself: glass, per the translucency law — a
+          place things stand, not a thing. */}
+      <mesh position={[0, 1.2, 0]} rotation-x={-Math.PI / 2} material={mats.band}>
+        <ringGeometry args={[209, 235, 96]} />
+      </mesh>
+      <mesh position={[0, 1.25, 0]} rotation-x={-Math.PI / 2}>
+        <ringGeometry args={[233.6, 235, 96]} />
+        <meshBasicMaterial color={0xffa726} transparent opacity={0.28} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      {!appOpen ? (
+        <group
+          position={[home.x, 0, home.z]}
+          rotation-y={Math.PI}
+          ref={(el) => {
+            if (el) frame.ringItemRefs.set("audio", el);
+            else frame.ringItemRefs.delete("audio");
+          }}
+          onPointerOver={(e) => { e.stopPropagation(); st().onTouch(); st().onHover("audio"); }}
+          onPointerOut={() => st().onHover(null)}
+          onClick={(e) => {
+            if (e.delta > 5) return;
+            e.stopPropagation();
+            st().onTouch();
+            st().onObjectClick("audio");
+          }}
+        >
+          <mesh position={[0, 2.5, 0]} material={mats.homeSlab}>
+            <boxGeometry args={[30, 2.6, 20]} />
+          </mesh>
+          <instancedMesh ref={homeFence} args={[undefined, undefined, 28]} material={mats.homeBars}>
+            <boxGeometry args={[1, 1, 1]} />
+          </instancedMesh>
+        </group>
+      ) : null}
+      {appOpen ? TOKEN_SLOTS.map((slot) => {
+        const tid = slot.id.replace("tok-", "");
+        const isTrack = Boolean(TRACK_HUES[tid]);
+        return (
+          <group
+            key={slot.id}
+            position={slotPos(slot.deg)}
+            rotation-y={slotRot(slot.deg)}
+            ref={(el) => {
+              if (el) frame.tokenRefs.set(slot.id, el);
+              else frame.tokenRefs.delete(slot.id);
+            }}
+            onPointerOver={(e) => { e.stopPropagation(); st().onTouch(); st().onTokenHover(slot.id); }}
+            onPointerOut={() => st().onTokenHover(null)}
+            onClick={(e) => {
+              if (e.delta > 5) return;
+              e.stopPropagation();
+              st().onTouch();
+              st().onTokenActivate(slot.id);
+            }}
+          >
+            <mesh position={[0, 2.5, 0]} material={mats.slab}>
+              <boxGeometry args={[30, 2.6, 20]} />
+            </mesh>
+            {slot.id === "tok-play" ? (
+              <>
+                <mesh position={[0, 4.1, 0]} material={mats.playButton}>
+                  <cylinderGeometry args={[5.2, 5.2, 1, 24]} />
+                </mesh>
+                <mesh ref={playTri} geometry={triGeo} material={mats.glyph} position={[0, 4.75, 0]} />
+                <group ref={playBars} visible={false}>
+                  <mesh position={[-2.1, 4.75, 0]} material={mats.glyph}>
+                    <boxGeometry args={[1.7, 1.1, 5.2]} />
+                  </mesh>
+                  <mesh position={[2.1, 4.75, 0]} material={mats.glyph}>
+                    <boxGeometry args={[1.7, 1.1, 5.2]} />
+                  </mesh>
+                </group>
+              </>
+            ) : null}
+            {slot.id === "tok-loop" ? (
+              <mesh position={[0, 4.3, 0]} rotation-x={Math.PI / 2} material={mats.loop}>
+                <torusGeometry args={[3.6, 0.95, 10, 28]} />
+              </mesh>
+            ) : null}
+            {slot.id === "tok-zoom" ? (
+              <group position={[0, 4.2, 0]}>
+                <mesh rotation-x={0.5} material={mats.zoom}>
+                  <torusGeometry args={[2.9, 0.8, 10, 24]} />
+                </mesh>
+                <mesh position={[2.7, -0.9, 0]} rotation-z={0.7} material={mats.zoom}>
+                  <boxGeometry args={[1.1, 4.6, 1.1]} />
+                </mesh>
+              </group>
+            ) : null}
+            {isTrack ? (
+              <>
+                <mesh position={[0, 3.95, -6.5]} material={mats.track[tid]}>
+                  <boxGeometry args={[26, 0.5, 0.8]} />
+                </mesh>
+                <TrackFence
+                  trackId={tid}
+                  mat={mats.trackBars[tid]}
+                  register={(el) => { trackFences.current[tid] = el; }}
+                />
+              </>
+            ) : null}
+          </group>
+        );
+      }) : null}
+    </group>
+  );
+}
+
+/** One track portal's miniature fence (its track's full window). */
+function TrackFence({ trackId, mat, register }) {
+  const ref = useRef(null);
+  const track = useMemo(() => makeTrack(trackId), [trackId]);
+  useLayoutEffect(() => {
+    register(ref.current);
+    writeMiniFence(ref.current, track, 10, 24, 3.2, 3.8);
+  }, [track, register]);
+  return (
+    <instancedMesh ref={ref} args={[undefined, undefined, 10]} material={mat}>
+      <boxGeometry args={[1, 1, 1]} />
+    </instancedMesh>
+  );
+}
+
+/* ---------- the waveform app's stage ---------- */
+
+const STAGE_R = 104; // the centre stage's radius (full: the platter's 184)
+const BED_TOP = 5;
+const FENCE_W = 168;
+const FENCE_Z = 30;
+const FENCE_BUCKETS = 96;
+const FALL_SLICES = 12;
+const FALL_BANDS = 4;
+
+/**
+ * THE WAVEFORM STAGE: the audio app stood in the space. A dais —
+ * radius 104 at the platter's centre in centre mode, easing out
+ * to the whole platter (184) in full mode — carries a trackbed;
+ * on the bed stands the FENCE (amplitude over time: instanced
+ * bars, one per bucket, time laid along X by a d3 linear scale,
+ * height the bucket's peak, colour rising teal→amber with it,
+ * bars on a centre rail) and behind it the WATERFALL (the
+ * spectrogram as terrain: frequency across in four bands, time
+ * receding into depth in twelve slices, energy as height, from
+ * waveform.js bandEnergies over the current window). The
+ * PLAYHEAD is a translucent plane crossing the fence at the play
+ * position; this component advances it while the app plays —
+ * the window is the frame being played, so the head wraps per
+ * the loop state or stops at the window's end. Six invisible
+ * zones over the fence report the hovered stretch (the App
+ * gates; F drills, a click drills too).
+ */
+function WaveformStage({ ctx }) {
+  const group = useRef(null);
+  const fence = useRef(null);
+  const fall = useRef(null);
+  const head = useRef(null);
+  const scaleT = useRef(1);
+  const dataKey = useRef("");
+  const scales = useRef(null);
+  const mats = useMemo(() => ({
+    dais: stdMat(0x1d262c, { rough: 0.85 }),
+    rim: new THREE.MeshBasicMaterial({ color: 0xffa726, transparent: true, opacity: 0.5 }),
+    bed: stdMat(0x141b1f, { rough: 0.9 }),
+    bar: stdMat(0xffffff, { rough: 0.45 }),
+    fall: stdMat(0xffffff, { rough: 0.65 }),
+    head: new THREE.MeshBasicMaterial({
+      color: 0xffc46b, transparent: true, opacity: 0.32,
+      side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending,
+    }),
+    rail: new THREE.MeshBasicMaterial({ color: 0xffa726 }),
+    zone: new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+  }), []);
+  const tracks = useMemo(() => ({
+    pulse: makeTrack("pulse"), voice: makeTrack("voice"), rain: makeTrack("rain"),
+  }), []);
+
+  useEffect(() => {
+    ctx.frame.stageGroupRef = group.current;
+    return () => {
+      if (ctx.frame.stageGroupRef === group.current) ctx.frame.stageGroupRef = null;
+      for (const m of Object.values(mats)) m.dispose();
+    };
+  }, [ctx, mats]);
+
+  const rebuild = (st) => {
+    const track = tracks[st.audio.trackId];
+    const w = st.audio.window;
+    const x = scaleLinear().domain([w.start, w.end]).range([-FENCE_W / 2, FENCE_W / 2]);
+    scales.current = { x, w };
+    const M = new THREE.Matrix4(), Q = new THREE.Quaternion();
+    const P = new THREE.Vector3(), S = new THREE.Vector3(), C = new THREE.Color();
+    const fm = fence.current;
+    if (fm) {
+      const peaks = peaksForWindow(track.samples, track.rate, w.start, w.end, FENCE_BUCKETS);
+      peaks.forEach((p, i) => {
+        const peak = Math.max(Math.abs(p.min), Math.abs(p.max));
+        const h = 1.2 + peak * 23;
+        const t0 = w.start + ((w.end - w.start) * i) / FENCE_BUCKETS;
+        const t1 = w.start + ((w.end - w.start) * (i + 1)) / FENCE_BUCKETS;
+        P.set((x(t0) + x(t1)) / 2, BED_TOP + h / 2, FENCE_Z);
+        S.set(Math.max(0.6, x(t1) - x(t0) - 0.45), h, 2.2);
+        M.compose(P, Q, S);
+        fm.setMatrixAt(i, M);
+        C.setRGB(0.13 + 0.87 * peak, 0.4 + 0.25 * peak, 0.36 - 0.21 * peak);
+        if (st.regionHover === Math.floor(i / (FENCE_BUCKETS / REGION_ZONES))) {
+          C.multiplyScalar(1.5);
+        }
+        fm.setColorAt(i, C);
+      });
+      fm.instanceMatrix.needsUpdate = true;
+      if (fm.instanceColor) fm.instanceColor.needsUpdate = true;
+    }
+    const wm = fall.current;
+    if (wm) {
+      const energies = bandEnergies(track.samples, track.rate, w.start, w.end, FALL_SLICES, FALL_BANDS);
+      let idx = 0;
+      energies.forEach((row, si) => {
+        row.forEach((e, b) => {
+          const h = 0.7 + e * 16;
+          P.set(-FENCE_W / 2 + (b + 0.5) * (FENCE_W / FALL_BANDS),
+            BED_TOP + h / 2, 16 - (si + 0.5) * 4.5);
+          S.set(FENCE_W / FALL_BANDS - 3, h, 3.4);
+          M.compose(P, Q, S);
+          wm.setMatrixAt(idx, M);
+          wm.setColorAt(idx, C.setRGB(0.1 + 0.9 * e, 0.34 + 0.31 * e, 0.32 - 0.17 * e));
+          idx++;
+        });
+      });
+      wm.instanceMatrix.needsUpdate = true;
+      if (wm.instanceColor) wm.instanceColor.needsUpdate = true;
+    }
+  };
+
+  useFrame((_, dtRaw) => {
+    const dt = Math.min(0.05, dtRaw || 0.016);
+    const st = ctx.stateRef.current;
+    const g = group.current;
+    if (!g) return;
+    const open = Boolean(st.openApp && st.openApp.appId === "audio" && st.audio);
+    g.visible = open;
+    if (!open) return;
+    const target = st.openApp.mode === "full" ? 184 / STAGE_R : 1;
+    scaleT.current = damp(scaleT.current, target, 5, dt);
+    g.scale.set(scaleT.current, 1, scaleT.current);
+    const key = `${st.audio.trackId}|${st.audio.window.start}|${st.audio.window.end}|${st.regionHover}`;
+    if (key !== dataKey.current) { dataKey.current = key; rebuild(st); }
+    // The playhead: the window is the frame being played.
+    const w = st.audio.window;
+    let pos = st.shared.audioPos ?? w.start;
+    if (pos < w.start) pos = w.start;
+    if (st.audio.playing) {
+      pos += dt;
+      if (pos >= w.end) {
+        if (st.audio.loop) pos = w.start + ((pos - w.end) % Math.max(0.001, w.end - w.start));
+        else {
+          pos = w.end;
+          if (st.onAudioEnd) st.onAudioEnd();
+        }
+      }
+      st.shared.audioPos = pos;
+    }
+    if (head.current && scales.current) {
+      head.current.position.set(
+        scales.current.x(Math.max(w.start, Math.min(w.end, pos))), BED_TOP + 14, FENCE_Z);
+    }
+  });
+
+  const st = () => ctx.stateRef.current;
+  return (
+    <group ref={group} visible={false}>
+      <mesh position={[0, 1.5, 0]} material={mats.dais}>
+        <cylinderGeometry args={[STAGE_R, STAGE_R + 3, 3, 72]} />
+      </mesh>
+      <mesh position={[0, 3.1, 0]} rotation-x={Math.PI / 2} material={mats.rim}>
+        <torusGeometry args={[STAGE_R, 0.7, 8, 72]} />
+      </mesh>
+      <mesh position={[0, 4, 0]} material={mats.bed}>
+        <boxGeometry args={[176, 2, 92]} />
+      </mesh>
+      {/* The centre rail the fence stands on. */}
+      <mesh position={[0, BED_TOP + 0.25, FENCE_Z]} material={mats.rail}>
+        <boxGeometry args={[FENCE_W, 0.5, 0.5]} />
+      </mesh>
+      <instancedMesh ref={fence} args={[undefined, undefined, FENCE_BUCKETS]} material={mats.bar}>
+        <boxGeometry args={[1, 1, 1]} />
+      </instancedMesh>
+      <instancedMesh ref={fall} args={[undefined, undefined, FALL_SLICES * FALL_BANDS]} material={mats.fall}>
+        <boxGeometry args={[1, 1, 1]} />
+      </instancedMesh>
+      <mesh ref={head} position={[0, BED_TOP + 14, FENCE_Z]} material={mats.head}>
+        <planeGeometry args={[1.4, 30]} />
+      </mesh>
+      {/* Hover zones over the fence: six stretches of the window. */}
+      {Array.from({ length: REGION_ZONES }, (_, i) => (
+        <mesh
+          key={i}
+          position={[-FENCE_W / 2 + (i + 0.5) * (FENCE_W / REGION_ZONES), BED_TOP + 13, FENCE_Z]}
+          material={mats.zone}
+          onPointerOver={(e) => { e.stopPropagation(); st().onTouch(); st().onRegionHover(i); }}
+          onPointerOut={() => st().onRegionHover(null)}
+          onClick={(e) => {
+            if (e.delta > 5) return;
+            e.stopPropagation();
+            st().onTouch();
+            if (st().onRegionActivate) st().onRegionActivate(i);
+          }}
+        >
+          <boxGeometry args={[FENCE_W / REGION_ZONES - 1, 27, 12]} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
 /* ---------- the driver ---------- */
 
 /**
@@ -2064,7 +2584,8 @@ function Rig({ ctx, cameras }) {
     // Turntable rest: nothing touched for 8 s, no mode active.
     const shared = st.shared;
     const idle = performance.now() - (shared.lastTouch || 0) > 8000;
-    const modeActive = Boolean(shared.drag || st.pendingId || st.cardId || st.inspectedId || (st.partFocus && st.partFocus.partId));
+    const modeActive = Boolean(shared.drag || st.pendingId || st.cardId || st.inspectedId
+      || (st.partFocus && st.partFocus.partId) || (st.openApp && st.openApp.appId));
     if (wg) {
       frame.turntabling = Boolean(st.turntableOn && idle && !modeActive);
       if (frame.turntabling) wg.rotation.y += dt * 2 * DEG;
@@ -2270,6 +2791,20 @@ function Rig({ ctx, cameras }) {
       seat = partW.clone().addScaledVector(dir, 52).add(new THREE.Vector3(0, 12, 0));
       look = partW.clone();
       if (camera === cameras.ortho) { camera.zoom = 1.5 / st.zoomMul; camera.updateProjectionMatrix(); }
+    } else if (st.openApp && st.openApp.appId && st.openApp.mode === "center") {
+      // An app on the CENTRE STAGE: the seat stands off the stage
+      // centre along the home azimuth, framing the dais (radius
+      // 104). Full mode falls through to the home overview below
+      // — the app owns the camera, so named views are suppressed
+      // while it is open (see the viewName guard there).
+      const centre = frame.worldGroup
+        ? frame.worldGroup.localToWorld(new THREE.Vector3(0, 10, 0))
+        : new THREE.Vector3(0, 10, 0);
+      const az = Math.PI / 4 + (st.rotation ?? 0) * DEG;
+      const dir = new THREE.Vector3(Math.sin(az), 0, Math.cos(az));
+      seat = centre.clone().addScaledVector(dir, 168).add(new THREE.Vector3(0, 108, 0));
+      look = centre.clone();
+      if (camera === cameras.ortho) { camera.zoom = 1.3 / st.zoomMul; camera.updateProjectionMatrix(); }
     } else if (st.cardId && cardBase) {
       const d = frame.disp.get(st.cardId);
       const sc = d ? d.scale : 1;
@@ -2281,7 +2816,8 @@ function Rig({ ctx, cameras }) {
         .add(new THREE.Vector3(0, 25 + 9 * sc, 0));
       look = cardBase.clone().add(new THREE.Vector3(0, ANCHOR_H[st.cardId] * 0.55 * sc, 0));
       if (camera === cameras.ortho) { camera.zoom = 1.35 / st.zoomMul; camera.updateProjectionMatrix(); }
-    } else if (st.viewName && st.viewName !== "home" && viewSeat(st.viewName, st.zoomMul)) {
+    } else if (st.viewName && st.viewName !== "home" && viewSeat(st.viewName, st.zoomMul)
+      && !(st.openApp && st.openApp.appId)) {
       // A named plane view: a pure camera move to the table's seat.
       const vs = viewSeat(st.viewName, st.zoomMul);
       seat = new THREE.Vector3(...vs.seat);
@@ -2344,7 +2880,9 @@ export default function SpaceView(props) {
     libraryOpen, clipHeld, clipSummoned, inspectedId, inspectRot, pastes, inspectPanel,
     partFocus, partHoverId, branchHoverId,
     viewName, snapOn, strata, layers,
+    openApp, audio, tokenHoverId, appFocusId, regionHover,
     onHover, onPartHover, onBranchHover, onObjectClick, onSelect, onTouch,
+    onTokenHover, onTokenActivate, onRegionHover, onRegionActivate, onAudioEnd,
   } = props;
 
   const stateRef = useRef({});
@@ -2355,8 +2893,10 @@ export default function SpaceView(props) {
     libraryOpen, clipSummoned, inspectedId, inspectRot,
     partFocus, partHoverId, branchHoverId,
     viewName, snapOn, strata, layers,
+    openApp, audio, tokenHoverId, appFocusId, regionHover,
     shared: sharedRef.current,
     onHover, onPartHover, onBranchHover, onObjectClick, onSelect, onTouch,
+    onTokenHover, onTokenActivate, onRegionHover, onRegionActivate, onAudioEnd,
   };
 
   const frameRef = useRef(null);
@@ -2368,6 +2908,8 @@ export default function SpaceView(props) {
       branchWorld: new Map(), branchLocal: null, treeGroupRef: null,
       camera: null, worldGroup: null, turntabling: false, knotSpinRef: null,
       crystalCores: [], crystalFaces: null,
+      ringAngle: 0, ringItemRefs: new Map(), tokenRefs: new Map(),
+      stageGroupRef: null,
     };
   }
   const frame = frameRef.current;
@@ -2412,6 +2954,8 @@ export default function SpaceView(props) {
   const faceChipRefs = useRef([]);
   const cardFacesRef = useRef(null);
   const cardRef = useRef(null);
+  const tokenCapRefs = useRef(new Map());
+  const regionChipRef = useRef(null);
   const xyRef = useRef(null);
   const yzRef = useRef(null);
   const inspectRef = useRef(null);
@@ -2435,8 +2979,19 @@ export default function SpaceView(props) {
         return [(v3.x * 0.5 + 0.5) * W, (-v3.y * 0.5 + 0.5) * H, v3.z < 1];
       };
       const st = stateRef.current;
+      // A ring item's anchor comes from its live group (it rides
+      // the turning ring), not from the citizens' anchor table.
+      const ringAnchor = (id) => {
+        const o = frame.ringItemRefs && frame.ringItemRefs.get(id);
+        if (!o) return null;
+        const v = new THREE.Vector3();
+        o.getWorldPosition(v);
+        v.y += 13;
+        return v;
+      };
       const chipList = [
         ...labeledObjects().map(({ object, label }) => ({ id: object.id, label })),
+        ...labeledRingItems().map(({ item, label }) => ({ id: item.id, label })),
         ...(st.libraryOpen
           ? labeledMedia().map(({ item, label }) => ({ id: item.id, label }))
           : []),
@@ -2444,7 +2999,7 @@ export default function SpaceView(props) {
       for (const { id, label } of chipList) {
         const chip = chipRefs.current.get(id);
         if (!chip) continue;
-        const anchor = frame.anchorWorld.get(id);
+        const anchor = frame.anchorWorld.get(id) || ringAnchor(id);
         // Labels consult the layers like every addressing path: a
         // locked or hidden stratum's things wear no chips.
         if (!st.labelsOn || !anchor || (st.layers && !isAddressable(st.layers, id))) {
@@ -2470,7 +3025,7 @@ export default function SpaceView(props) {
       const nameEl = nameRef.current;
       if (nameEl) {
         const named = st.inspectedId || st.cardId || st.currentId || st.hoverId;
-        const anchor = named ? frame.anchorWorld.get(named) : null;
+        const anchor = named ? (frame.anchorWorld.get(named) || ringAnchor(named)) : null;
         if (named && anchor) {
           nameEl.style.display = "";
           const nm = thingName(named);
@@ -2594,6 +3149,57 @@ export default function SpaceView(props) {
           }
         }
       }
+      // The open app's ring-token captions: pinned over their
+      // tokens, speaking their state (PLAY/PAUSE, the window the
+      // ZOOM token would halve, LOOP ON/OFF). Shown only while
+      // the app holds the stage.
+      {
+        const showTokens = Boolean(st.openApp && st.openApp.appId && st.audio);
+        for (const t of APP_TOKEN_UI) {
+          const el = tokenCapRefs.current.get(t.id);
+          if (!el) continue;
+          const o = showTokens && frame.tokenRefs ? frame.tokenRefs.get(t.id) : null;
+          if (!o) { el.style.display = "none"; continue; }
+          const v = new THREE.Vector3();
+          o.getWorldPosition(v);
+          v.y += 11;
+          const [sx, sy, front] = project(v);
+          if (!front) { el.style.display = "none"; continue; }
+          const txt = t.caption(st.audio);
+          if (el.textContent !== txt) el.textContent = txt;
+          el.classList.toggle("target",
+            st.tokenHoverId === t.id || (st.appFocusId === t.id && st.tokenHoverId == null));
+          el.style.display = "";
+          el.style.transform = `translate(-50%, -130%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
+        }
+      }
+      // The hovered waveform stretch names itself (its seconds)
+      // over the fence — F drills into it, D comes back.
+      {
+        const el = regionChipRef.current;
+        if (el) {
+          const show = st.openApp && st.openApp.appId && st.audio
+            && st.regionHover != null && frame.stageGroupRef;
+          if (!show) el.style.display = "none";
+          else {
+            const w = st.audio.window;
+            const z = st.regionHover;
+            const t0 = w.start + ((w.end - w.start) * z) / REGION_ZONES;
+            const t1 = w.start + ((w.end - w.start) * (z + 1)) / REGION_ZONES;
+            const txt = `${t0.toFixed(1)}–${t1.toFixed(1)}s`;
+            if (el.textContent !== txt) el.textContent = txt;
+            const local = new THREE.Vector3(
+              -168 / 2 + (z + 0.5) * (168 / REGION_ZONES), 36, 30);
+            const world = frame.stageGroupRef.localToWorld(local);
+            const [sx, sy, front] = project(world);
+            if (!front) el.style.display = "none";
+            else {
+              el.style.display = "";
+              el.style.transform = `translate(-50%, -130%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
+            }
+          }
+        }
+      }
       // The living crystal's face chips: a value pinned at each
       // face's centroid, shown only while it is current or
       // inspected (and its layer is addressable).
@@ -2657,7 +3263,10 @@ export default function SpaceView(props) {
               <BotanicalTree ctx={ctx} />
             </>
           ) : null}
-          {strata?.data ? (
+          {/* An app across the WHOLE platter hides the citizens:
+              the data stratum unmounts (its displayed values rest
+              in frame.disp and ease back when the app closes). */}
+          {strata?.data && !(openApp && openApp.appId && openApp.mode === "full") ? (
             <>
               {OBJECTS.map((def) => (
                 <SpaceObject key={def.id} def={def} ctx={ctx} lib={lib} />
@@ -2676,6 +3285,8 @@ export default function SpaceView(props) {
                 <MediaCard key={item.id} item={item} index={i} ctx={ctx} />
               ))}
               <ClipboardTray ctx={ctx} held={clipHeld} />
+              <PlatterRing ctx={ctx} />
+              <WaveformStage ctx={ctx} />
             </>
           ) : null}
           <AxisGuide ctx={ctx} />
@@ -2688,6 +3299,7 @@ export default function SpaceView(props) {
       <div ref={wrapRef} style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
         {[
           ...labeledObjects().map(({ object, label }) => ({ id: object.id, label })),
+          ...labeledRingItems().map(({ item, label }) => ({ id: item.id, label })),
           ...(libraryOpen
             ? labeledMedia().map(({ item, label }) => ({ id: item.id, label }))
             : []),
@@ -2725,6 +3337,15 @@ export default function SpaceView(props) {
           </div>
         ))}
         <div ref={nameRef} className="us-name" style={{ display: "none" }} />
+        {APP_TOKEN_UI.map((t) => (
+          <div
+            key={t.id}
+            ref={(el) => { if (el) tokenCapRefs.current.set(t.id, el); else tokenCapRefs.current.delete(t.id); }}
+            className="us-chip"
+            style={{ display: "none", pointerEvents: "none" }}
+          />
+        ))}
+        <div ref={regionChipRef} className="us-chip" style={{ display: "none", pointerEvents: "none" }} />
         <div ref={partRef} className="us-chip" style={{ display: "none", pointerEvents: "none" }} />
         <div ref={branchRef} className="us-chip" style={{ display: "none", pointerEvents: "none" }} />
         {lib.dataTree.branches.map((b, i) => (

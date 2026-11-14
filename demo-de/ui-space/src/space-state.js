@@ -15,6 +15,12 @@
  *   . / scale · G patch · X strip cables · Space press toggles the
  *   drag lock (press to pick up, press again to drop, Esc cancels).
  *
+ *   Slice 8 adds APPS and the RING (see the section at the foot of
+ *   this file): a thing that bears an app opens with F onto the
+ *   centre stage, or with E across the whole platter; while an app
+ *   holds the stage, Esc leaves it (the big back) and D steps back
+ *   inside the app's own history.
+ *
  *   Addressing is the key-click model: the object under the cursor
  *   is the addressee and F is the click. KEY LABELS ARE OPT-IN:
  *   Alt+L enters label mode — the chips appear and bare letters
@@ -221,7 +227,7 @@ export function cycleInList(ids, currentId, dir) {
 }
 
 export function cycleAddressable(currentId, dir, { cardIds = [], clipboardPresent = false } = {}) {
-  const ids = [...OBJECT_IDS, ...cardIds, ...(clipboardPresent ? ["clipboard"] : [])];
+  const ids = [...OBJECT_IDS, ...RING_IDS, ...cardIds, ...(clipboardPresent ? ["clipboard"] : [])];
   return cycleInList(ids, currentId, dir);
 }
 
@@ -554,6 +560,9 @@ export function layersFromValues(v) {
 export function stratumOf(id) {
   if (!id) return null;
   if (OBJECT_IDS.includes(id)) return "data";
+  // The ring's items are instruments of the space (slice 8, below):
+  // the ring is furniture the apps ride on, not a datum.
+  if (RING_IDS.includes(id)) return "instruments";
   if (id === "clipboard" || id.startsWith("media-")) return "instruments";
   return null;
 }
@@ -567,7 +576,7 @@ export function isAddressable(layers, id) {
 
 /** The Tab list, filtered through the layers. */
 export function addressableList(layers, { cardIds = [], clipboardPresent = false } = {}) {
-  return [...OBJECT_IDS, ...cardIds, ...(clipboardPresent ? ["clipboard"] : [])]
+  return [...OBJECT_IDS, ...RING_IDS, ...cardIds, ...(clipboardPresent ? ["clipboard"] : [])]
     .filter((id) => isAddressable(layers, id));
 }
 
@@ -658,6 +667,124 @@ export function endPartFocus() {
 export const isPartFocused = (focus, partId) =>
   Boolean(focus && focus.partId) &&
   (partId === undefined || focus.partId === partId);
+
+/* ---------------- apps and the ring (slice 8) ---------------- */
+
+/**
+ * THE RING: an annulus around the circular platter holding things
+ * to open — the platter's way of gaining more items of interest
+ * without gaining more plots. One ring to start, and on it exactly
+ * one home item: the WAVEFORM app. Ring items are NOT citizens —
+ * they have no plot, no transform, no cables; they ride the ring
+ * (which turns slowly at rest) and they OPEN.
+ *
+ * Ring items join the labeled set AFTER the twelve citizens, so
+ * the citizens' labels never move and the media cards' labels
+ * continue after the ring (media-library.js derives its start
+ * from here). Their stratum is INSTRUMENTS (see stratumOf): the
+ * ring is the space's furniture, and hiding or locking
+ * INSTRUMENTS takes the ring's addressing with it.
+ */
+export const RING_R = 222; // mid-annulus radius; the platter is 198
+export const RING_ITEMS = [
+  { id: "audio", name: "Waveform", kind: "app", stratum: "instruments",
+    blurb: "The audio app: a track's waveform as a fence of peaks on the stage, its spectrum falling away behind as a waterfall. F opens it centre-stage, E across the whole platter." },
+];
+
+export const RING_IDS = RING_ITEMS.map((r) => r.id);
+
+export function ringItemById(id) {
+  return RING_ITEMS.find((r) => r.id === id) || null;
+}
+
+/**
+ * Which app a thing bears, if any: a ring item of kind "app" bears
+ * the app of its own id. Citizens bear no apps in this slice.
+ */
+export function appBearerOf(id) {
+  const item = ringItemById(id);
+  return item && item.kind === "app" ? item.id : null;
+}
+
+/**
+ * A ring item's place on the annulus: index/count around the
+ * circle, advanced by the ring's rotation. Angle 0 is the +X rim;
+ * the first slot stands at the front (+Z, toward the viewer), and
+ * a positive rotation carries every item the same way around.
+ */
+export function ringItemPosition(index, count, rotationRad = 0) {
+  const a = Math.PI / 2 + rotationRad + (index * 2 * Math.PI) / Math.max(1, count);
+  return { x: Math.cos(a) * RING_R, z: Math.sin(a) * RING_R, angle: a };
+}
+
+/** Ring items in the labeled set, continuing past the citizens. */
+export function labeledRingItems() {
+  return RING_ITEMS.map((item, i) => ({ item, label: labelForIndex(OBJECTS.length + i) }));
+}
+
+export function ringItemForLabel(label) {
+  const hit = labeledRingItems().find((l) => l.label === String(label || "").toUpperCase());
+  return hit ? hit.item : null;
+}
+
+/* ---------------- open apps ---------------- */
+
+/**
+ * An OPEN APP holds the stage. It opens in one of two ways:
+ * "center" — the app stands on the centre stage, the main circle
+ * at the platter's heart, and the rest of the space remains
+ * around it; or "full" — the app takes the whole main platter
+ * and the citizens hide. The value is just the fact: which app,
+ * which mode. The space's other states (selection, cards, focus)
+ * are cleared by the App when an app opens, and the camera seat
+ * the app took is restored from a snapshot when it closes.
+ */
+export function createOpenApp() {
+  return { appId: null, mode: null };
+}
+
+export const APP_MODES = ["center", "full"];
+
+export function openApp(state, appId, mode) {
+  if (!appId || !APP_MODES.includes(mode)) return state;
+  return { appId, mode };
+}
+
+export function setAppMode(state, mode) {
+  if (!state.appId || !APP_MODES.includes(mode)) return state;
+  return { ...state, mode };
+}
+
+export function closeApp(state) {
+  return createOpenApp();
+}
+
+export const isAppOpen = (state, appId) =>
+  Boolean(state && state.appId) && (appId === undefined || state.appId === appId);
+
+/**
+ * The F/E opening decision, pure like resolveFAction: given the
+ * ADDRESSED thing and the key, an app-bearing thing opens — F to
+ * the centre stage, E across the whole platter — and anything
+ * else returns null (the key falls through to its ordinary work).
+ *
+ * E is an operator OUTSIDE label mode only: inside label mode the
+ * letters are pure addresses and E is the sunburst cylinder's, so
+ * resolveOpenAction refuses E there and the App's letter
+ * targeting picks the letter up instead. This is the G/M
+ * mode-scoping rule, extended to a third letter: G patches
+ * outside / addresses inside, M opens the library outside /
+ * addresses inside, E expands outside / addresses inside.
+ */
+export function resolveOpenAction({ targetId = null, key = null, labelMode = false } = {}) {
+  if (!targetId || !key) return null;
+  const k = String(key).toLowerCase();
+  if (k !== "f" && k !== "e") return null;
+  const appId = appBearerOf(targetId);
+  if (!appId) return null;
+  if (k === "e" && labelMode) return null;
+  return { type: "openApp", appId, mode: k === "e" ? "full" : "center" };
+}
 
 /* ---------------- the state ---------------- */
 
