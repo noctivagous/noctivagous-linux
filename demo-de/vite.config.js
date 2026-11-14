@@ -32,6 +32,7 @@ export default defineConfig({
         treemap: fileURLToPath(new URL('./treemap.html', import.meta.url)),
         sunburstCylinder: fileURLToPath(new URL('./sunburst-cylinder.html', import.meta.url)),
         treemapCube: fileURLToPath(new URL('./treemap-cube.html', import.meta.url)),
+        uiSpace: fileURLToPath(new URL('./ui-space/index.html', import.meta.url)),
       },
     },
   },
