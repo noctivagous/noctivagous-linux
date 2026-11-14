@@ -69,12 +69,14 @@ import {
   actionOf,
   helpText,
 } from "./space-command.js";
+import { resolveKeyboard, lastKeyEcho } from "./keyboard.js";
 import {
   MEDIA_ITEMS,
   MEDIA_IDS,
   mediaById,
   isMediaId,
   mediaForLabel,
+  labeledMedia,
   createClipboard,
   copyToClipboard,
   textCardForObject,
@@ -150,18 +152,19 @@ import {
 
 const PARAM_DEFS = [
   {
-    id: "projection", label: "Projection", type: "select", defaultValue: "iso",
+    id: "projection", label: "Projection", type: "select", defaultValue: "perspective", group: "view",
     options: [
       { value: "iso", label: "Isometric" },
       { value: "perspective", label: "Perspective" },
     ],
   },
-  { id: "rotation", label: "Rotation", type: "number", min: -180, max: 180, step: 1, defaultValue: 0 },
-  { id: "elevation", label: "Elevation", type: "number", min: -25, max: 50, step: 1, defaultValue: 0 },
+  { id: "rotation", label: "Rotation", type: "number", min: -180, max: 180, step: 1, defaultValue: 0, group: "view" },
+  { id: "elevation", label: "Elevation", type: "number", min: -25, max: 50, step: 1, defaultValue: 50, group: "view" },
   { id: "turntable", label: "Turntable rest", type: "boolean", defaultValue: true },
   { id: "pulses", label: "Cable pulses", type: "boolean", defaultValue: true },
   { id: "ambientMotion", label: "Ambient motion", type: "boolean", defaultValue: true },
   { id: "labelsOn", label: "Key labels", type: "boolean", defaultValue: true },
+  { id: "keyboardPanel", label: "Keyboard panel", type: "boolean", defaultValue: true },
   { id: "snap", label: "Snap", type: "boolean", defaultValue: true },
   { id: "layerData", label: "Layer · DATA", type: "boolean", defaultValue: true },
   { id: "layerDataLock", label: "Lock · DATA", type: "boolean", defaultValue: false },
@@ -251,6 +254,7 @@ const KEY_GROUPS = [
     title: "Modes & the command line",
     rows: [
       ["Enter", "arm the command line: category › action › argument, ⏎ runs"],
+      ["K", "hide / show the keyboard panel — inside label mode K is the definition's address"],
       ["Alt+L", "in label mode G is the tangled tree, M the living crystal and E the sunburst cylinder; outside it G patches, M opens the library and E expands an app"],
       ["C / I", "here I inspects and C copies — KeyPilot's stock I-copy lives on C in this layout"],
       ["F on a card / tray", "inspects it, like I"],
@@ -417,7 +421,103 @@ html, body, #root { height:100%; margin:0; overflow:hidden; background:#0b0e10; 
 .us-cmdhint { flex:1; min-width:0; color:#5f737c; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .us-cmdecho { flex:none; max-width:46%; color:#a9f0dd; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .us-cmdecho.err { color:#ff8a75; }
+.us-keyboard { position:absolute; z-index:27; left:50%; transform:translateX(-50%); bottom:118px; width:min(860px, 96vw);
+  border:1px solid rgba(44,58,65,.9); border-radius:6px; background:rgba(13,18,22,.66); backdrop-filter:blur(10px);
+  box-shadow:0 10px 30px rgba(0,0,0,.38); padding:8px 10px 9px; }
+.us-kb-head { display:flex; align-items:center; gap:10px; margin-bottom:7px; }
+.us-kb-head h3 { margin:0; font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:600; font-size:14px; letter-spacing:.08em; text-transform:uppercase; color:#e8f3ee; }
+.us-kb-echo { flex:1; min-width:0; text-align:right; font-family:'IBM Plex Mono', ui-monospace, monospace; font-size:11px; color:#ffa726; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.us-kb-grid { display:flex; flex-direction:column; gap:4px; }
+.us-kb-row { display:flex; gap:4px; }
+.us-kb-cap { flex-basis:0; min-width:0; min-height:33px; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:1px;
+  border:1px solid rgba(44,58,65,.75); border-radius:4px; background:rgba(16,22,26,.5); padding:3px 1px 2px; opacity:.5; }
+.us-kb-cap.bound { opacity:1; border-color:rgba(127,212,193,.4); }
+.us-kb-cap.op { border-color:rgba(255,167,38,.55); }
+.us-kb-cap.active { background:rgba(127,212,193,.3); border-color:#7fd4c1; transform:translateY(-1px); opacity:1; }
+.us-kb-glyph { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:600; font-size:13px; letter-spacing:.05em; line-height:1.1; color:#8fa3ab; }
+.us-kb-cap.bound .us-kb-glyph { color:#e8f3ee; }
+.us-kb-fn { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:500; font-size:7.5px; letter-spacing:.04em; text-transform:uppercase; line-height:1.15; text-align:center; color:#7fd4c1;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.us-kb-cap.op .us-kb-fn { color:#ffa726; }
+.us-kb-combos { display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; }
+.us-kb-combo { display:inline-flex; align-items:center; gap:6px; padding:2px 7px; border:1px solid rgba(44,58,65,.85); border-radius:3px; background:rgba(13,18,22,.55);
+  font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:500; font-size:11px; letter-spacing:.07em; text-transform:uppercase; color:#8fa3ab; }
+.us-kb-combo b { color:#ffa726; font-weight:600; }
+@media (max-width:1500px) {
+  .us-keyboard { width:min(640px, 96vw); }
+}
+@media (max-width:760px) {
+  .us-keyboard { bottom:112px; width:auto; min-width:210px; }
+  .us-kb-grid, .us-kb-combos { display:none; }
+  .us-kb-head { margin-bottom:0; }
+}
+.us-view-fieldset { border:1px solid rgba(44,58,65,.95); border-radius:6px; margin:0 0 12px; padding:6px 10px 10px; min-width:0; }
+.us-view-fieldset legend { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:600; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:#7fd4c1; padding:0 5px; }
+.us-view-btns { display:flex; gap:5px; margin:2px 0 9px; }
+.us-view-btn { flex:1; font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:600; font-size:12px; letter-spacing:.08em; text-transform:uppercase;
+  color:#8fa3ab; background:#0b0e10; border:1px solid #2c3a41; border-radius:3px; padding:2px 4px; cursor:pointer; }
+.us-view-btn:hover { color:#e8f3ee; border-color:#45565e; }
+.us-view-btn.here { color:#0b0e10; background:#ffa726; border-color:#ffa726; }
 `;
+
+/**
+ * The keyboard panel (slice 10): a semitransparent overlay board
+ * that renders the RESOLVED keymap and owns nothing — the caps
+ * are display only, and the board never runs a command (after
+ * nibglider's on-screen keyboard, whose panel likewise renders
+ * resolved caps from a shared keymap). Its one piece of timing
+ * is its own: resolution marks the last-pressed cap active, and
+ * the lift lasts ~300 ms from the recorded press; a tick clears
+ * it so no cap stays lit after the moment has passed.
+ */
+function KeyboardPanel({ kb, lastKey, onHide }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!lastKey) return undefined;
+    const t = setTimeout(() => setTick((x) => x + 1), 320);
+    return () => clearTimeout(t);
+  }, [lastKey]);
+  const fresh = Boolean(lastKey) && performance.now() - lastKey.at <= 300;
+  const echo = lastKeyEcho(kb, lastKey?.code || null);
+  return (
+    <section className="us-keyboard" data-testid="keyboard-panel" aria-label="Keyboard panel">
+      <div className="us-kb-head">
+        <h3>KEYBOARD</h3>
+        <span className="us-cmdtag">{kb.scopeName}</span>
+        <span className="us-kb-echo">{echo}</span>
+        <button
+          type="button"
+          className="us-panel-toggle"
+          onClick={(e) => { onHide(); e.currentTarget.blur(); }}
+        >
+          Hide
+        </button>
+      </div>
+      <div className="us-kb-grid">
+        {kb.rows.map((row, i) => (
+          <div className="us-kb-row" key={i}>
+            {row.map((c) => (
+              <div
+                key={c.code}
+                title={c.binding?.hint || undefined}
+                className={`us-kb-cap${c.binding ? " bound" : ""}${c.binding?.operator ? " op" : ""}${c.active && fresh ? " active" : ""}`}
+                style={{ flexGrow: c.width }}
+              >
+                <span className="us-kb-glyph">{c.glyph}</span>
+                {c.binding ? <span className="us-kb-fn">{c.binding.label}</span> : null}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+      <div className="us-kb-combos">
+        {kb.combos.map((cb) => (
+          <span className="us-kb-combo" key={cb.keys}><b>{cb.keys}</b>{cb.label}</span>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 export default function SpaceApp() {
   const { values, setValue } = useNCTParameters(PARAM_DEFS);
@@ -480,6 +580,11 @@ export default function SpaceApp() {
     () => typeof window === "undefined" || window.innerWidth > 1400,
   );
   const [guideTab, setGuideTab] = useState("brief");
+  // Slice 10: the keyboard panel's record of physical key
+  // activity — the last keydown's code and when it landed. The
+  // panel resolves its active cap and its head echo from this;
+  // the record is all the panel ever gets from the handler.
+  const [lastKey, setLastKey] = useState(null);
 
   // The layers, as the PARAMETERS panel holds them.
   const layers = layersFromValues(values);
@@ -926,18 +1031,14 @@ export default function SpaceApp() {
         setZoomMul((m) => zoomStep(m, intent.dir));
         return intent.dir > 0 ? "zoom in" : "zoom out";
       case "view": {
-        // Named views are pure camera moves. Choosing one cancels
-        // any in-flight F camera work (the entered card's seat);
-        // HOME also releases, as it always did. Inspection moves
-        // the thing, not the camera, so it is not camera work and
-        // is unreachable here anyway (the line is disarmed then).
-        setViewName(intent.view);
-        setCardId(null);
-        if (intent.view === "home") {
-          setPendingId(null);
-          setCurrentId(null);
-          return "view HOME — released";
-        }
+        // Choosing a view cancels any in-flight F camera work
+        // (the entered card's seat); HOME also releases, as it
+        // always did — goView is the one transition, shared with
+        // the VIEW fieldset's buttons. Inspection moves the
+        // thing, not the camera, so it is not camera work and is
+        // unreachable here anyway (the line is disarmed then).
+        goView(intent.view);
+        if (intent.view === "home") return "view HOME — released";
         return `view ${VIEWS[intent.view].name}`;
       }
       case "help":
@@ -946,6 +1047,20 @@ export default function SpaceApp() {
         return null; // the echo itself is cleared
       default:
         return { error: `unknown intent ${intent.type}` };
+    }
+  };
+
+  // The named views are pure camera moves. The command line's
+  // v › t/f/s/h intents and the VIEW fieldset's buttons in the
+  // PARAMETERS panel are two doors to this one transition: the
+  // view takes its seat, any entered card closes, and HOME also
+  // releases — the selection and a live patch end with it.
+  const goView = (view) => {
+    setViewName(view);
+    setCardId(null);
+    if (view === "home") {
+      setPendingId(null);
+      setCurrentId(null);
     }
   };
 
@@ -1053,6 +1168,10 @@ export default function SpaceApp() {
 
   useEffect(() => {
     const onKey = (e) => {
+      // The keyboard panel's record: every physical keydown, by
+      // code, before any branch decides what the key means. The
+      // panel highlights from this and nothing else.
+      if (e.code) setLastKey({ code: e.code, at: performance.now() });
       // While inspecting, almost everything suspends: D / Esc send
       // the specimen home, the transform keys turn it, and the
       // rest of the scheme waits. (Modes were already suspended
@@ -1118,6 +1237,18 @@ export default function SpaceApp() {
           e.preventDefault();
         }
         feedCmd(k);
+        return;
+      }
+      // K toggles the keyboard panel (KeyPilot's K). It stands
+      // here — after the armed line, which owns K as a character
+      // of its arguments, and before the app scope, whose keys it
+      // joins — and OUTSIDE label mode only: inside label mode K
+      // is the definition's address and falls through to letter
+      // targeting below, as G and M fall to theirs. The toggle
+      // writes the same state the PARAMETERS switch holds.
+      if ((e.key === "k" || e.key === "K") && !uiMode.labelMode && !e.repeat) {
+        e.preventDefault();
+        onParam("keyboardPanel", values.keyboardPanel === false);
         return;
       }
       // Enter arms the line (when no patch is live and no drag is
@@ -1469,6 +1600,22 @@ export default function SpaceApp() {
 
   const lastPaste = pastes.length ? pastes[pastes.length - 1] : null;
 
+  // The keyboard panel's board, resolved from the sparse keymap
+  // for this moment (keyboard.js): scope by the handler's own
+  // precedence — an open app first, then the armed line, then
+  // label mode, then the space at rest.
+  const kb = resolveKeyboard({
+    scope: openAppState.appId ? "app" : cmd.armed ? "command" : uiMode.labelMode ? "labels" : "space",
+    playing: audio.playing,
+    pending: Boolean(pendingId),
+    dragLocked: Boolean(dragLock),
+    appMode: openAppState.mode,
+    cardLabels: libraryOpen
+      ? labeledMedia().map(({ item, label }) => ({ label, title: item.title, id: item.id }))
+      : [],
+    lastKey: lastKey?.code || null,
+  });
+
   // The command line's fields, straight from the composing state.
   const cmdCat = cmd.cat ? CMD_CATEGORIES[cmd.cat] : null;
   const cmdAct = actionOf(cmd);
@@ -1675,6 +1822,14 @@ export default function SpaceApp() {
                       summons the clipboard tray.
                     </p>
                     <p>
+                      The space opens in <b>perspective</b> at elevation <b>50</b>. The
+                      PARAMETERS gather the camera into a <b>VIEW</b> fieldset — projection,
+                      rotation, elevation — with the named seats on buttons beside them:
+                      <b> PLAN</b> (top), <b>ELEVATION</b> (front, square-on to the XY wall),
+                      <b>SIDE</b> and <b>HOME</b>, the same views the command line speaks as
+                      v › t/f/s/h.
+                    </p>
+                    <p>
                       The platter wears a <b>ring</b> now, and the ring carries the first app:
                       <b>Waveform</b>, for audio. Address it and <b>F</b> opens it onto the centre
                       stage; <b>E</b> opens it across the whole platter. Inside the app the keys
@@ -1863,6 +2018,22 @@ export default function SpaceApp() {
                       the live value being changed, and clears a breath after the gesture ends;
                       the typed command stays the exact-entry path. Gesture coarsely, line exactly.
                     </p>
+                    <h4>The Keyboard Panel</h4>
+                    <p>
+                      The scheme is a full keyboard layout, not scattered hotkeys, and over the
+                      footer stands its living map: the KEYBOARD PANEL, a glass board resolved
+                      afresh for every scope from the same sparse table the scopes themselves
+                      use — in most scopes most keys bind nothing and their caps stand dim with
+                      the bare glyph, and where a cap names a function, that is what the key
+                      does here, now. In label mode the letter caps name their actual targets;
+                      in the app they carry the transport; under a drag they shrink to the
+                      four keys the lock leaves alive. What a cap says is what the key does,
+                      because both are read from one database. The panel is glass because it
+                      belongs to the picture plane, not the world — the scene ghosts through
+                      it, and the last key you pressed lifts on it for a moment. <b>K</b> hides
+                      it (the PARAMETERS hold the same switch), and its caps do not click yet:
+                      they are a map, not a second set of controls.
+                    </p>
                     <h4>Patching and Layouts</h4>
                     <p>
                       Patching is built in, after the patch-bay demo: with an object addressed, G
@@ -1936,10 +2107,35 @@ export default function SpaceApp() {
           </div>
           {paramsOpen ? (
             <div className="us-params-body">
-              <NCTParameterPanel definitions={PARAM_DEFS} values={values} onChange={onParam} />
+              <fieldset className="us-view-fieldset">
+                <legend>VIEW</legend>
+                <div className="us-view-btns">
+                  {[["top", "PLAN"], ["front", "ELEVATION"], ["side", "SIDE"], ["home", "HOME"]].map(([view, label]) => (
+                    <button
+                      key={view}
+                      type="button"
+                      className={`us-view-btn${viewName === view ? " here" : ""}`}
+                      aria-pressed={viewName === view}
+                      onClick={(e) => { goView(view); e.currentTarget.blur(); }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <NCTParameterPanel definitions={PARAM_DEFS.filter((d) => d.group === "view")} values={values} onChange={onParam} />
+              </fieldset>
+              <NCTParameterPanel definitions={PARAM_DEFS.filter((d) => d.group !== "view")} values={values} onChange={onParam} />
             </div>
           ) : null}
         </section>
+
+        {values.keyboardPanel !== false ? (
+          <KeyboardPanel
+            kb={kb}
+            lastKey={lastKey}
+            onHide={() => onParam("keyboardPanel", false)}
+          />
+        ) : null}
 
         <div className="us-bottomdock">
           <div className="us-statusbar" data-testid="space-status">
