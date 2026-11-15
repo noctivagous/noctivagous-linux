@@ -623,6 +623,71 @@ export function zoomStep(mul, dir) {
 }
 
 /**
+ * The DOLLY's target citizen (C/V), decided purely. A HOVERED
+ * citizen wins — slice 11 §4's dolly-at-cursor, unchanged.
+ * Otherwise the OPENED citizen: the one F flew to, whose card
+ * stands open in the space — in the shipped state that is
+ * cardId === currentId, exactly what the F "open" action sets —
+ * so the dolly travels INTO the opened thing after the pointer
+ * has left it, instead of falling back to the world dolly.
+ * Otherwise null: the plain world dolly toward the platter
+ * centre. (The Waveform app's scope never reaches here — its
+ * C/V are the window zoom, handled in its own branch.)
+ */
+export function resolveDollyTarget({ hoverId = null, currentId = null, cardId = null } = {}) {
+  if (hoverId && OBJECT_IDS.includes(hoverId)) return hoverId;
+  if (cardId && cardId === currentId && OBJECT_IDS.includes(cardId)) return cardId;
+  return null;
+}
+
+/**
+ * The CITIZEN SEAT's floor: at the dolly's deepest step the seat
+ * stands at this fraction of the F-seat distance. The world
+ * dolly's own range (ZOOM_MIN..ZOOM_MAX) is untouched — the
+ * remap below lives only in the citizen seat's scaling.
+ */
+export const CITIZEN_SEAT_MIN = 0.4;
+
+/**
+ * The citizen seat's offset scale for a dolly multiplier. Below
+ * 1, the multiplier's range [ZOOM_MIN..1] is remapped onto
+ * [CITIZEN_SEAT_MIN..1], so travelling in from the F seat does
+ * not stop at the world dolly's half distance: at the floor the
+ * seat is CITIZEN_SEAT_MIN × the F-seat distance. At 1 the scale
+ * is exactly 1 (the F seat itself), and above 1 the multiplier
+ * passes through, so C pulls back out through the same range V
+ * came in on. The floor keeps a sane stand-off: at citizen
+ * scale 1 the seat's radial offset is (42 + 30) × 0.4 ≈ 29 from
+ * the citizen's base — outside the largest miniature's
+ * half-extent (the treemap tray's 27) — and the offsets grow
+ * with the citizen's own scale, as they do at the F seat.
+ */
+export function citizenSeatScale(mul) {
+  if (mul >= 1) return mul;
+  const t = Math.max(0, Math.min(1, (mul - ZOOM_MIN) / (1 - ZOOM_MIN)));
+  return CITIZEN_SEAT_MIN + t * (1 - CITIZEN_SEAT_MIN);
+}
+
+/**
+ * The citizen seat's offsets from the citizen's base, as data:
+ * out along the citizen's radial, and up. mul 1 is the F seat
+ * itself (the entered card's seat, and the dolly seat at rest);
+ * a dolly multiplier scales
+ * the offsets by citizenSeatScale. The view makes vectors of
+ * these — this is the seat math's pure core.
+ */
+export function citizenSeatOffsets(scale = 1, mul = 1) {
+  const s = citizenSeatScale(mul);
+  return { radial: (42 + 30 * scale) * s, up: (25 + 9 * scale) * s };
+}
+
+/** The citizen seat's distance from the citizen's base (the offsets' length). */
+export function citizenSeatDistance(scale = 1, mul = 1) {
+  const o = citizenSeatOffsets(scale, mul);
+  return Math.hypot(o.radial, o.up);
+}
+
+/**
  * FIELD SIZES (§15): the focal zoom is a LADDER, not a dial —
  * five named rungs from cinematography, widest to narrowest.
  * Each rung carries its perspective field of view and its

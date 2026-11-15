@@ -30,6 +30,7 @@ import {
   glowLevel,
   inspectScaleFor,
   viewSeat,
+  citizenSeatOffsets,
   FIELD_SIZES,
   FIELD_DEFAULT_INDEX,
   snapGroundPoint,
@@ -3006,23 +3007,27 @@ function Rig({ ctx, cameras }) {
     const branchW = st.partFocus && st.partFocus.partId && st.partFocus.objectId === "tree"
       ? frame.branchWorld.get(st.partFocus.partId) : null;
     const cardBase = st.cardId ? frame.baseWorld.get(st.cardId) : null;
-    // The entered-card seat and the ZOOM-AT-CURSOR seat are the
-    // same seat (slice 11, §4): out from the citizen's base along
-    // its radial, raised, looking at its anchor height. The
+    // The entered-card seat and the DOLLY seat are the same seat
+    // (slice 11, §4): out from the citizen's base along its
+    // radial, raised, looking at its anchor height, its offsets
+    // computed by citizenSeatOffsets in space-state.js. The
     // card's offsets are fixed (its zoom lives in the ortho
-    // factor alone); the zoom seat scales its offsets by zoomMul
-    // — the F-seat, dollied — without opening the card.
+    // factor alone) UNLESS the dolly's focus is the card's own
+    // citizen — C/V pressed while it stands open — in which case
+    // the offsets scale and the camera travels in from the
+    // F seat with the card open, exactly as the dolly seat does
+    // without one.
     const citizenSeat = (id, base, scaleOffsets) => {
       const d = frame.disp.get(id);
       const sc = d ? d.scale : 1;
-      const m = scaleOffsets ? st.zoomMul : 1;
+      const off = citizenSeatOffsets(sc, scaleOffsets ? st.zoomMul : 1);
       const radial = new THREE.Vector3(base.x, 0, base.z);
       if (radial.lengthSq() < 1) radial.set(0, 0, 1);
       radial.normalize();
       return {
         seat: base.clone()
-          .addScaledVector(radial, (42 + 30 * sc) * m)
-          .add(new THREE.Vector3(0, (25 + 9 * sc) * m, 0)),
+          .addScaledVector(radial, off.radial)
+          .add(new THREE.Vector3(0, off.up, 0)),
         look: base.clone().add(new THREE.Vector3(0, ANCHOR_H[id] * 0.55 * sc, 0)),
       };
     };
@@ -3064,14 +3069,16 @@ function Rig({ ctx, cameras }) {
       look = centre.clone();
       if (camera === cameras.ortho) { camera.zoom = 1.3 / st.zoomMul; camera.updateProjectionMatrix(); }
     } else if (st.cardId && cardBase) {
-      const cs = citizenSeat(st.cardId, cardBase, false);
+      const cs = citizenSeat(st.cardId, cardBase, st.zoomFocusId === st.cardId);
       seat = cs.seat;
       look = cs.look;
       if (camera === cameras.ortho) { camera.zoom = 1.35 / st.zoomMul; camera.updateProjectionMatrix(); }
     } else if (st.zoomFocusId && frame.baseWorld.get(st.zoomFocusId)) {
-      // ZOOM-AT-CURSOR: C/V pressed while a citizen was hovered —
-      // the camera dollies toward THAT citizen (its card-seat,
-      // offsets scaled by zoomMul) without opening its card.
+      // THE DOLLY SEAT: C/V with a dolly focus — the camera
+      // dollies toward THAT citizen (its card-seat, offsets
+      // scaled by the dolly) without opening its card. (When the
+      // focused citizen's card IS open, the card branch above
+      // takes the same seat with its offsets scaled.)
       const zs = citizenSeat(st.zoomFocusId, frame.baseWorld.get(st.zoomFocusId), true);
       seat = zs.seat;
       look = zs.look;

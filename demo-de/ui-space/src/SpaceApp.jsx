@@ -42,6 +42,7 @@ import {
   stepPlatterQuat,
   stepPlatterSpin,
   resolveScaleTarget,
+  resolveDollyTarget,
   stepRingSpin,
   applyTransformKey,
   applyTransformPatch,
@@ -1117,17 +1118,24 @@ export default function SpaceApp() {
 
   /**
    * C/V: the DOLLY (§14 — the camera itself moves; the focal
-   * zoom is 5/6). Over a hovered CITIZEN the dolly runs toward
-   * that citizen (§4): the zoomFocus is set (or cleared, when
-   * the step lands back on 1.0) and the Rig seats the camera on
-   * the citizen's F-seat scaled by zoomMul. With nothing hovered
-   * it is the plain global dolly, and any stale zoom focus goes.
+   * zoom is 5/6). The dolly's target is resolved purely
+   * (resolveDollyTarget): a hovered citizen wins (§4's
+   * dolly-at-cursor, unchanged); otherwise the OPENED citizen —
+   * the one F flew to, its card standing open — so C/V travel
+   * into the opened thing after the pointer has left it, where
+   * MAGNIFY (Z/X) only grows the thing in place; otherwise the
+   * plain global dolly, and any stale zoom focus goes. A target
+   * sets the zoomFocus (cleared when the step lands back on
+   * 1.0, and by the standing rules — selection change, back
+   * events, layout change), and the Rig seats the camera on
+   * that citizen's seat scaled by the dolly: the one seat math
+   * for the hovered and the opened citizen alike.
    */
   const pressZoom = (dir) => {
-    const hov = hoverId && objectById(hoverId) ? hoverId : null;
+    const target = resolveDollyTarget({ hoverId, currentId, cardId });
     const next = zoomStep(zoomMul, dir);
     setZoomMul(next);
-    setZoomFocus(hov && next !== 1 ? { id: hov } : null);
+    setZoomFocus(target && next !== 1 ? { id: target } : null);
     touch();
   };
 
@@ -2438,7 +2446,11 @@ export default function SpaceApp() {
                       that is what makes it a zoom and not a dolly. Operations land
                       under the cursor when something there accepts them: pressed while a
                       citizen is hovered, the dolly runs toward that citizen instead of the
-                      whole scene, and the rotate keys turn what the cursor addresses. An
+                      whole scene, and the rotate keys turn what the cursor addresses. While
+                      a citizen stands open, C and V dolly on it whether the cursor still
+                      hovers it or not — you travel toward the opened thing, which is how
+                      you zoom in on it; MAGNIFY is the other way (the thing grows, you
+                      stay). An
                       object is addressed by the cursor's hover or the Tab cycle; its letter
                       joins them only in label mode (Alt+L), which is off by default — and the
                       command line addresses everything by name. The addressed object is lit —
