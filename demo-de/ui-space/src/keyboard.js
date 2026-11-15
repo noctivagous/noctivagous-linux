@@ -35,7 +35,8 @@
  * (derived like the punctuation was), the event caps are named
  * by their EVENTS (A FINISH, S GO BACK I, D GO BACK II, Esc
  * CANCEL), the DOLLY sits on C/V (§14: the dolly moves the
- * camera; the ZOOM is the focal pair), copy on H, strip cables
+ * camera; the ZOOM is the focal pair), copy on H (L since
+ * slice 13-4), strip cables
  * on J, and the punctuation caps stand bare — except [ and ]
  * (slice 13-3), which carry the platter's plane spin, derived
  * from PLATTER_SPIN_KEYS like the rest. The number row is
@@ -47,7 +48,14 @@
  * ring the yaw caps read SPIN RING, on the platter ROTATE
  * PLATTER, and the plane pair (B/N) names its target too. E's
  * cap is dynamic the other way (ctx.eKey, from resolveEKey):
- * FULL PLATTER when E would expand, YAW - when it would turn.
+ * FULL PLATTER when E would expand, YAW + when it would turn.
+ *
+ * Slice 13-4: E and R swap yaw directions (the transform caps
+ * derive from TRANSFORM_KEYS, so they follow on their own);
+ * copy moves H → L and H becomes RESET; and Enter's cap is
+ * dynamic too (ctx.markAvailable): MARK while a sub-node is
+ * hovered in space scope — the press toggles its mark instead
+ * of arming the command line — COMMAND LINE otherwise.
  */
 
 import {
@@ -255,7 +263,7 @@ function spaceBindings(ctx) {
   return {
     ...transformBindings(ctx),
     // E's second life: when resolveEKey says this press expands
-    // an app, the cap names that instead of YAW -.
+    // an app, the cap names that instead of YAW +.
     ...(ctx.eKey === "expand" ? { KeyE: op("FULL PLATTER") } : {}),
     Escape: op("CANCEL"),
     ...layoutBindings(),
@@ -269,7 +277,11 @@ function spaceBindings(ctx) {
     KeyF: op(ctx.pending ? "COMPLETE PATCH" : "OPEN"),
     KeyG: op(ctx.pending ? "COMPLETE PATCH" : "PATCH"),
     KeyM: bind("LIBRARY"),
-    KeyH: bind("COPY"),
+    // Slice 13-4: copy lives on L (in label scope L stays the
+    // knot's address — the U bargain); H is RESET, the examined
+    // citizen's turn, plane spin and magnify back to default.
+    KeyL: bind("COPY"),
+    KeyH: bind("RESET"),
     KeyI: bind("INSPECT"),
     KeyJ: bind("STRIP CABLES"),
     KeyC: bind("DOLLY OUT"),
@@ -286,7 +298,14 @@ function spaceBindings(ctx) {
       }),
     } : {}),
     Space: op("DRAG LOCK"),
-    Enter: op("COMMAND LINE"),
+    // Slice 13-4: with a sub-node hovered, Enter toggles its
+    // MARK in the current citizen's index instead of arming
+    // the line — the cap says which press this is.
+    Enter: op(ctx.markAvailable ? "MARK" : "COMMAND LINE", {
+      hint: ctx.markAvailable
+        ? "toggle the hovered sub-node's mark — amber, held; Enter again unmarks"
+        : undefined,
+    }),
   };
 }
 
@@ -427,7 +446,9 @@ const SCOPE_TABLES = {
  * Resolve the board for one moment of the space.
  * ctx = { scope, playing, pending, dragLocked, appMode,
  *         rotateTarget: "citizen" | "ring" | "platter",
- *         eKey: "yaw-" | "expand" | null,
+ *         eKey: "yaw+" | "expand" | null,
+ *         markAvailable: a sub-node is hovered in space scope,
+ *           so Enter reads MARK (slice 13-4),
  *         fieldName: the current field size's name (§15),
  *         cardLabels: [{ label, title, id }],
  *         bookStyle: the book's presentation ("cylinder" |

@@ -57,6 +57,9 @@ import {
   resolveScaleTarget,
   resolveDollyTarget,
   resolveDollyFocus,
+  captureEntrySeat,
+  facingYawFor,
+  resetTransform,
   resolveViewTarget,
   stepRingSpin,
   applyTransformKey,
@@ -118,6 +121,13 @@ import {
 } from "./knots.js";
 import { buildDataTree, dataBranchById } from "./lsystems.js";
 import { isSubnodeObject, subnodeById, subnodeRootOf } from "./subnodes.js";
+import {
+  createMarks,
+  toggleMark,
+  isMarked,
+  marksFor,
+  countMarks,
+} from "./subnode-marks.js";
 import { BOOK_TOTALS, SPREAD_COUNT, spreadIndexForPage } from "./book.js";
 import { HIERARCHY } from "./hierarchy.js";
 import {
@@ -335,6 +345,7 @@ const KEY_GROUPS = [
       ["F on the ring", "opens the addressed app — Waveform, or the captured Web page — onto the centre stage"],
       ["E on the ring", "open the addressed app across the whole platter, citizens hidden — on a citizen, E is yaw"],
       ["Alt+L", "label mode — letter chips appear, bare letters target"],
+      ["first open", "the first time a citizen is entered in a session, it turns to face the entry camera — its front meets the seat. Later entries leave its turn exactly as you left it; H's reset returns it to the build default instead — facing and reset are different homes"],
     ],
   },
   {
@@ -350,11 +361,12 @@ const KEY_GROUPS = [
   {
     title: "Turn & carry",
     rows: [
-      ["E R", "yaw — about the centre of the object's bounds, not its base"],
+      ["E R", "yaw — E turns +, R −, about the centre of the object's bounds, not its base"],
       ["Q W", "pitch it"],
       ["T Y", "roll it"],
       ["B N", "rotate plane — turn it in its own plane, about its own normal; no other axis changes"],
       ["Z X", "magnify it — enlarge one thing for examination while the rest of the space stays in place"],
+      ["H", "RESET the examined citizen — its yaw, pitch, roll, plane spin and magnify return to the build defaults (identity, 0, 1×); its place, descent, book access, part focus and marks all stand. The reset is eased by the view's own damping"],
       ["targets", "rotate lands under the cursor: a hovered citizen first, then the ring (E R B N only spin it), then the current citizen — else the platter, which the cluster turns as the camera sees it, and which cannot be magnified"],
       ["Space", "pick the addressed object up / press again to drop"],
       ["X / Z", "in a drag: lock movement to that world axis — the drag scope owns them while a carry is live"],
@@ -371,6 +383,7 @@ const KEY_GROUPS = [
     rows: [
       ["C", "dolly out — the camera itself pulls back; there is no scroll-wheel zoom"],
       ["V", "dolly in — and no mouse orbit; the dolly runs toward what the hand is on: a hovered element (a wedge, a page, a host), the hovered or opened citizen, or the point under the cursor"],
+      ["entered seat", "while a citizen stands entered, the camera seats from the ENTRY — the seat as it stood when the card opened, from the citizen as it then was. MAGNIFY grows the citizen, the camera does not reframe; C/V dolly along the entry seat's line, and only toward the entered citizen's own elements — a focus on another citizen is never stored up to land when the card closes"],
       ["[ ]", "the platter's plane spin: ] counter-clockwise seen from overhead, [ clockwise — always the platter, never a citizen (citizens keep B N)"],
       ["5", "field − — one field size wider (the zoom: the lens changes, the camera stays)"],
       ["6", "field + — one field size narrower: LONG · MEDIUM LONG · MEDIUM · MEDIUM CLOSE · CLOSE"],
@@ -384,7 +397,7 @@ const KEY_GROUPS = [
       ["G", "start a patch from the addressed object; G / F / A / click lands it"],
       ["J", "strip every cable touching the addressed object"],
       ["M", "open / close the media library on the XY wall"],
-      ["H", "copy the addressed thing to the clipboard"],
+      ["L", "copy the addressed thing to the clipboard"],
       ["I", "inspect the addressed thing — it comes to you"],
       ["Alt+0", "summon / dismiss the clipboard tray"],
       ["Alt+1 2 3", "layer visibility: DATA / INSTRUMENTS / SCENERY"],
@@ -393,10 +406,11 @@ const KEY_GROUPS = [
   {
     title: "Modes & the command line",
     rows: [
-      ["Enter", "arm the command line: category › action › argument, ⏎ runs — on the line, Enter is the finish (A is a letter there)"],
+      ["Enter", "arm the command line: category › action › argument, ⏎ runs — on the line, Enter is the finish (A is a letter there). With a sub-node hovered, Enter MARKS it instead (see marks)"],
       ["K", "hide / show the keyboard panel — inside label mode K is the definition's address"],
-      ["Alt+L", "in label mode the letters are addresses (G the tangled tree, M the living crystal, E the sunburst cylinder, B the drum, N the tree, O the sample book, P the devices, Q the mail); outside it they are operators"],
-      ["H / I", "here I inspects and H copies — KeyPilot's stock I-copy lives on H in this layout"],
+      ["Alt+L", "in label mode the letters are addresses (G the tangled tree, M the living crystal, E the sunburst cylinder, B the drum, N the tree, O the sample book, P the devices, Q the mail, L the trefoil knot); outside it they are operators"],
+      ["L / I", "here I inspects and L copies — KeyPilot's stock I-copy lives on L in this layout"],
+      ["marks", "a marked sub-node wears an AMBER outline and glow, held — a per-citizen index that persists while you move around the space; the readout's MARKS line counts the current citizen's, and its card names them. Enter on a marked node unmarks it. Marking is not focusing: F's part focus neither marks nor is cleared by marking. No operation consumes the marks yet — the convention, its display and its storage are the deliverable"],
       ["F on a card / tray", "inspects it, like I"],
       ["knot parts", "with the knot current, hover a part — F flies into it, D (GO BACK II) backs out to the knot"],
       ["tree branches", "with the tree current, hover a depth-1 branch — F flies to the subtree, D backs out to the tree"],
@@ -882,6 +896,15 @@ export default function SpaceApp() {
   // panel resolves its active cap and its head echo from this;
   // the record is all the panel ever gets from the handler.
   const [lastKey, setLastKey] = useState(null);
+  // Slice 13-4: the MARK index (item C — subnode-marks.js: a
+  // per-citizen set of marked sub-node ids, session-lived), the
+  // ENTRY SEAT BASIS (item A — the entered citizen's seat as
+  // captured when its card opened, held while the card stands),
+  // and the FIRST-ENTRY record (item D — the citizens whose
+  // first-open facing turn has already been given).
+  const [marks, setMarks] = useState(() => createMarks());
+  const [entrySeat, setEntrySeat] = useState(null);
+  const [enteredOnce, setEnteredOnce] = useState([]);
 
   // The layers, as the PARAMETERS panel holds them.
   const layers = layersFromValues(values);
@@ -965,6 +988,40 @@ export default function SpaceApp() {
     setPartFocus((f) => (f.partId && f.objectId !== currentId ? endPartFocus() : f));
     setZoomFocus(null);
   }, [currentId]);
+
+  // Slice 13-4 (items A + D): a card standing open IS an entry.
+  // When a citizen's card opens, capture its ENTRY SEAT BASIS —
+  // the seat computed from the citizen's state at that moment,
+  // its effective scale (transform × the layout's presence
+  // scale) — and hold it while the card stands: the Rig seats
+  // from the basis, so MAGNIFY while entered grows the citizen
+  // and never reframes the shot. The basis invalidates exactly
+  // when the card closes (cardId clears) or the layout changes
+  // (the layout is a dependency and part of the basis record).
+  // And on a citizen's FIRST entry of the session, turn it to
+  // its FACING: yaw only, computed from its plot's azimuth and
+  // its built front (facingYawFor) — the Rig's damp eases the
+  // turn. Later entries leave the rotation as the user left it.
+  useEffect(() => {
+    if (!cardId || !objectById(cardId)) {
+      setEntrySeat(null);
+      return;
+    }
+    const layoutScale = (LAYOUTS[space.layout].scales || {})[cardId] || 1;
+    const scale = (space.transforms[cardId]?.scale ?? 1) * layoutScale;
+    setEntrySeat((prev) => (prev && prev.id === cardId && prev.layout === space.layout
+      ? prev
+      : captureEntrySeat(cardId, scale, space.layout)));
+    if (!enteredOnce.includes(cardId)) {
+      setEnteredOnce((prev) => [...prev, cardId]);
+      const yaw = facingYawFor(cardId, space.positions[cardId]);
+      setSpace((s) => applyTransformPatch(s, cardId, { yaw }));
+    }
+    // The basis reads the transform as it stands when the card
+    // opens or the layout changes — deliberately NOT on every
+    // transform change: that freeze is the item.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardId, space.layout]);
 
   /* ----- slice 8: opening apps, and the audio app's own keys ----- */
 
@@ -1249,7 +1306,7 @@ export default function SpaceApp() {
       const target = from === "clipboard" ? to : from;
       setPendingId(null);
       if (!clip.held) {
-        setEcho({ text: `clipboard is empty — H copies something first${suffix}`, error: true });
+        setEcho({ text: `clipboard is empty — L copies something first${suffix}`, error: true });
         return;
       }
       setPastes((prev) => [...prev.filter((p) => p.targetId !== target), { targetId: target, item: clip.held }]);
@@ -1677,9 +1734,21 @@ export default function SpaceApp() {
     const published = sharedRef.current.subAnchor;
     const subAnchor = published && subHover
       && published.key === `${subHover.objectId}:${subHover.nodeId}` ? published : null;
+    // Slice 13-4 (item A): while a citizen stands ENTERED, the
+    // dolly's world narrows to that citizen — its own sub-node
+    // anchors and the cursor point on it stay available, but a
+    // focus for a different citizen is never resolved (and so
+    // never stored to jump on close). The entered citizen is
+    // goView's own definition: its card stands and it is
+    // current.
+    const enteredId = cardId && cardId === currentId && objectById(cardId) ? cardId : null;
     const focus = resolveDollyFocus({
       subAnchor, hoverId, currentId, cardId,
       cursorPoint: sharedRef.current.cursorPoint || null,
+      enteredId,
+      subAnchorObjectId: subHover ? subHover.objectId : null,
+      cursorOnEntered: Boolean(enteredId) && (hoverId === enteredId
+        || (subHover && subHover.objectId === enteredId)),
     });
     setZoomMul(next);
     if (next === 1 || focus.kind === "world") setZoomFocus(null);
@@ -2035,7 +2104,77 @@ export default function SpaceApp() {
     setEcho((prev) => (prev.error ? { text: "", error: false } : prev));
   };
 
-  /* ----- copy (H), inspect (I), the library (M), the tray (Alt+0) ----- */
+  /* ----- copy (L), reset (H), marks (Enter), inspect (I), the library (M), the tray (Alt+0) ----- */
+
+  /**
+   * Slice 13-4 (item C): the sub-node Enter would MARK right
+   * now, or null. Marks key to the sub-node hover — which
+   * exists only outside label mode, on the CURRENT citizen —
+   * across all three hover channels: the sub-node provider's
+   * (tray, tangle, mesa, drum, book, devices, mail), the knot's
+   * parts, and the tree's branches. The handler additionally
+   * gates the toggle to space scope: not while the command
+   * line is armed (its branch runs first anyway), an app is
+   * open, or a letter is being read.
+   */
+  const markTargetNow = () => {
+    if (!currentId) return null;
+    if (isSubnodeObject(currentId) && subHover && subHover.objectId === currentId) {
+      return { citizenId: currentId, nodeId: subHover.nodeId };
+    }
+    if (currentId === "knot" && partHoverId && partById(partHoverId)) {
+      return { citizenId: "knot", nodeId: partHoverId };
+    }
+    if (currentId === "tree" && branchHoverId && dataBranchById(DATA_TREE, branchHoverId)) {
+      return { citizenId: "tree", nodeId: branchHoverId };
+    }
+    return null;
+  };
+
+  /** A marked (or hovered, or focused) node's display name, by channel. */
+  const markNodeName = (citizenId, nodeId) => {
+    if (citizenId === "knot") return partById(nodeId)?.name || nodeId;
+    if (citizenId === "tree") return dataBranchById(DATA_TREE, nodeId)?.name || nodeId;
+    return subnodeById(citizenId, nodeId, displayRootOf(descents[citizenId], citizenId), tangleDataset)?.name || nodeId;
+  };
+
+  const toggleMarkAt = (target) => {
+    const was = isMarked(marks, target.citizenId, target.nodeId);
+    setMarks((m) => toggleMark(m, target.citizenId, target.nodeId));
+    setEcho({
+      text: `${was ? "UNMARKED" : "MARKED"} — ${markNodeName(target.citizenId, target.nodeId)}`,
+      error: false,
+    });
+    touch();
+  };
+
+  /**
+   * Slice 13-4 (item B): H — RESET the examined citizen. The
+   * target is the rotate cluster's own resolution
+   * (resolveRotateTarget's citizen logic: a hovered citizen
+   * wins, else the current one); its rotation (the accumulated
+   * tumble), plane spin and scale return to the build default.
+   * Nothing else moves: not its position, descent, book access,
+   * part focus, the camera, or its marks. The Rig damps the
+   * displayed yaw/pitch/roll/spin (rate 10) and scale (rate 8)
+   * toward the state every frame, so the reset eases home on
+   * the View's own machinery. On the ring or the platter there
+   * is no citizen to reset, and the echo says so.
+   */
+  const resetExamined = () => {
+    const target = resolveRotateTarget({
+      hoverId, currentId, ringAddressed: ringAddressedNow(),
+    });
+    if (target.kind === "citizen") {
+      setSpace((s) => resetTransform(s, target.id));
+      setEcho({ text: `RESET — ${thingName(target.id)}`, error: false });
+    } else if (target.kind === "ring") {
+      setEcho({ text: "the ring has no citizen's turn to reset — it only spins", error: true });
+    } else {
+      setEcho({ text: "nothing examined to reset — the platter's turns level with a named view (1–4)", error: true });
+    }
+    touch();
+  };
 
   const copyThing = (id) => {
     const card = isMediaId(id)
@@ -2235,9 +2374,21 @@ export default function SpaceApp() {
       }
       // Enter arms the line (when no patch is live and no drag is
       // locked — those keep their Enter-free key worlds).
+      // Slice 13-4 (item C): with a sub-node hovered, Enter
+      // toggles its MARK instead — space scope only: not in
+      // label mode (marks key to the sub-node hover, which
+      // exists outside it), not while an app holds the stage or
+      // a letter stands open (their scopes begin below, but
+      // this branch stands above them, so the gate is stated
+      // here). The armed line never reaches this branch at all.
       if (e.key === "Enter") {
         e.preventDefault();
-        if (!pendingId && !lockRef.current) armCmdLine();
+        if (!pendingId && !lockRef.current) {
+          const mt = !uiMode.labelMode && !openAppState.appId && !openMessage
+            ? markTargetNow() : null;
+          if (mt) toggleMarkAt(mt);
+          else armCmdLine();
+        }
         return;
       }
       // MESSAGE SCOPE (slice 15): while a letter stands open on
@@ -2517,16 +2668,22 @@ export default function SpaceApp() {
           return;
         }
       }
-      // H copies and I inspect the addressed thing. OUR LAYOUT's
+      // L copies, H resets, and I inspects. OUR LAYOUT's
       // choice, stated plainly: in KeyPilot's stock layout I copies
-      // an image; here I INSPECTS and copy lives on H (slice 11 —
-      // it lived on C until C became dolly out). Like G before
-      // them, the operators are mode-scoped: inside label mode H
-      // is the horizon skyline's address and I the horizon
+      // an image; here I INSPECTS and copy lives on L (slice 13-4
+      // moved it from H, where slice 11 had put it when C became
+      // dolly out; H is RESET now). Like G before them, the
+      // operators are mode-scoped: inside label mode L is the
+      // knot's address, H the horizon skyline's and I the horizon
       // panel's, and letter targeting below picks them up.
-      if ((e.key === "h" || e.key === "H") && !uiMode.labelMode) {
+      if ((e.key === "l" || e.key === "L") && !uiMode.labelMode) {
         const id = addressedId(hoverId, currentId);
         if (id) { e.preventDefault(); copyThing(id); return; }
+      }
+      if ((e.key === "h" || e.key === "H") && !uiMode.labelMode) {
+        e.preventDefault();
+        resetExamined();
+        return;
       }
       if (e.key === "i" || e.key === "I") {
         const id = addressedId(hoverId, currentId);
@@ -2571,7 +2728,8 @@ export default function SpaceApp() {
     inspection, inspectRot, libraryOpen, clip, clipSummoned, values,
     openAppState, audio, tokenHoverId, appFocusId, regionHover, viewName,
     partFocus, zoomMul, ringSpin, platterQuat, ringHover, fieldIndex, subHover, descents,
-    bookAccess, bookSpread, openMessage, web, webSectionHover, webLinkHover]);
+    bookAccess, bookSpread, openMessage, web, webSectionHover, webLinkHover,
+    marks, partHoverId, branchHoverId]);
 
   // Dynamic input during a locked drag: the footer follows the
   // drag point (platter units) while the lock holds.
@@ -2688,7 +2846,7 @@ export default function SpaceApp() {
               "G from the tray onto a thing pastes it there",
               "D / Esc — send it home",
             ]
-          : ["holds — nothing yet (the EMPTY plate)", "H on a thing copies it here", "D / Esc — send it home"],
+          : ["holds — nothing yet (the EMPTY plate)", "L on a thing copies it here", "D / Esc — send it home"],
       };
     }
     if (id === "crystal") {
@@ -2819,6 +2977,9 @@ export default function SpaceApp() {
       appOpen: Boolean(openAppState.appId),
       appMode: openAppState.mode,
     }),
+    // Slice 13-4: Enter's cap reads MARK while a sub-node is
+    // hovered (the press toggles its mark, it does not arm).
+    markAvailable: Boolean(markTargetNow()),
     fieldName: FIELD_SIZES[fieldIndex].name,
     cardLabels: libraryOpen
       ? labeledMedia().map(({ item, label }) => ({ label, title: item.title, id: item.id }))
@@ -2857,6 +3018,8 @@ export default function SpaceApp() {
             zoomMul={zoomMul}
             zoomFocusId={zoomFocus?.kind === "citizen" ? zoomFocus.id : null}
             zoomFocusPoint={zoomFocus?.kind === "point" ? zoomFocus.point : null}
+            entrySeat={entrySeat}
+            marks={marks}
             citizenView={citizenView}
             platterQuat={platterQuat}
             ringSpinDeg={ringSpin}
@@ -3003,6 +3166,11 @@ export default function SpaceApp() {
                 <span className="k">NODE</span>{"     "}{hoverSub.name} — value {hoverSub.value} · {(hoverSub.share * 100).toFixed(1)}% of {descentRoot ? descentRoot.name : current?.name || "the citizen"} · depth {hoverSub.depth} · hovered{"\n"}
               </>
             ) : null}
+            {currentId && countMarks(marks, currentId) ? (
+              <>
+                <span className="k">MARKS</span>{"    "}{countMarks(marks, currentId)} marked in {current?.name || currentId}{countMarks(marks, currentId) <= 3 ? ` — ${marksFor(marks, currentId).map((nid) => markNodeName(currentId, nid)).join(" · ")}` : ""}{"\n"}
+              </>
+            ) : null}
             {descentRoot ? (
               <>
                 <span className="k">DESCENT</span>{"  "}{current?.name || currentId} rooted at {descentRoot.path.join(" › ")} — values and shares are of this root{"\n"}
@@ -3117,9 +3285,13 @@ export default function SpaceApp() {
                       <b>D</b> is GO BACK II, up to two levels in one press. Key labels are
                       opt-in: <b>Alt+L</b> shows the letter chips and makes letters into
                       addresses. The command line at the foot of the scene — <b>Enter</b> arms
-                      it. <b>M</b> opens the MEDIA LIBRARY on the XY wall; <b>H</b> copies the
-                      addressed thing to the clipboard, <b>I</b> inspects it, and <b>Alt+0</b>
-                      summons the clipboard tray.
+                      it. <b>M</b> opens the MEDIA LIBRARY on the XY wall; <b>L</b> copies the
+                      addressed thing to the clipboard, <b>H</b> resets the examined citizen —
+                      its turn, plane spin and magnify return to their defaults — <b>I</b>{" "}
+                      inspects it, and <b>Alt+0</b> summons the clipboard tray. And with a
+                      sub-node hovered — a wedge, a cuboid, a page, a folder — <b>Enter</b>{" "}
+                      MARKS it instead of arming the command line: an amber outline, held in
+                      a per-citizen index; Enter on a marked node unmarks it.
                     </p>
                     <p>
                       The space opens <b>overhead, in plan</b> — the camera starts at the
@@ -3135,7 +3307,14 @@ export default function SpaceApp() {
                       with a citizen <b>entered</b> (its card up), PLAN, ELEVATION and SIDE
                       seat around <b>that citizen</b> — above it, before it, beside it, at
                       its own seat distance — and the citizen view is not exited; HOME
-                      alone stays the whole space's. The number row is the camera and the
+                      alone stays the whole space's. The first time a citizen is entered
+                      in a session it turns to <b>face the entry camera</b> — its front
+                      meets the seat; later entries leave its turn as you left it. And
+                      while a citizen stands entered, its seat is the one it was entered
+                      at: the camera is authored by camera actions only, so{" "}
+                      <b>MAGNIFY</b> grows the citizen in place without reframing, and the
+                      dolly travels the entry seat's line, toward the entered citizen's
+                      own elements only. The number row is the camera and the
                       room: <b>1</b>–<b>4</b>{" "}
                       call those same views in the fieldset's order, <b>5</b> and <b>6</b> step
                       the field size, <b>7</b>–<b>9</b> load the object layouts — while
@@ -3610,7 +3789,8 @@ export default function SpaceApp() {
                       label mode they are addresses — G the tangled tree, M the living crystal,
                       E the sunburst cylinder, B the drum, N the tree, J the arch, C the tray.
                       Outside it, letters are operators: G patches, M opens the media library,
-                      E yaws (and expands an app from the ring), H copies, J strips, C and V
+                      E yaws + (and expands an app from the ring), R yaws −, L copies, H resets
+                      the examined citizen, J strips, C and V
                       zoom, A finishes, S and D go back. One letter, two lives, and the mode
                       is always visible — the chips are showing, or they are not. On the armed
                       command line the letters are characters again, and Enter is the finish

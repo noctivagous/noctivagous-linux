@@ -13,8 +13,18 @@
  *   C dolly out · V dolly in · 1/2/3/4 named views · 5/6 field
  *   sizes (the focal zoom) · 7/8/9 object layouts · Tab cycle ·
  *   F enter · Q/W pitch · E/R yaw · T/Y roll · Z/X magnify ·
- *   G patch · J strip cables · H copy · Space press toggles the
- *   drag lock (press to pick up, press again to drop, Esc cancels).
+ *   G patch · J strip cables · L copy · H reset · Space press
+ *   toggles the drag lock (press to pick up, press again to
+ *   drop, Esc cancels).
+ *
+ *   Slice 13-4: E and R swap yaw directions (E is the POSITIVE
+ *   step now); copy moves H → L and H becomes RESET (the
+ *   examined citizen's rotation, plane spin and scale return to
+ *   default — resetTransform below); an entered citizen's seat
+ *   is captured at entry and authored by camera actions only
+ *   (the entry seat basis, below); sub-nodes carry a stored
+ *   MARK index (subnode-marks.js); and a citizen entered for
+ *   the first time in a session turns to its FACING (below).
  *
  *   Slice 8 adds APPS and the RING (see the section at the foot of
  *   this file): a thing that bears an app opens with F onto the
@@ -123,7 +133,11 @@ export const SCALE_MAX = 2.5;
  * Z/X magnify, and B/N ROTATE PLANE, a fourth rotation kind:
  * rotation about the shape's own plane normal, in its own
  * plane, leaving every other axis untouched. The first-listed
- * key of each pair is the negative step). The punctuation keys
+ * key of each pair is the negative step — EXCEPT yaw: slice
+ * 13-4 (item E) swaps E and R, so E is the POSITIVE yaw step
+ * and R the negative. E's separate EXPAND role (the ring's app
+ * item, a centre-stage app) is not this table's business —
+ * resolveEKey rules it before the cluster is consulted). The punctuation keys
  * stood UNBOUND in the space scope until slice 13-3, which put
  * the PLATTER's plane spin on [ and ] (PLATTER_SPIN_KEYS below);
  * the rest of the punctuation row stays unbound. Letters are
@@ -146,7 +160,7 @@ export const SCALE_MAX = 2.5;
  */
 export const TRANSFORM_KEYS = {
   q: "pitch-", w: "pitch+",
-  e: "yaw-", r: "yaw+",
+  e: "yaw+", r: "yaw-",
   t: "roll-", y: "roll+",
   z: "scale-", x: "scale+",
   b: { axis: "spin", dir: -1 },
@@ -204,6 +218,23 @@ export function applyTransformPatch(state, id, patch) {
   const next = { ...cur, ...patch };
   next.scale = clampScale(next.scale);
   return { ...state, transforms: { ...state.transforms, [id]: next } };
+}
+
+/**
+ * Slice 13-4 (item B): RESET — one citizen's transform record
+ * returns to the BUILD default (defaultTransform: identity
+ * rotation, no plane spin, scale 1). The H key's whole action.
+ * It touches the transform record ONLY: not the citizen's
+ * position, not its descent or book access (those are display
+ * states held elsewhere), not part focus, not the camera, not
+ * its marks. The default is the BUILD orientation — a separate
+ * concept from the first-open FACING (below), which is a
+ * one-time courtesy turn at first entry, not a home the reset
+ * returns to. Unknown ids pass through untouched.
+ */
+export function resetTransform(state, id) {
+  if (!id || !state.transforms[id]) return state;
+  return { ...state, transforms: { ...state.transforms, [id]: defaultTransform() } };
 }
 
 /* ---------------- events: the messaging vocabulary (slice 11) ---------------- */
@@ -302,19 +333,20 @@ export function resolveBackLevels(chain, event) {
 
 /**
  * E's collision, resolved contextually (slice 11): E is both
- * yaw- (the rotate cluster's first yaw key) and the app
+ * yaw+ (the rotate cluster's first yaw key — slice 13-4 swapped
+ * E and R, so E is the POSITIVE step now) and the app
  * expander slice 8 gave it. The ruling: E on an ADDRESSED
- * CITIZEN is yaw-; E when the addressed thing is the app-bearing
+ * CITIZEN is yaw+; E when the addressed thing is the app-bearing
  * RING item, or while the app is open in CENTRE mode, is EXPAND
  * TO FULL (in app scope the transforms are suspended, so there
  * is no conflict inside the app; in centre mode the app's own
  * scope owns the key and E expands). While the app is FULL, E
- * does nothing (null). R is yaw+ unconditionally.
+ * does nothing (null). R is yaw- unconditionally.
  */
 export function resolveEKey({ targetId = null, appOpen = false, appMode = null } = {}) {
   if (appOpen) return appMode === "center" ? "expand" : null;
   if (targetId && appBearerOf(targetId)) return "expand";
-  if (targetId && OBJECT_IDS.includes(targetId)) return "yaw-";
+  if (targetId && OBJECT_IDS.includes(targetId)) return "yaw+";
   return null;
 }
 
@@ -1090,6 +1122,43 @@ export function citizenSeatDistance(scale = 1, mul = 1) {
   return Math.hypot(o.radial, o.up);
 }
 
+/* ---------------- slice 13-4 (item A): the entry seat basis ---------------- */
+
+/**
+ * THE ENTRY SEAT BASIS. The camera is authored by camera
+ * actions only: when a citizen's card opens, the seat it is
+ * entered at is captured from the citizen's state AT THAT
+ * MOMENT — its effective scale (transform scale × the layout's
+ * presence scale) — and while the card stands, the Rig seats
+ * from this stored basis, never from the citizen's live scale.
+ * MAGNIFY while entered then changes only the citizen's
+ * transform; the camera does not reframe. The dolly multiplier
+ * still composes onto the basis (citizenSeatOffsets(basis.
+ * scale, mul)), so C/V travel the seat line the entry made.
+ * The basis invalidates exactly when the card closes or the
+ * layout changes — the App holds it in state keyed by the card
+ * and the layout, and passes it to the View, which resolves
+ * the scale for any seat through entrySeatScale.
+ */
+export function captureEntrySeat(id, scale, layout = null) {
+  if (!id || !OBJECT_IDS.includes(id)) return null;
+  const s = Number(scale);
+  if (!Number.isFinite(s) || s <= 0) return null;
+  return { id, scale: s, layout };
+}
+
+/**
+ * The scale a seat for `id` is computed from: the ENTRY basis's
+ * scale while the basis names this citizen, else the citizen's
+ * live (display) scale — so seats outside an entered citizen
+ * (the plain dolly seat, a hovered citizen) behave exactly as
+ * they always have, and only the entered citizen's seat is
+ * frozen at its entry.
+ */
+export function entrySeatScale(entrySeat, id, liveScale) {
+  return entrySeat && entrySeat.id === id ? entrySeat.scale : liveScale;
+}
+
 /**
  * Slice 13-3 (item 2): the dolly's focus, generalised from a
  * citizen to whatever the hand is on. The priority is the
@@ -1110,16 +1179,31 @@ export function citizenSeatDistance(scale = 1, mul = 1) {
  * the standing zoomFocus rules, unchanged: the focus clears on
  * selection change, on any back event, on a layout change, and
  * when the multiplier returns to 1.
+ *
+ * Slice 13-4 (item A): while a citizen stands ENTERED
+ * (`enteredId` — its card open and it current), the focus
+ * narrows to that citizen's own world: a sub-node anchor is
+ * honoured only when it belongs to the entered citizen
+ * (`subAnchorObjectId`), a citizen focus only when it IS the
+ * entered citizen, and the raw cursor point only when the
+ * cursor is on the entered citizen (`cursorOnEntered`). A
+ * focus for a DIFFERENT citizen is never resolved while a card
+ * is open, so none can sit suppressed and apply all at once
+ * when the card closes. With no citizen entered, the three
+ * extra inputs are inert and the resolution is slice 13-3's.
  */
 export function resolveDollyFocus({
   subAnchor = null, hoverId = null, currentId = null, cardId = null, cursorPoint = null,
+  enteredId = null, subAnchorObjectId = null, cursorOnEntered = false,
 } = {}) {
-  if (subAnchor && Array.isArray(subAnchor.point)) {
+  const entered = enteredId && OBJECT_IDS.includes(enteredId) ? enteredId : null;
+  if (subAnchor && Array.isArray(subAnchor.point)
+    && (!entered || subAnchorObjectId === entered)) {
     return { kind: "point", via: "sub", point: [...subAnchor.point], radius: subAnchor.radius || 0 };
   }
   const citizen = resolveDollyTarget({ hoverId, currentId, cardId });
-  if (citizen) return { kind: "citizen", id: citizen };
-  if (Array.isArray(cursorPoint)) {
+  if (citizen && (!entered || citizen === entered)) return { kind: "citizen", id: citizen };
+  if (Array.isArray(cursorPoint) && (!entered || cursorOnEntered)) {
     return { kind: "point", via: "cursor", point: [...cursorPoint], radius: 0 };
   }
   return { kind: "world" };
@@ -1144,6 +1228,65 @@ export const DOLLY_POINT_MIN = 14;
  */
 export function pointSeatDistance(mul = 1) {
   return Math.max(DOLLY_POINT_MIN, DOLLY_POINT_BASE * citizenSeatScale(mul));
+}
+
+/* ---------------- slice 13-4 (item D): first-open facing ---------------- */
+
+/**
+ * FACING: each citizen's BUILT FRONT, as the angle (degrees)
+ * of the direction its readable face points in its own local
+ * space, measured like a yaw — atan2(x, z), so 0 is +Z, the
+ * direction a front normally points. Audited miniature by
+ * miniature against the entry seat (which stands on the
+ * citizen's radial, looking in):
+ *
+ *   mesa / drum / knot / crystal / tree — radial forms, no
+ *     front: 0. tray — a flat tray of cuboids, read from
+ *     above: 0. cube — five open faces, the south face +Z
+ *     like the rest: 0. horizon3d — its rows read back to
+ *     front, the net lanes the FRONT pair (+Z): 0.
+ *     horizonflat — the panel's face is +Z: 0. arch — its
+ *     sheet segment is centred on +Z: 0. definition — its
+ *     node slabs face +Z: 0. book — access turns the accessed
+ *     arc to angle 0, which is +Z, and the spread's leaves
+ *     face +Z: 0. mail — the cabinet's compartments face
+ *     +Z: 0. devices — the display's screen and the printer's
+ *     output tray both face +Z: 0 (devices read as "not
+ *     facing" only because nothing turned it to its radial;
+ *     the facing turn itself is the correction).
+ *   tangle — its levels RISE in Y as they step toward +Z, so
+ *     from +Z the tallest sheet stands in front and hides
+ *     the staircase; the course reads from the ROOT side,
+ *     the low sheet nearest and each generation rising away:
+ *     its front is −Z: 180.
+ *
+ * When a citizen is entered for the FIRST time in a session,
+ * the App sets its yaw to facingYawFor: the plot's azimuth
+ * (the entry camera stands on the radial, so the azimuth IS
+ * the direction from the citizen to the camera) minus the
+ * built front — the yaw that turns the front onto the camera.
+ * Only the yaw changes. Later entries leave the rotation as
+ * the user left it, and H's RESET returns to the BUILD
+ * default (identity), which is a different home from facing
+ * and stays one.
+ */
+export const FACING = {
+  mesa: 0, drum: 0, tray: 0, cube: 0, tangle: 180,
+  horizon3d: 0, horizonflat: 0, arch: 0, definition: 0,
+  knot: 0, crystal: 0, tree: 0, book: 0, devices: 0, mail: 0,
+};
+
+/**
+ * The yaw (degrees) that turns citizen `id`, standing at
+ * `position` ({ x, z } in platter coordinates), so its built
+ * front meets the entry camera on its radial.
+ */
+export function facingYawFor(id, position) {
+  const front = FACING[id] || 0;
+  const az = position
+    ? Math.atan2(Number(position.x) || 0, Number(position.z) || 0) * 180 / Math.PI
+    : 0;
+  return az - front;
 }
 
 /* ---------------- the sunburst mesa's terraces (slice 13-3, item 4) ---------------- */

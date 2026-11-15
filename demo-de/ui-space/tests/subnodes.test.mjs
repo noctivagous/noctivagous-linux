@@ -316,7 +316,9 @@ test("descent never touches a transform: MAGNIFY and rotation persist by constru
   // the record it carries out.
   const s0 = createSpaceState("ring");
   const s1 = applyTransformKey(s0, "mesa", "x"); // MAGNIFY +
-  const s2 = applyTransformKey(s1, "mesa", "r"); // yaw +
+  // Slice 13-4 (item E) swapped the yaw pair, so the positive
+  // yaw step is E now (it was R when this test was written).
+  const s2 = applyTransformKey(s1, "mesa", "e"); // yaw +
   const before = s2.transforms.mesa;
   let d = descend(createDescent(), "mesa", "noctivagous-linux/demo-de");
   d = descend(d, "mesa", "noctivagous-linux/demo-de/ui-space");

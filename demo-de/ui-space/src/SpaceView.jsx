@@ -63,6 +63,7 @@ import {
   viewSeat,
   citizenSeatOffsets,
   citizenViewSeat,
+  entrySeatScale,
   pointSeatDistance,
   gimbalQuatFor,
   mesaWedgeHeight,
@@ -78,6 +79,7 @@ import {
 } from "./space-state.js";
 import { buildPlatterSolid } from "./platter-top.js";
 import { subnodeById, subnodeRootOf, hierarchyDataOf, hierarchyRoot, tangleLevels } from "./subnodes.js";
+import { isMarked, marksFor } from "./subnode-marks.js";
 import { bookTable, bookSpreads, bookNodeById, BOOK_TOTALS, SPREAD_COUNT } from "./book.js";
 import {
   makeTrack,
@@ -678,7 +680,9 @@ function geoLib() {
     tangles, skyline, panelTicks, wireGeos,
     dataTree, treeSegs, treeBuds,
     unitBox: new THREE.BoxGeometry(1, 1, 1),
+    unitBoxEdges: null, // filled just below — the edges of the same box
   };
+  _lib.unitBoxEdges = new THREE.EdgesGeometry(_lib.unitBox);
   return _lib;
 }
 
@@ -720,6 +724,28 @@ function ambientAmp(ampRef, ctx, dt) {
   ampRef.current = damp(ampRef.current, on ? 1 : 0, 3, Math.min(0.05, dt || 0.016));
   return ampRef.current;
 }
+
+/**
+ * Slice 13-4 (item C): the sub-node OUTLINE language, shared by
+ * every miniature below. A hovered (or F-focused) sub-node wears
+ * a TEAL outline — the hover tier's colour, the citizens' own
+ * ring colour for a hover — beyond the standing brighten /
+ * sibling-dim, which stay. A MARKED sub-node (subnode-marks.js)
+ * wears an AMBER outline, held — the selected tier's colour.
+ * Per form the outline is an edges overlay where the form has
+ * per-node meshes, and the strongest equivalent where it does
+ * not (wireframe cages on the instanced forms, the token's own
+ * emissive tier on the ring's hosts). Outline lines never take
+ * the pointer: each carries raycast={() => null}.
+ */
+export const HOVER_OUTLINE = 0x7fd4c1;
+export const MARK_OUTLINE = 0xffa726;
+/** A citizen's marks as one signature string, for highlight loops. */
+const marksKeyOf = (st, citizenId) => {
+  const list = marksFor(st.marks, citizenId);
+  return list.length ? list.join("\u0001") : "";
+};
+const NO_RAYCAST = () => null;
 
 /**
  * Slice 12 — the sunbursts' wedges, shared by the mesa and the
@@ -769,14 +795,37 @@ function SunburstWedges({ kind, lib, matFor, ctx, descentRootId, mesaTerrace, me
     }
     return map;
   }, [wedges, kind, matFor]);
+  // Slice 13-4 (item C): each wedge's OUTLINE — an edges
+  // overlay on the wedge's own geometry, with its own line
+  // material, toggled by the highlight loop below (teal for
+  // the hovered/focused wedge, amber for a marked one).
+  const edgeGeos = useMemo(() => {
+    const map = new Map();
+    for (const w of wedges) {
+      if (!map.has(w.id)) map.set(w.id, new THREE.EdgesGeometry(w.geo, 12));
+    }
+    return map;
+  }, [wedges]);
+  const lineMats = useMemo(() => {
+    const map = new Map();
+    for (const w of wedges) {
+      if (!map.has(w.id)) {
+        map.set(w.id, new THREE.LineBasicMaterial({ color: HOVER_OUTLINE, transparent: true, opacity: 0.95 }));
+      }
+    }
+    return map;
+  }, [wedges]);
+  const lineRefs = useRef(new Map());
   // Every set is owned now (built above, never the library's),
   // so replaced sets dispose — geometries and materials alike.
   useEffect(() => {
     return () => {
       for (const w of wedges) w.geo.dispose();
       for (const e of owned.values()) e.mat.dispose();
+      for (const g of edgeGeos.values()) g.dispose();
+      for (const m of lineMats.values()) m.dispose();
     };
-  }, [wedges, owned]);
+  }, [wedges, owned, edgeGeos, lineMats]);
   const groupRef = useRef(null);
   useEffect(() => {
     const frame = ctx.frame;
@@ -818,11 +867,23 @@ function SunburstWedges({ kind, lib, matFor, ctx, descentRootId, mesaTerrace, me
       ? st.subHover.nodeId : null;
     const foc = st.partFocus && st.partFocus.objectId === kind ? st.partFocus.partId : null;
     const hi = foc || hov || null;
-    if (hi === lastHi.current) return;
-    lastHi.current = hi;
+    // Slice 13-4 (item C): marks join the highlight signature —
+    // a marked wedge holds a ×1.35 lift and its AMBER outline;
+    // the hovered/focused wedge keeps ×1.9 and the TEAL one.
+    const mKey = marksKeyOf(st, kind);
+    const sig = `${hi}|${mKey}`;
+    if (sig === lastHi.current) return;
+    lastHi.current = sig;
+    const marked = new Set(marksFor(st.marks, kind));
     for (const [id, e] of owned) {
-      const f = !hi ? 1 : id === hi ? 1.9 : 0.55;
+      const isM = marked.has(id);
+      const f = id === hi ? 1.9 : isM ? 1.35 : hi ? 0.55 : 1;
       e.mat.color.copy(e.base).multiplyScalar(f);
+      const line = lineRefs.current.get(id);
+      if (line) {
+        line.visible = id === hi || isM;
+        line.material.color.set(id === hi ? HOVER_OUTLINE : MARK_OUTLINE);
+      }
     }
   });
   const st = () => ctx.stateRef.current;
@@ -839,7 +900,14 @@ function SunburstWedges({ kind, lib, matFor, ctx, descentRootId, mesaTerrace, me
           material={owned.get(w.id).mat}
           onPointerOver={() => report(w.id)}
           onPointerMove={() => report(w.id)}
-          onPointerOut={clear} />
+          onPointerOut={clear}>
+          <lineSegments geometry={edgeGeos.get(w.id)} material={lineMats.get(w.id)}
+            visible={false} raycast={NO_RAYCAST}
+            ref={(el) => {
+              if (el) lineRefs.current.set(w.id, el);
+              else lineRefs.current.delete(w.id);
+            }} />
+        </mesh>
       ))}
     </group>
   );
@@ -854,6 +922,27 @@ function MiniMesa({ lib, matFor, ctx, descentRootId, mesaTerrace, mesaGap }) {
       sweep.current.rotation.y -= dt * 0.22 * a;
       sweep.current.children[0].material.opacity = 0.34 * a;
     }
+  });
+  // Slice 13-4 (item C): the centre disc is the root sub-node —
+  // it takes the outline too (its rims, teal hovered / amber
+  // marked), driven here since the disc is this component's own
+  // mesh, not one of SunburstWedges'.
+  const discLine = useRef(null);
+  const discEdges = useMemo(
+    () => new THREE.EdgesGeometry(new THREE.CylinderGeometry(7.6, 8.4, 6, 40), 24), []);
+  const discLineMat = useMemo(
+    () => new THREE.LineBasicMaterial({ color: HOVER_OUTLINE, transparent: true, opacity: 0.95 }), []);
+  useEffect(() => () => { discEdges.dispose(); discLineMat.dispose(); }, [discEdges, discLineMat]);
+  useFrame(() => {
+    const line = discLine.current;
+    if (!line) return;
+    const st = ctx.stateRef.current;
+    const rid = descentRootId || hierarchyRoot().id;
+    const hov = st.currentId === "mesa" && st.subHover
+      && st.subHover.objectId === "mesa" && st.subHover.nodeId === rid;
+    const marked = isMarked(st.marks, "mesa", rid);
+    line.visible = Boolean(hov || marked);
+    line.material.color.set(hov ? HOVER_OUTLINE : MARK_OUTLINE);
   });
   // Slice 13-3 (item 4): the centre disc is the DISPLAY ROOT's
   // seat, as the standalone page's centre pillar is its focus
@@ -874,6 +963,8 @@ function MiniMesa({ lib, matFor, ctx, descentRootId, mesaTerrace, mesaGap }) {
         onPointerOver={reportRoot} onPointerMove={reportRoot} onPointerOut={clearRoot}>
         <cylinderGeometry args={[7.6, 8.4, 6, 40]} />
         <primitive object={matFor(0x8a97a0, { rough: 0.5 })} attach="material" />
+        <lineSegments ref={discLine} geometry={discEdges} material={discLineMat}
+          visible={false} raycast={NO_RAYCAST} />
       </mesh>
       <SunburstWedges kind="mesa" lib={lib} matFor={matFor} ctx={ctx} descentRootId={descentRootId}
         mesaTerrace={mesaTerrace} mesaGap={mesaGap} />
@@ -954,18 +1045,28 @@ function MiniTray({ lib, matFor, ctx }) {
   // colours; each mesh reports its provider id on hover while
   // the tray is current, and anchors are published for the Rig.
   const owned = useMemo(() => {
+    // Slice 13-4 (item C): each node also owns its outline's
+    // line material (the unit box's edges ride as a child of
+    // the node's mesh — see the render below).
+    const lineMat = () => new THREE.LineBasicMaterial({
+      color: HOVER_OUTLINE, transparent: true, opacity: 0.95,
+    });
     const plates = lib.trayPlates.map(({ node, color }) => ({
       id: hierarchyPathId(node),
       mat: matFor(new THREE.Color(color).multiplyScalar(0.4).getHex(), { rough: 0.9 }),
       base: new THREE.Color(color).multiplyScalar(0.4),
+      lineMat: lineMat(),
     }));
     const cuboids = lib.trayCuboids.map(({ node, color }) => ({
       id: hierarchyPathId(node),
       mat: matFor(color, { rough: 0.5 }),
       base: new THREE.Color(color),
+      lineMat: lineMat(),
     }));
     return { plates, cuboids, all: [...plates, ...cuboids] };
   }, [lib, matFor]);
+  const plateLineRefs = useRef([]);
+  const cuboidLineRefs = useRef([]);
   useEffect(() => {
     const frame = ctx.frame;
     frame.subGroupRefs.set("tray", groupRef.current);
@@ -1006,12 +1107,25 @@ function MiniTray({ lib, matFor, ctx }) {
       ? st.subHover.nodeId : null;
     const foc = st.partFocus && st.partFocus.objectId === "tray" ? st.partFocus.partId : null;
     const hi = foc || hov || null;
-    if (hi !== lastHi.current) {
-      lastHi.current = hi;
-      for (const e of owned.all) {
-        const f = !hi ? 1 : e.id === hi ? 1.9 : 0.55;
+    // Slice 13-4 (item C): marks join the signature — marked
+    // nodes hold ×1.35 and their amber outline; the addressed
+    // node keeps ×1.9 and the teal outline.
+    const sig = `${hi}|${marksKeyOf(st, "tray")}`;
+    if (sig !== lastHi.current) {
+      lastHi.current = sig;
+      const marked = new Set(marksFor(st.marks, "tray"));
+      owned.all.forEach((e, i) => {
+        const isM = marked.has(e.id);
+        const f = e.id === hi ? 1.9 : isM ? 1.35 : hi ? 0.55 : 1;
         e.mat.color.copy(e.base).multiplyScalar(f);
-      }
+        const line = i < owned.plates.length
+          ? plateLineRefs.current[i]
+          : cuboidLineRefs.current[i - owned.plates.length];
+        if (line) {
+          line.visible = e.id === hi || isM;
+          line.material.color.set(e.id === hi ? HOVER_OUTLINE : MARK_OUTLINE);
+        }
+      });
     }
   });
   const st = () => ctx.stateRef.current;
@@ -1034,7 +1148,11 @@ function MiniTray({ lib, matFor, ctx }) {
             material={owned.plates[i].mat}
             onPointerOver={() => report(owned.plates[i].id)}
             onPointerMove={() => report(owned.plates[i].id)}
-            onPointerOut={clear} />
+            onPointerOut={clear}>
+            <lineSegments geometry={lib.unitBoxEdges} material={owned.plates[i].lineMat}
+              scale={[1.04, 1.3, 1.04]} visible={false} raycast={NO_RAYCAST}
+              ref={(el) => { plateLineRefs.current[i] = el; }} />
+          </mesh>
         );
       })}
       {lib.trayCuboids.map(({ node }, i) => {
@@ -1046,7 +1164,13 @@ function MiniTray({ lib, matFor, ctx }) {
             material={owned.cuboids[i].mat}
             onPointerOver={() => report(owned.cuboids[i].id)}
             onPointerMove={() => report(owned.cuboids[i].id)}
-            onPointerOut={clear} />
+            onPointerOut={clear}>
+            {/* The outline rides inside the mesh, so the
+                breathing cuboids carry it with them. */}
+            <lineSegments geometry={lib.unitBoxEdges} material={owned.cuboids[i].lineMat}
+              scale={[1.05, 1.03, 1.05]} visible={false} raycast={NO_RAYCAST}
+              ref={(el) => { cuboidLineRefs.current[i] = el; }} />
+          </mesh>
         );
       })}
     </group>
@@ -1174,6 +1298,14 @@ function MiniTangle({ lib, matFor, ctx, tangleDataset }) {
       if (frame.subLocal.get("tangle") === anchors) frame.subLocal.delete("tangle");
     };
   }, [ctx, tg]);
+  // Slice 13-4 (item C): the figures are INSTANCED, so a
+  // literal per-figure outline cannot ride the mesh — the
+  // strongest equivalent is a WIREFRAME CAGE instancedMesh of
+  // its own: one teal cage on the hovered/focused figure, one
+  // amber cage per marked figure, matrices written by the
+  // highlight loop below.
+  const hovCageRef = useRef(null);
+  const markCageRef = useRef(null);
   const lastHi = useRef(undefined);
   useFrame(() => {
     const st = ctx.stateRef.current;
@@ -1181,16 +1313,37 @@ function MiniTangle({ lib, matFor, ctx, tangleDataset }) {
       ? st.subHover.nodeId : null;
     const foc = st.partFocus && st.partFocus.objectId === "tangle" ? st.partFocus.partId : null;
     const hi = foc || hov || null;
-    if (hi === lastHi.current) return;
-    lastHi.current = hi;
+    const sig = `${hi}|${marksKeyOf(st, "tangle")}`;
+    if (sig === lastHi.current) return;
+    lastHi.current = sig;
     const m = ref.current;
     if (!m) return;
+    const marked = new Set(marksFor(st.marks, "tangle"));
     const C = new THREE.Color();
     tg.nodes.forEach((p, i) => {
-      const f = !hi ? 1 : p.id === hi ? 2.1 : 0.55;
+      const f = p.id === hi ? 2.1 : marked.has(p.id) ? 1.35 : hi ? 0.55 : 1;
       m.setColorAt(i, C.set(TANGLE_PALETTE[p.level % TANGLE_PALETTE.length]).multiplyScalar(f));
     });
     if (m.instanceColor) m.instanceColor.needsUpdate = true;
+    const M = new THREE.Matrix4();
+    const hc = hovCageRef.current;
+    if (hc) {
+      const p = hi ? tg.nodes.find((n) => n.id === hi) : null;
+      hc.count = p ? 1 : 0;
+      if (p) { M.makeTranslation(p.x, p.y, p.z); hc.setMatrixAt(0, M); }
+      hc.instanceMatrix.needsUpdate = true;
+    }
+    const mc = markCageRef.current;
+    if (mc) {
+      let n = 0;
+      for (const p of tg.nodes) {
+        if (!marked.has(p.id)) continue;
+        M.makeTranslation(p.x, p.y, p.z);
+        mc.setMatrixAt(n++, M);
+      }
+      mc.count = n;
+      mc.instanceMatrix.needsUpdate = true;
+    }
   });
   const st = () => ctx.stateRef.current;
   const reportInst = (e) => {
@@ -1217,6 +1370,19 @@ function MiniTangle({ lib, matFor, ctx, tangleDataset }) {
         onPointerOver={reportInst} onPointerMove={reportInst} onPointerOut={clearInst}>
         <boxGeometry args={[1.8, 1.8, 1.8]} />
         <primitive object={matFor(0xffffff, { rough: 0.5 })} attach="material" />
+      </instancedMesh>
+      {/* The outline cages (item C): a hair larger than the
+          1.8³ figures, wireframe — they never take the pointer. */}
+      <instancedMesh ref={hovCageRef} args={[undefined, undefined, 1]}
+        frustumCulled={false} raycast={NO_RAYCAST}>
+        <boxGeometry args={[2.35, 2.35, 2.35]} />
+        <meshBasicMaterial color={HOVER_OUTLINE} wireframe transparent opacity={0.95} />
+      </instancedMesh>
+      <instancedMesh ref={markCageRef} args={[undefined, undefined, Math.max(1, tg.nodes.length)]}
+        key={`cages:${tangleDataset}:${tg.nodes.length}`}
+        frustumCulled={false} raycast={NO_RAYCAST}>
+        <boxGeometry args={[2.35, 2.35, 2.35]} />
+        <meshBasicMaterial color={MARK_OUTLINE} wireframe transparent opacity={0.95} />
       </instancedMesh>
     </group>
   );
@@ -1602,12 +1768,17 @@ function MiniKnot({ lib, matFor, ctx }) {
     };
   }, [ctx, data]);
 
-  const applyPartColours = (hi) => {
+  // Slice 13-4 (item C): a marked part holds a ×1.5 lift in
+  // the vertex colours (between the rest and the addressed
+  // part's ×2.1) — and wears a RING MARKER at its arc midpoint
+  // (below), since the tube is one surface and has no per-part
+  // mesh to outline.
+  const applyPartColours = (hi, marked = new Set()) => {
     const attr = data.geo.getAttribute("color");
     const C = data.contourPts;
     for (let r = 0; r < data.ringPart.length; r++) {
       const pid = KNOT_PARTS[data.ringPart[r]].id;
-      const f = !hi ? 1 : pid === hi ? 2.1 : 0.55;
+      const f = pid === hi ? 2.1 : marked.has(pid) ? 1.5 : hi ? 0.55 : 1;
       for (let j = 0; j < C; j++) {
         const o = (r * C + j) * 3;
         attr.array[o] = data.baseColors[o] * f;
@@ -1617,6 +1788,33 @@ function MiniKnot({ lib, matFor, ctx }) {
     }
     attr.needsUpdate = true;
   };
+
+  // The parts' ring markers: one thin torus per part, standing
+  // around the tube at the part's arc midpoint, oriented along
+  // the curve's tangent there, its radius the part's own tube
+  // radius plus a margin — the outline this form supports.
+  const partRings = useMemo(() => {
+    const form = KNOT_FORMS.trefoil;
+    return KNOT_PARTS.map((part, i) => {
+      const t = partMidT(i);
+      const [x, y, z] = torusKnotPoint(form.p, form.q, t);
+      const [x2, y2, z2] = torusKnotPoint(form.p, form.q, t + 0.02);
+      const pos = new THREE.Vector3(x * KNOT_SCALE, z * KNOT_SCALE, y * KNOT_SCALE);
+      const ahead = new THREE.Vector3(x2 * KNOT_SCALE, z2 * KNOT_SCALE, y2 * KNOT_SCALE);
+      const m = new THREE.Matrix4().lookAt(pos, ahead, new THREE.Vector3(0, 1, 0));
+      return {
+        id: part.id,
+        pos,
+        quat: new THREE.Quaternion().setFromRotationMatrix(m),
+        radius: radiusFor(part.value) + 1.1,
+        mat: new THREE.MeshBasicMaterial({
+          color: HOVER_OUTLINE, transparent: true, opacity: 0.95, depthWrite: false,
+        }),
+      };
+    });
+  }, []);
+  useEffect(() => () => { for (const r of partRings) r.mat.dispose(); }, [partRings]);
+  const ringRefs = useRef(new Map());
 
   useFrame((_, dtRaw) => {
     const dt = Math.min(0.05, dtRaw || 0.016);
@@ -1639,9 +1837,20 @@ function MiniKnot({ lib, matFor, ctx }) {
     data.mat.color.setScalar(lift);
     data.mat.opacity = damp(data.mat.opacity, hov || foc ? 0.72 : 0.45, 10, dt);
     const hi = foc || hov || null;
-    if (hi !== lastHi.current) {
-      lastHi.current = hi;
-      applyPartColours(hi);
+    // Slice 13-4 (item C): marks join the signature — a marked
+    // part holds its ×1.5 vertex lift and its amber ring; the
+    // addressed part keeps ×2.1 and the teal ring.
+    const sig = `${hi}|${marksKeyOf(st, "knot")}`;
+    if (sig !== lastHi.current) {
+      lastHi.current = sig;
+      const marked = new Set(marksFor(st.marks, "knot"));
+      applyPartColours(hi, marked);
+      for (const r of partRings) {
+        const mesh = ringRefs.current.get(r.id);
+        if (!mesh) continue;
+        mesh.visible = r.id === hi || marked.has(r.id);
+        mesh.material.color.set(r.id === hi ? HOVER_OUTLINE : MARK_OUTLINE);
+      }
     }
   });
 
@@ -1674,6 +1883,18 @@ function MiniKnot({ lib, matFor, ctx }) {
           onPointerMove={reportPart}
           onPointerOut={clearPart}
         />
+        {/* The parts' ring markers (item C): they ride the spin
+            group with the tube, and never take the pointer. */}
+        {partRings.map((r) => (
+          <mesh key={r.id} position={r.pos} quaternion={r.quat} material={r.mat}
+            visible={false} raycast={NO_RAYCAST}
+            ref={(el) => {
+              if (el) ringRefs.current.set(r.id, el);
+              else ringRefs.current.delete(r.id);
+            }}>
+            <torusGeometry args={[r.radius, 0.28, 8, 40]} />
+          </mesh>
+        ))}
       </group>
     </group>
   );
@@ -2192,12 +2413,18 @@ function MiniTree({ lib, matFor, ctx }) {
       bm.instanceMatrix.needsUpdate = true;
     }
   };
-  const applyColours = (hiId) => {
+  // Slice 13-4 (item C): a marked branch holds a ×1.35 lift
+  // (buds ×1.3) and wears a wireframe SPHERE CAGE at its
+  // bounding sphere — the instanced form's outline equivalent,
+  // instanced like the tangle's cages (below in the render).
+  const hovCageRef = useRef(null);
+  const markCageRef = useRef(null);
+  const applyColours = (hiId, marked = new Set()) => {
     const C = new THREE.Color();
     const sm = segRef.current;
     if (sm) {
       lib.treeSegs.forEach((s, i) => {
-        const f = !hiId ? 1 : s.branchId === hiId ? 2.1 : 0.55;
+        const f = s.branchId === hiId ? 2.1 : marked.has(s.branchId) ? 1.35 : hiId ? 0.55 : 1;
         sm.setColorAt(i, C.copy(data.base[i]).multiplyScalar(f));
       });
       if (sm.instanceColor) sm.instanceColor.needsUpdate = true;
@@ -2205,10 +2432,43 @@ function MiniTree({ lib, matFor, ctx }) {
     const bm = budRef.current;
     if (bm) {
       lib.treeBuds.forEach((b, i) => {
-        const f = !hiId ? 1 : b.branchId === hiId ? 1.7 : 0.6;
+        const f = b.branchId === hiId ? 1.7 : marked.has(b.branchId) ? 1.3 : hiId ? 0.6 : 1;
         bm.setColorAt(i, C.copy(data.budBase[i]).multiplyScalar(f));
       });
       if (bm.instanceColor) bm.instanceColor.needsUpdate = true;
+    }
+    // The cages: one teal at the addressed branch's sphere, one
+    // amber per marked branch, inside the sway group so they
+    // ride the branchWorld matrices' own frame.
+    const M = new THREE.Matrix4();
+    const Q = new THREE.Quaternion();
+    const P = new THREE.Vector3();
+    const S = new THREE.Vector3();
+    const place = (mesh, branch) => {
+      P.set(...branch.sphere.centre);
+      S.setScalar(branch.sphere.radius * 1.02);
+      M.compose(P, Q, S);
+      mesh.setMatrixAt(0, M);
+    };
+    const hc = hovCageRef.current;
+    if (hc) {
+      const b = hiId ? lib.dataTree.branches.find((x) => x.id === hiId) : null;
+      hc.count = b ? 1 : 0;
+      if (b) place(hc, b);
+      hc.instanceMatrix.needsUpdate = true;
+    }
+    const mc = markCageRef.current;
+    if (mc) {
+      let n = 0;
+      for (const b of lib.dataTree.branches) {
+        if (!marked.has(b.id)) continue;
+        P.set(...b.sphere.centre);
+        S.setScalar(b.sphere.radius * 1.02);
+        M.compose(P, Q, S);
+        mc.setMatrixAt(n++, M);
+      }
+      mc.count = n;
+      mc.instanceMatrix.needsUpdate = true;
     }
   };
   useLayoutEffect(() => {
@@ -2234,9 +2494,10 @@ function MiniTree({ lib, matFor, ctx }) {
     const hov = st.currentId === "tree" ? st.branchHoverId : null;
     const foc = st.partFocus && st.partFocus.objectId === "tree" ? st.partFocus.partId : null;
     const hi = hov || foc || null;
-    if (hi !== lastHi.current) {
-      lastHi.current = hi;
-      applyColours(hi);
+    const sig = `${hi}|${marksKeyOf(st, "tree")}`;
+    if (sig !== lastHi.current) {
+      lastHi.current = sig;
+      applyColours(hi, new Set(marksFor(st.marks, "tree")));
     }
   });
 
@@ -2277,6 +2538,19 @@ function MiniTree({ lib, matFor, ctx }) {
           onPointerOut={clearReport}
         >
           <sphereGeometry args={[1, 10, 10]} />
+        </instancedMesh>
+        {/* The branch outline cages (item C): wireframe spheres
+            at the branches' bounding spheres, written by
+            applyColours; they never take the pointer. */}
+        <instancedMesh ref={hovCageRef} args={[undefined, undefined, 1]}
+          frustumCulled={false} raycast={NO_RAYCAST}>
+          <icosahedronGeometry args={[1, 1]} />
+          <meshBasicMaterial color={HOVER_OUTLINE} wireframe transparent opacity={0.55} />
+        </instancedMesh>
+        <instancedMesh ref={markCageRef} args={[undefined, undefined, Math.max(1, lib.dataTree.branches.length)]}
+          frustumCulled={false} raycast={NO_RAYCAST}>
+          <icosahedronGeometry args={[1, 1]} />
+          <meshBasicMaterial color={MARK_OUTLINE} wireframe transparent opacity={0.55} />
         </instancedMesh>
       </group>
     </group>
@@ -2384,6 +2658,32 @@ function BookCylinder({ ctx, matFor, anchors }) {
   }, [table]);
   const leafGeo = useMemo(() => new THREE.BoxGeometry(0.45, BK.leafH, 13), []);
   const barGeo = useMemo(() => new THREE.BoxGeometry(0.1, 0.55, 9.2), []);
+  // Slice 13-4 (item C): the tiers' OUTLINES — edges of the
+  // band sectors and of the leaf box, one line material per
+  // node, toggled by the highlight below (teal addressed,
+  // amber marked).
+  const bandEdges = useMemo(() => {
+    const map = new Map();
+    for (const [id, g] of bandGeos) map.set(id, new THREE.EdgesGeometry(g, 10));
+    return map;
+  }, [bandGeos]);
+  const leafEdges = useMemo(() => new THREE.EdgesGeometry(leafGeo), [leafGeo]);
+  const lineMats = useMemo(() => {
+    const map = new Map();
+    for (const n of table.all) {
+      if (n.kind === "root") continue;
+      map.set(n.id, new THREE.LineBasicMaterial({
+        color: HOVER_OUTLINE, transparent: true, opacity: 0.95,
+      }));
+    }
+    return map;
+  }, [table]);
+  const lineRefs = useRef(new Map());
+  useEffect(() => () => {
+    for (const g of bandEdges.values()) g.dispose();
+    leafEdges.dispose();
+    for (const m of lineMats.values()) m.dispose();
+  }, [bandEdges, leafEdges, lineMats]);
   const turnRef = useRef(null);
   const turnCur = useRef(0);
   const slideRefs = useRef(new Map());
@@ -2433,15 +2733,26 @@ function BookCylinder({ ctx, matFor, anchors }) {
     const accCh = access && access.path && access.path.length ? access.path[0] : null;
     const accSec = access && access.path && access.path.length > 1 ? access.path[1] : null;
     const hi = hov || deepId;
-    const sig = `${hi}|${accCh}|${accSec}`;
+    // Slice 13-4 (item C): marks join the signature — a marked
+    // tier lifts ×1.35 through its access ghosting and wears
+    // its amber outline; the addressed tier keeps the teal one.
+    const sig = `${hi}|${accCh}|${accSec}|${marksKeyOf(st, "book")}`;
     if (sig !== lastHi.current) {
       lastHi.current = sig;
+      const marked = new Set(marksFor(st.marks, "book"));
       for (const n of table.all) {
         const e = owned.get(n.id);
         if (!e) continue;
-        const f = bookTierFactor(n, hi, accCh, accSec);
+        const isM = marked.has(n.id);
+        let f = bookTierFactor(n, hi, accCh, accSec);
+        if (isM && n.id !== hi) f *= 1.35;
         e.mat.color.copy(e.base).multiplyScalar(f);
         if (e.barMat) e.barMat.color.copy(e.barBase).multiplyScalar(f);
+        const line = lineRefs.current.get(n.id);
+        if (line) {
+          line.visible = n.id === hi || isM;
+          line.material.color.set(n.id === hi ? HOVER_OUTLINE : MARK_OUTLINE);
+        }
       }
     }
   });
@@ -2476,14 +2787,28 @@ function BookCylinder({ ctx, matFor, anchors }) {
             material={owned.get(ch.id).mat}
             onPointerOver={() => report(ch.id)}
             onPointerMove={() => report(ch.id)}
-            onPointerOut={clear} />
+            onPointerOut={clear}>
+            <lineSegments geometry={bandEdges.get(ch.id)} material={lineMats.get(ch.id)}
+              visible={false} raycast={NO_RAYCAST}
+              ref={(el) => {
+                if (el) lineRefs.current.set(ch.id, el);
+                else lineRefs.current.delete(ch.id);
+              }} />
+          </mesh>
         ))}
         {table.all.filter((n) => n.kind === "section").map((sec) => (
           <mesh key={sec.id} geometry={bandGeos.get(sec.id)} position={[0, BK.secBandY, 0]}
             material={owned.get(sec.id).mat}
             onPointerOver={() => report(sec.id)}
             onPointerMove={() => report(sec.id)}
-            onPointerOut={clear} />
+            onPointerOut={clear}>
+            <lineSegments geometry={bandEdges.get(sec.id)} material={lineMats.get(sec.id)}
+              visible={false} raycast={NO_RAYCAST}
+              ref={(el) => {
+                if (el) lineRefs.current.set(sec.id, el);
+                else lineRefs.current.delete(sec.id);
+              }} />
+          </mesh>
         ))}
         {table.pages.map((p) => (
           <group key={p.id} rotation-y={p.mid}>
@@ -2495,7 +2820,14 @@ function BookCylinder({ ctx, matFor, anchors }) {
                 material={owned.get(p.id).mat}
                 onPointerOver={() => report(p.id)}
                 onPointerMove={() => report(p.id)}
-                onPointerOut={clear} />
+                onPointerOut={clear}>
+                <lineSegments geometry={leafEdges} material={lineMats.get(p.id)}
+                  scale={[1.6, 1.01, 1.01]} visible={false} raycast={NO_RAYCAST}
+                  ref={(el) => {
+                    if (el) lineRefs.current.set(p.id, el);
+                    else lineRefs.current.delete(p.id);
+                  }} />
+              </mesh>
               {[-1, 1].map((f) => BK_BAR_Y.map((y, i) => (
                 <mesh key={`${f}:${i}`} geometry={barGeo}
                   position={[f * 0.28, y, BK.leafMidR]}
@@ -2509,11 +2841,15 @@ function BookCylinder({ ctx, matFor, anchors }) {
   );
 }
 
+/** The standing leaf's outline geometry (slice 13-4, item C),
+ *  shared by both leaves of every spread. */
+const SPREAD_LEAF_EDGES = new THREE.EdgesGeometry(new THREE.BoxGeometry(16.5, 23, 0.5));
+
 /** One standing leaf of the spread: its page's line-bars on the
  *  front face (the first, shorter and amber, is the title), its
  *  page number at its foot — or, for a blank side, a plain leaf
  *  that only clears the hover. */
-function SpreadLeaf({ side, page, owned, blankMat, report, clear }) {
+function SpreadLeaf({ side, page, owned, blankMat, report, clear, lineMat, lineRef }) {
   const x = side === "verso" ? -8.4 : 8.4;
   const ry = side === "verso" ? 0.3 : -0.3;
   if (!page) {
@@ -2536,6 +2872,9 @@ function SpreadLeaf({ side, page, owned, blankMat, report, clear }) {
           onPointerMove={() => report(page.id)}
           onPointerOut={clear}>
           <boxGeometry args={[16.5, 23, 0.5]} />
+          <lineSegments geometry={SPREAD_LEAF_EDGES} material={lineMat}
+            scale={[1.02, 1.01, 1.6]} visible={false} raycast={NO_RAYCAST}
+            ref={lineRef} />
         </mesh>
         {bars.map((w, i) => (
           <mesh key={i} position={[i === 0 ? -1.5 : 0, 8.6 - i * 2.7, 0.31]}>
@@ -2585,6 +2924,20 @@ function BookSpread({ ctx, matFor, anchors, spreadIndex }) {
     return map;
   }, [spread, matFor]);
   const blankMat = useMemo(() => matFor(0x232b31, { rough: 0.85 }), [matFor]);
+  // Slice 13-4 (item C): the standing leaves' outline materials
+  // and refs, keyed by page id like the owned set.
+  const lineMats = useMemo(() => {
+    const map = new Map();
+    for (const page of [spread.verso, spread.recto]) {
+      if (!page) continue;
+      map.set(page.id, new THREE.LineBasicMaterial({
+        color: HOVER_OUTLINE, transparent: true, opacity: 0.95,
+      }));
+    }
+    return map;
+  }, [spread]);
+  useEffect(() => () => { for (const m of lineMats.values()) m.dispose(); }, [lineMats]);
+  const lineRefs = useRef(new Map());
   useEffect(() => {
     // Only the standing pages hold anchors in this presentation;
     // every other tier parks at the book's centre, unaddressed.
@@ -2611,12 +2964,22 @@ function BookSpread({ ctx, matFor, anchors, spreadIndex }) {
     const st = ctx.stateRef.current;
     const hov = st.currentId === "book" && st.subHover && st.subHover.objectId === "book"
       ? st.subHover.nodeId : null;
-    if (hov === lastHi.current) return;
-    lastHi.current = hov;
+    // Slice 13-4 (item C): marks join the signature — a marked
+    // standing leaf holds ×1.35 and its amber outline.
+    const sig = `${hov}|${marksKeyOf(st, "book")}`;
+    if (sig === lastHi.current) return;
+    lastHi.current = sig;
+    const marked = new Set(marksFor(st.marks, "book"));
     for (const [id, e] of owned) {
-      const f = !hov ? 1 : id === hov ? 1.9 : 0.8;
+      const isM = marked.has(id);
+      const f = id === hov ? 1.9 : isM ? 1.35 : hov ? 0.8 : 1;
       e.mat.color.copy(e.base).multiplyScalar(f);
       e.barMat.color.copy(e.barBase).multiplyScalar(f);
+      const line = lineRefs.current.get(id);
+      if (line) {
+        line.visible = id === hov || isM;
+        line.material.color.set(id === hov ? HOVER_OUTLINE : MARK_OUTLINE);
+      }
     }
   });
   const st = () => ctx.stateRef.current;
@@ -2637,10 +3000,22 @@ function BookSpread({ ctx, matFor, anchors, spreadIndex }) {
       </mesh>
       <SpreadLeaf side="verso" page={spread.verso}
         owned={spread.verso ? owned.get(spread.verso.id) : null}
-        blankMat={blankMat} report={report} clear={clear} />
+        blankMat={blankMat} report={report} clear={clear}
+        lineMat={spread.verso ? lineMats.get(spread.verso.id) : null}
+        lineRef={(el) => {
+          if (!spread.verso) return;
+          if (el) lineRefs.current.set(spread.verso.id, el);
+          else lineRefs.current.delete(spread.verso.id);
+        }} />
       <SpreadLeaf side="recto" page={spread.recto}
         owned={spread.recto ? owned.get(spread.recto.id) : null}
-        blankMat={blankMat} report={report} clear={clear} />
+        blankMat={blankMat} report={report} clear={clear}
+        lineMat={spread.recto ? lineMats.get(spread.recto.id) : null}
+        lineRef={(el) => {
+          if (!spread.recto) return;
+          if (el) lineRefs.current.set(spread.recto.id, el);
+          else lineRefs.current.delete(spread.recto.id);
+        }} />
     </group>
   );
 }
@@ -2845,6 +3220,34 @@ function MiniDevices({ lib, matFor, ctx }) {
     m.instanceMatrix.needsUpdate = true;
   }, [devices]);
 
+  // Slice 13-4 (item C): each device form is a COMPOUND of
+  // meshes, so its outline is a CAGE — one edges box fitted to
+  // the form (and one for the hub), toggled by the highlight
+  // below. Hosts stand on the ring, outside this group: their
+  // outline equivalent is their token's emissive tier, which
+  // NetLink drives (it reads the marks too).
+  const cages = useMemo(() => {
+    const list = [];
+    for (const d of devices) {
+      const p = plots.get(d.slug);
+      if (!p) continue;
+      const id = `devices/${d.slug}`;
+      if (d.kind === "printer") list.push({ id, c: [p.x, 4.3, p.z], s: [12, 6.5, 10.5] });
+      else if (d.kind === "keyboard") list.push({ id, c: [p.x, 2.6, p.z], s: [13.6, 2.2, 5.6] });
+      else if (d.kind === "pointer") list.push({ id, c: [p.x, 3.2, p.z], s: [5.4, 3.4, 6.4] });
+      else if (d.kind === "display") list.push({ id, c: [p.x, 7.2, p.z], s: [15.6, 13.5, 3.4] });
+      else if (d.kind === "storage") list.push({ id, c: [p.x, 3.4, p.z], s: [7.1, 4.6, 9.1] });
+    }
+    if (conns.length) list.push({ id: "devices/net", c: [14.5, 3.4, -3], s: [7.6, 4.2, 5.1] });
+    return list;
+  }, [devices, plots, conns]);
+  const cageMats = useMemo(() => ({
+    teal: new THREE.LineBasicMaterial({ color: HOVER_OUTLINE, transparent: true, opacity: 0.95 }),
+    amber: new THREE.LineBasicMaterial({ color: MARK_OUTLINE, transparent: true, opacity: 0.95 }),
+  }), []);
+  useEffect(() => () => { cageMats.teal.dispose(); cageMats.amber.dispose(); }, [cageMats]);
+  const cageRefs = useRef(new Map());
+
   const lastHi = useRef(undefined);
   useFrame(() => {
     const st = ctx.stateRef.current;
@@ -2876,11 +3279,24 @@ function MiniDevices({ lib, matFor, ctx }) {
       ? st.subHover.nodeId : null;
     const foc = st.partFocus && st.partFocus.objectId === "devices" ? st.partFocus.partId : null;
     const hi = foc || hov || null;
-    if (hi !== lastHi.current) {
-      lastHi.current = hi;
+    // Slice 13-4 (item C): marks join the signature — a marked
+    // form holds ×1.35 and its amber cage; the addressed form
+    // keeps ×1.9 and the teal cage.
+    const sig = `${hi}|${marksKeyOf(st, "devices")}`;
+    if (sig !== lastHi.current) {
+      lastHi.current = sig;
+      const marked = new Set(marksFor(st.marks, "devices"));
       for (const [id, parts] of owned.map) {
-        const f = !hi ? 1 : id === hi ? 1.9 : 0.55;
+        const isM = marked.has(id);
+        const f = id === hi ? 1.9 : isM ? 1.35 : hi ? 0.55 : 1;
         for (const part of parts) part.mat.color.copy(part.base).multiplyScalar(f);
+      }
+      for (const cage of cages) {
+        const line = cageRefs.current.get(cage.id);
+        if (!line) continue;
+        const isM = marked.has(cage.id);
+        line.visible = cage.id === hi || isM;
+        line.material = cage.id === hi ? cageMats.teal : cageMats.amber;
       }
     }
   });
@@ -3013,6 +3429,17 @@ function MiniDevices({ lib, matFor, ctx }) {
           <group ref={hubTopRef} position={[0, 3.2, 0]} />
         </group>
       ) : null}
+      {/* The forms' outline cages (item C), toggled by the
+          highlight loop; they never take the pointer. */}
+      {cages.map((cage) => (
+        <lineSegments key={cage.id} position={cage.c} scale={cage.s}
+          geometry={lib.unitBoxEdges} material={cageMats.teal}
+          visible={false} raycast={NO_RAYCAST}
+          ref={(el) => {
+            if (el) cageRefs.current.set(cage.id, el);
+            else cageRefs.current.delete(cage.id);
+          }} />
+      ))}
     </group>
   );
 }
@@ -3136,6 +3563,24 @@ function MiniMail({ lib, matFor, ctx }) {
     };
   }, [ctx, anchors, folders, cellOf, messages]);
 
+  // Slice 13-4 (item C): each compartment's OUTLINE is a frame
+  // — an edges box standing just proud of the cell's face —
+  // plus one for Projects' union cell; toggled by the highlight
+  // below (teal addressed, amber marked). The shelf letters'
+  // outlines ride PostCard itself.
+  const frameMats = useMemo(() => ({
+    teal: new THREE.LineBasicMaterial({ color: HOVER_OUTLINE, transparent: true, opacity: 0.95 }),
+    amber: new THREE.LineBasicMaterial({ color: MARK_OUTLINE, transparent: true, opacity: 0.95 }),
+  }), []);
+  useEffect(() => () => { frameMats.teal.dispose(); frameMats.amber.dispose(); }, [frameMats]);
+  const frameRefs = useRef(new Map());
+  const cellFrames = useMemo(() => cells.map((c) => ({
+    id: c.id,
+    cx: -16 + c.x + c.w / 2,
+    cy: 3.4 + c.y + c.h / 2,
+    w: c.w, h: c.h,
+  })), [cells]);
+
   const lastHi = useRef(undefined);
   useFrame(() => {
     const st = ctx.stateRef.current;
@@ -3159,11 +3604,22 @@ function MiniMail({ lib, matFor, ctx }) {
       ? st.subHover.nodeId : null;
     const foc = st.partFocus && st.partFocus.objectId === "mail" ? st.partFocus.partId : null;
     const hi = foc || hov || null;
-    if (hi !== lastHi.current) {
-      lastHi.current = hi;
+    // Slice 13-4 (item C): marks join the signature — a marked
+    // folder holds ×1.35 and its amber frame; the addressed
+    // folder keeps ×1.9 and the teal frame.
+    const sig = `${hi}|${marksKeyOf(st, "mail")}`;
+    if (sig !== lastHi.current) {
+      lastHi.current = sig;
+      const marked = new Set(marksFor(st.marks, "mail"));
       for (const [id, parts] of owned.map) {
-        const f = !hi ? 1 : id === hi ? 1.9 : 0.55;
+        const isM = marked.has(id);
+        const f = id === hi ? 1.9 : isM ? 1.35 : hi ? 0.55 : 1;
         for (const part of parts) part.mat.color.copy(part.base).multiplyScalar(f);
+      }
+      for (const [id, line] of frameRefs.current) {
+        const isM = marked.has(id);
+        line.visible = id === hi || isM;
+        line.material = id === hi ? frameMats.teal : frameMats.amber;
       }
     }
   });
@@ -3234,6 +3690,27 @@ function MiniMail({ lib, matFor, ctx }) {
           ))}
         </group>
       ) : null}
+      {/* The compartments' outline frames (item C), toggled by
+          the highlight loop; they never take the pointer. */}
+      {cellFrames.map((f) => (
+        <lineSegments key={f.id} position={[f.cx, f.cy, 3.35]} scale={[f.w + 0.4, f.h + 0.4, 0.3]}
+          geometry={lib.unitBoxEdges} material={frameMats.teal}
+          visible={false} raycast={NO_RAYCAST}
+          ref={(el) => {
+            if (el) frameRefs.current.set(f.id, el);
+            else frameRefs.current.delete(f.id);
+          }} />
+      ))}
+      {projectsCell ? (
+        <lineSegments position={[-16 + projectsCell.x + projectsCell.w / 2, 3.4 + projectsCell.y + projectsCell.h / 2, 3.35]}
+          scale={[projectsCell.w + 1, projectsCell.h + 1, 0.3]}
+          geometry={lib.unitBoxEdges} material={frameMats.teal}
+          visible={false} raycast={NO_RAYCAST}
+          ref={(el) => {
+            if (el) frameRefs.current.set("mail/projects", el);
+            else frameRefs.current.delete("mail/projects");
+          }} />
+      ) : null}
       {/* The top board: an envelope slot, and a small stack of
           letters waiting to be sorted. */}
       <mesh position={[0, 24.15, 0]}>
@@ -3303,7 +3780,12 @@ function NetLink({ ctx, conn, nodeId, index, count }) {
       && st.subHover.objectId === "devices" && st.subHover.nodeId === nodeId;
     const foc = st.partFocus && st.partFocus.objectId === "devices"
       && st.partFocus.partId === nodeId;
-    const tier = foc ? 0.55 : hov ? 0.3 : 0;
+    // Slice 13-4 (item C): a marked host holds the SELECTED
+    // emissive tier (0.55) — the token's own glow channel is
+    // this form's outline equivalent (a small slab on the ring
+    // has no per-node mesh to edge).
+    const marked = isMarked(st.marks, "devices", nodeId);
+    const tier = foc || marked ? 0.55 : hov ? 0.3 : 0;
     mats.plate.emissiveIntensity = Math.max(baseGlow * 0.7, tier);
     mats.cable.emissiveIntensity = Math.max(baseGlow, tier);
     const hub = frame.netHubLocal;
@@ -3668,6 +4150,9 @@ function MediaCard({ item, index, ctx }) {
  * the citizens' two tiers (the NetLink precedent — a thing
  * outside any citizen's material list drives its own).
  */
+/** The letter card's outline geometry (slice 13-4, item C). */
+const POSTCARD_EDGES = new THREE.EdgesGeometry(new THREE.BoxGeometry(12.4, 16.4, 0.7));
+
 function PostCard({ node, index, ctx }) {
   const slot = postSlot(index);
   const mats = useMemo(() => {
@@ -3680,7 +4165,18 @@ function PostCard({ node, index, ctx }) {
     face.userData.glowScale = 0.5;
     return { frame, face };
   }, [node]);
-  useEffect(() => () => { mats.frame.dispose(); mats.face.dispose(); }, [mats]);
+  // Slice 13-4 (item C): the letter's OUTLINE — an edges frame
+  // on the card, teal while hovered, amber while marked, on
+  // top of the card's own emissive tiers.
+  const lineMats = useMemo(() => ({
+    teal: new THREE.LineBasicMaterial({ color: HOVER_OUTLINE, transparent: true, opacity: 0.95 }),
+    amber: new THREE.LineBasicMaterial({ color: MARK_OUTLINE, transparent: true, opacity: 0.95 }),
+  }), []);
+  const lineRef = useRef(null);
+  useEffect(() => () => {
+    mats.frame.dispose(); mats.face.dispose();
+    lineMats.teal.dispose(); lineMats.amber.dispose();
+  }, [mats, lineMats]);
   useFrame((_, dtRaw) => {
     const dt = Math.min(0.05, dtRaw || 0.016);
     const st = ctx.stateRef.current;
@@ -3690,6 +4186,12 @@ function PostCard({ node, index, ctx }) {
     const tier = open ? 0.55 : hov ? 0.3 : 0;
     mats.face.emissiveIntensity = damp(mats.face.emissiveIntensity, tier, 10, dt);
     mats.frame.emissiveIntensity = damp(mats.frame.emissiveIntensity, tier * 0.8, 10, dt);
+    const line = lineRef.current;
+    if (line) {
+      const marked = isMarked(st.marks, "mail", node.id);
+      line.visible = Boolean(hov || marked);
+      line.material = hov ? lineMats.teal : lineMats.amber;
+    }
   });
   const st = () => ctx.stateRef.current;
   const report = () => {
@@ -3709,6 +4211,8 @@ function PostCard({ node, index, ctx }) {
           if (st().onMessageActivate) st().onMessageActivate(node.id);
         }}>
         <boxGeometry args={[12.4, 16.4, 0.7]} />
+        <lineSegments ref={lineRef} geometry={POSTCARD_EDGES} material={lineMats.teal}
+          scale={[1.03, 1.02, 1.3]} visible={false} raycast={NO_RAYCAST} />
       </mesh>
       <mesh position={[0, 0, 0.42]} material={mats.face}
         onPointerOver={report} onPointerMove={report} onPointerOut={clear}>
@@ -5252,9 +5756,16 @@ function Rig({ ctx, cameras }) {
     // the offsets scale and the camera travels in from the
     // F seat with the card open, exactly as the dolly seat does
     // without one.
+    // Slice 13-4 (item A): the scale the seat is computed from
+    // resolves through the ENTRY SEAT BASIS (entrySeatScale):
+    // for the entered citizen it is the scale captured when its
+    // card opened, frozen — MAGNIFY while entered grows the
+    // citizen's display scale and the seat does not move; the
+    // dolly multiplier still composes onto the basis. For every
+    // other citizen the live display scale stands, as before.
     const citizenSeat = (id, base, scaleOffsets) => {
       const d = frame.disp.get(id);
-      const sc = d ? d.scale : 1;
+      const sc = entrySeatScale(st.entrySeat, id, d ? d.scale : 1);
       const off = citizenSeatOffsets(sc, scaleOffsets ? st.zoomMul : 1);
       const radial = new THREE.Vector3(base.x, 0, base.z);
       if (radial.lengthSq() < 1) radial.set(0, 0, 1);
@@ -5348,7 +5859,10 @@ function Rig({ ctx, cameras }) {
         look = cs.look;
       } else {
         const d = frame.disp.get(id);
-        const sc = d ? d.scale : 1;
+        // Citizen-relative views are camera actions and may
+        // re-seat — but they seat from the same entry basis as
+        // the card seat (item A), not the live scale.
+        const sc = entrySeatScale(st.entrySeat, id, d ? d.scale : 1);
         const off = citizenSeatOffsets(sc, st.zoomFocusId === id ? st.zoomMul : 1);
         const vs = citizenViewSeat(
           st.citizenView.view,
@@ -5555,7 +6069,7 @@ export default function SpaceView(props) {
   const {
     space, currentId, hoverId, cardId, pendingId,
     projection, rotation, elevation, zoomMul,
-    zoomFocusId, zoomFocusPoint, citizenView, platterQuat, ringSpinDeg, fieldIndex,
+    zoomFocusId, zoomFocusPoint, entrySeat, marks, citizenView, platterQuat, ringSpinDeg, fieldIndex,
     turntableOn, pulsesOn, ambientOn, labelsOn, sharedRef,
     libraryOpen, clipHeld, clipSummoned, inspectedId, inspectRot, pastes, inspectPanel,
     partFocus, partHoverId, branchHoverId, subHover, descents,
@@ -5576,7 +6090,7 @@ export default function SpaceView(props) {
   stateRef.current = {
     space, currentId, hoverId, cardId, pendingId,
     projection, rotation, elevation, zoomMul,
-    zoomFocusId, zoomFocusPoint, citizenView, platterQuat, ringSpinDeg, fieldIndex,
+    zoomFocusId, zoomFocusPoint, entrySeat, marks, citizenView, platterQuat, ringSpinDeg, fieldIndex,
     turntableOn, pulsesOn, ambientOn, labelsOn,
     libraryOpen, clipSummoned, inspectedId, inspectRot,
     partFocus, partHoverId, branchHoverId, subHover, descents,
@@ -5773,9 +6287,9 @@ export default function SpaceView(props) {
             Math.round((partMidT(pid) - Math.PI / 8) * 180 / Math.PI),
             Math.round((partMidT(pid) + Math.PI / 8) * 180 / Math.PI),
           ];
-          const txt = focId
+          const txt = (focId
             ? `${part.name} — value ${part.value} · ${(partShare(part) * 100).toFixed(1)}% of the knot · arc ${t0}°–${t1}°`
-            : part.name;
+            : part.name) + (isMarked(st.marks, "knot", pid) ? " · marked" : "");
           if (partEl.textContent !== txt) partEl.textContent = txt;
           partEl.className = focId ? "us-chip target" : "us-chip";
           const [sx, sy, front] = project(anchor);
@@ -5797,9 +6311,9 @@ export default function SpaceView(props) {
         const bw = bid ? frame.branchWorld.get(bid) : null;
         const branch = bid ? lib.dataTree.branches.find((b) => b.id === bid) : null;
         if (bid && branch && bw && !(st.layers && !isAddressable(st.layers, "tree"))) {
-          const txt = focId
+          const txt = (focId
             ? `${branch.name} — value ${branch.value} · ${(branch.share * 100).toFixed(1)}% of the tree · ${branch.leafCount} leaves · depth 1`
-            : branch.name;
+            : branch.name) + (isMarked(st.marks, "tree", bid) ? " · marked" : "");
           if (branchEl.textContent !== txt) branchEl.textContent = txt;
           branchEl.className = focId ? "us-chip target" : "us-chip";
           const [sx, sy, front] = project(focId ? bw.centre : bw.tip);
@@ -5924,6 +6438,10 @@ export default function SpaceView(props) {
               ];
             }
           }
+          // Slice 13-4 (item C): the card names a marked node —
+          // the citizen's card carries its marks beside the
+          // readout's MARKS line.
+          if (isMarked(st.marks, oid, nid)) lines.push("marked — Enter unmarks it");
           const txt = lines.join("\n");
           if (subEl.textContent !== txt) subEl.textContent = txt;
           const [sx, sy, front] = project(sw.centre);

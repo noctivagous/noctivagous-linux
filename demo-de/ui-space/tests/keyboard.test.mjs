@@ -101,11 +101,13 @@ test("space scope: the operators read as the handler works them", () => {
   assert.equal(labelOf(kb, "KeyI"), "INSPECT");
   assert.equal(labelOf(kb, "KeyK"), "KEYBOARD");
   assert.equal(labelOf(kb, "Enter"), "COMMAND LINE");
-  // Slice 11: the dolly on C/V (§14's name for it), copy on H,
-  // strip on J.
+  // Slice 11: the dolly on C/V (§14's name for it), strip on J.
   assert.equal(labelOf(kb, "KeyC"), "DOLLY OUT");
   assert.equal(labelOf(kb, "KeyV"), "DOLLY IN");
-  assert.equal(labelOf(kb, "KeyH"), "COPY");
+  // Slice 13-4 (item B): copy moved H → L, and H is RESET now —
+  // the caps say both.
+  assert.equal(labelOf(kb, "KeyL"), "COPY");
+  assert.equal(labelOf(kb, "KeyH"), "RESET");
   assert.equal(labelOf(kb, "KeyJ"), "STRIP CABLES");
   // §16: Z/X carry the MAGNIFY name.
   assert.equal(labelOf(kb, "KeyZ"), "MAGNIFY -");
@@ -130,9 +132,12 @@ test("space scope: E's cap and the rotate caps follow the resolved target", () =
   assert.equal(labelOf(rest, "KeyB"), "PLANE · PLATTER");
   assert.equal(labelOf(rest, "KeyZ"), "NO MAGNIFY · PLATTER");
   assert.equal(labelOf(rest, "KeyX"), "NO MAGNIFY · PLATTER");
-  // A citizen addressed: plain axis labels, E is YAW -.
-  const citizen = resolveKeyboard({ scope: "space", rotateTarget: "citizen", eKey: "yaw-" });
-  assert.equal(labelOf(citizen, "KeyE"), "YAW -");
+  // A citizen addressed: plain axis labels. Slice 13-4 (item
+  // E) swapped the yaw pair — E is YAW +, R is YAW − now (the
+  // caps derive from TRANSFORM_KEYS, so they follow the swap).
+  const citizen = resolveKeyboard({ scope: "space", rotateTarget: "citizen", eKey: "yaw+" });
+  assert.equal(labelOf(citizen, "KeyE"), "YAW +");
+  assert.equal(labelOf(citizen, "KeyR"), "YAW -");
   assert.equal(labelOf(citizen, "KeyQ"), "PITCH -");
   assert.equal(labelOf(citizen, "KeyB"), "ROTATE PLANE -");
   // The ring addressed: yaw and plane spin it; pitch/roll say so.

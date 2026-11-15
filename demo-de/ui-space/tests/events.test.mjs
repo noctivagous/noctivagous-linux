@@ -31,10 +31,13 @@ import {
 
 /* ---------------- the key map ---------------- */
 
-test("TRANSFORM_KEYS is exactly the slice-11 map", () => {
+test("TRANSFORM_KEYS is exactly the slice-11 map, with slice 13-4's E/R yaw swap", () => {
+  // Slice 13-4 (item E) swaps the yaw pair: E is the POSITIVE
+  // step, R the negative — the one deliberate change to the
+  // slice-11 map; every other entry stands as it was.
   assert.deepEqual(TRANSFORM_KEYS, {
     q: "pitch-", w: "pitch+",
-    e: "yaw-", r: "yaw+",
+    e: "yaw+", r: "yaw-",
     t: "roll-", y: "roll+",
     z: "scale-", x: "scale+",
     b: { axis: "spin", dir: -1 },
@@ -50,7 +53,9 @@ test("TRANSFORM_KEYS is exactly the slice-11 map", () => {
   // The { axis, dir } entries normalise to op names.
   assert.equal(transformOpOf("b"), "spin-");
   assert.equal(transformOpOf("n"), "spin+");
-  assert.equal(transformOpOf("e"), "yaw-");
+  // Slice 13-4 (item E): E normalises to yaw+ after the swap.
+  assert.equal(transformOpOf("e"), "yaw+");
+  assert.equal(transformOpOf("r"), "yaw-");
   assert.equal(transformOpOf("?"), null);
 });
 
@@ -169,8 +174,10 @@ test("FINISH is not a back event, and unknown events pop nothing", () => {
 /* ---------------- resolveEKey ---------------- */
 
 test("resolveEKey: citizen yaws, ring item expands, centre app expands, full app nothing", () => {
-  assert.equal(resolveEKey({ targetId: "mesa" }), "yaw-");
-  assert.equal(resolveEKey({ targetId: "tree" }), "yaw-");
+  // Slice 13-4 (item E): on a citizen E resolves to yaw+ (the
+  // swap); its EXPAND rulings are unchanged.
+  assert.equal(resolveEKey({ targetId: "mesa" }), "yaw+");
+  assert.equal(resolveEKey({ targetId: "tree" }), "yaw+");
   assert.equal(resolveEKey({ targetId: "audio" }), "expand");
   assert.equal(resolveEKey({ targetId: null, appOpen: true, appMode: "center" }), "expand");
   assert.equal(resolveEKey({ targetId: "mesa", appOpen: true, appMode: "center" }), "expand");
@@ -304,12 +311,14 @@ test("stepRingSpin: yaw and plane pairs drive the one offset; pitch/roll do noth
 
 test("applyTransformKey steps the NEW letter keys, spin included", () => {
   const s0 = createSpaceState("ring");
+  // Slice 13-4 (item E): E steps yaw POSITIVE after the swap
+  // (it was −ANGLE_STEP before it).
   const s1 = applyTransformKey(s0, "mesa", "e");
-  assert.equal(s1.transforms.mesa.yaw, -ANGLE_STEP);
+  assert.equal(s1.transforms.mesa.yaw, ANGLE_STEP);
   const s2 = applyTransformKey(s1, "mesa", "b");
   assert.equal(s2.transforms.mesa.spin, -ANGLE_STEP);
   // Plane-rotate leaves every other axis untouched.
-  assert.equal(s2.transforms.mesa.yaw, -ANGLE_STEP);
+  assert.equal(s2.transforms.mesa.yaw, ANGLE_STEP);
   assert.equal(s2.transforms.mesa.pitch, 0);
   assert.equal(s2.transforms.mesa.roll, 0);
   assert.equal(s2.transforms.mesa.scale, 1);
@@ -327,12 +336,14 @@ test("hover wins: a transform addressed by hover lands on the hovered citizen", 
   const s0 = createSpaceState("ring");
   const id = addressedId("drum", "mesa");
   assert.equal(id, "drum");
+  // Slice 13-4 (item E): R steps yaw NEGATIVE after the swap
+  // (it was +ANGLE_STEP before it) — the landing is unchanged.
   const s1 = applyTransformKey(s0, id, "r");
-  assert.equal(s1.transforms.drum.yaw, ANGLE_STEP);
+  assert.equal(s1.transforms.drum.yaw, -ANGLE_STEP);
   assert.equal(s1.transforms.mesa.yaw, 0);
   // And with nothing hovered, the current citizen takes it.
   const s2 = applyTransformKey(s0, addressedId(null, "mesa"), "r");
-  assert.equal(s2.transforms.mesa.yaw, ANGLE_STEP);
+  assert.equal(s2.transforms.mesa.yaw, -ANGLE_STEP);
 });
 
 test("applyTransformOp with a spin op on a state without the field starts from 0", () => {
