@@ -62,6 +62,11 @@ import {
   inspectScaleFor,
   viewSeat,
   citizenSeatOffsets,
+  citizenViewSeat,
+  pointSeatDistance,
+  gimbalQuatFor,
+  mesaWedgeHeight,
+  mesaWedgeLabelVisible,
   FIELD_SIZES,
   FIELD_DEFAULT_INDEX,
   snapGroundPoint,
@@ -72,7 +77,7 @@ import {
   bookPageOutId,
 } from "./space-state.js";
 import { buildPlatterSolid } from "./platter-top.js";
-import { subnodeById, subnodeRootOf, hierarchyDataOf, tangleLevels } from "./subnodes.js";
+import { subnodeById, subnodeRootOf, hierarchyDataOf, hierarchyRoot, tangleLevels } from "./subnodes.js";
 import { bookTable, bookSpreads, bookNodeById, BOOK_TOTALS, SPREAD_COUNT } from "./book.js";
 import {
   makeTrack,
@@ -494,15 +499,23 @@ function hierarchyPathId(node) {
  * the standalone pages re-root) — only the root differs. Wedges
  * carry LOCAL path ids; the caller prefixes the display root's
  * true id to recover provider ids.
+ * Slice 13-3 (item 4): the MESA's wedges take the standalone
+ * page's terrace formula and ring gap (mesaWedgeHeight /
+ * the sectorGeometry gapR argument, driven by the mesaTerrace /
+ * mesaGap parameters); the drum's blocks are untouched. At the
+ * defaults the mesa's geometry is exactly what it was: inner
+ * ring 12 high, outer 6.5, gap 0.35.
  */
-function buildWedgeSet(rootData, kind) {
+function buildWedgeSet(rootData, kind, mesa = {}) {
   const root = buildSunburst(rootData);
   const colour = sunburstColourScale(root.children.map((c) => c.name));
+  const terrace = mesa.terrace ?? 5.5;
+  const gap = mesa.gap ?? 0.35;
   const out = [];
   for (const n of sunburstDescendants(root)) {
     if (n.depth < 1 || n.depth > 2) continue;
     const geo = kind === "mesa"
-      ? sectorGeometry(n.x0, n.x1, n.y0, n.y1, 8.5, 0, n.depth === 1 ? 12 : 6.5)
+      ? sectorGeometry(n.x0, n.x1, n.y0, n.y1, 8.5, 0, mesaWedgeHeight(n.depth, terrace), 0.008, gap)
       : sectorGeometry(n.x0, n.x1, n.y0, n.y1, 8.5, 0, 20);
     if (geo) out.push({ geo, color: colour(n), node: n, id: hierarchyPathId(n) });
   }
@@ -722,38 +735,48 @@ function ambientAmp(ampRef, ctx, dt) {
  * top) is published in the citizen's local frame for the Rig's
  * seats and the in-space info card.
  */
-function SunburstWedges({ kind, lib, matFor, ctx, descentRootId }) {
+function SunburstWedges({ kind, lib, matFor, ctx, descentRootId, mesaTerrace, mesaGap }) {
+  // Slice 13-3 (item 4): every set is built here now, at rest
+  // and under descent alike — the mesa's terrace/gap parameters
+  // must rebuild the REST set too, so the geometry library's
+  // prebuilt wedges are no longer the mesa's source (the drum
+  // builds identically to its library set: same builder, same
+  // numbers). At the parameter defaults the mesa's set is
+  // byte-for-byte the old one.
   const wedges = useMemo(() => {
-    if (!descentRootId) return kind === "mesa" ? lib.mesaWedges : lib.drumBlocks;
-    const data = hierarchyDataOf(descentRootId);
+    const data = descentRootId ? hierarchyDataOf(descentRootId) : HIERARCHY;
     if (!data) return kind === "mesa" ? lib.mesaWedges : lib.drumBlocks;
-    return buildWedgeSet(data, kind).map((w) => ({
+    const set = buildWedgeSet(data, kind, { terrace: mesaTerrace, gap: mesaGap });
+    if (!descentRootId) return set;
+    return set.map((w) => ({
       ...w,
       id: descentRootId + w.id.slice(w.id.indexOf("/")),
     }));
-  }, [lib, kind, descentRootId]);
+  }, [lib, kind, descentRootId, mesaTerrace, mesaGap]);
   const owned = useMemo(() => {
     const map = new Map();
     for (const w of wedges) {
       if (map.has(w.id)) continue;
       map.set(w.id, {
         mat: kind === "mesa"
-          ? matFor(w.color, { opacity: 0.86, glowScale: 0.7, keepDepth: true })
+          // The standalone page's depth cue, ported: BRANCHES
+          // stand more opaque than LEAVES (its 0.92 / 0.66), so
+          // the terraces read by depth as well as by height.
+          ? matFor(w.color, { opacity: w.node.children.length ? 0.92 : 0.68, glowScale: 0.7, keepDepth: true })
           : matFor(w.color, { rough: 0.5 }),
         base: new THREE.Color(w.color),
       });
     }
     return map;
   }, [wedges, kind, matFor]);
-  // A descended set owns its geometries and materials; the
-  // library's are shared and stay. Replaced owned sets dispose.
+  // Every set is owned now (built above, never the library's),
+  // so replaced sets dispose — geometries and materials alike.
   useEffect(() => {
-    if (!descentRootId) return undefined;
     return () => {
       for (const w of wedges) w.geo.dispose();
       for (const e of owned.values()) e.mat.dispose();
     };
-  }, [wedges, owned, descentRootId]);
+  }, [wedges, owned]);
   const groupRef = useRef(null);
   useEffect(() => {
     const frame = ctx.frame;
@@ -763,10 +786,23 @@ function SunburstWedges({ kind, lib, matFor, ctx, descentRootId }) {
       const n = w.node;
       const a = (n.x0 + n.x1) / 2;
       const r = ((n.y0 + n.y1) / 2) * 8.5;
-      const top = kind === "mesa" ? (n.depth === 1 ? 12 : 6.5) : 21.6;
+      const top = kind === "mesa" ? mesaWedgeHeight(n.depth, mesaTerrace) : 21.6;
       anchors.set(w.id, {
         centre: new THREE.Vector3(Math.cos(a) * r, top, Math.sin(a) * r),
         radius: Math.max(3, n.y1 * 8.5 * 0.45),
+      });
+    }
+    if (kind === "mesa") {
+      // Slice 13-3 (item 4): the centre disc's anchor — the
+      // DISPLAY ROOT itself (the true root at rest, the
+      // descended root under descent), standing at the disc's
+      // centre above the inner ring. The MiniMesa centre mesh
+      // reports it as the mesa's sub-hover, so its card, the
+      // centre tag and the dolly all name the whole.
+      const rootId = descentRootId || hierarchyRoot().id;
+      anchors.set(rootId, {
+        centre: new THREE.Vector3(0, mesaWedgeHeight(1, mesaTerrace) + 0.6, 0),
+        radius: 8.5,
       });
     }
     frame.subLocal.set(kind, anchors);
@@ -774,7 +810,7 @@ function SunburstWedges({ kind, lib, matFor, ctx, descentRootId }) {
       frame.subGroupRefs.delete(kind);
       if (frame.subLocal.get(kind) === anchors) frame.subLocal.delete(kind);
     };
-  }, [ctx, kind, wedges]);
+  }, [ctx, kind, wedges, mesaTerrace, descentRootId]);
   const lastHi = useRef(undefined);
   useFrame(() => {
     const st = ctx.stateRef.current;
@@ -809,7 +845,7 @@ function SunburstWedges({ kind, lib, matFor, ctx, descentRootId }) {
   );
 }
 
-function MiniMesa({ lib, matFor, ctx, descentRootId }) {
+function MiniMesa({ lib, matFor, ctx, descentRootId, mesaTerrace, mesaGap }) {
   const sweep = useRef(null);
   const amp = useRef(1);
   useFrame((_, dt) => {
@@ -819,13 +855,28 @@ function MiniMesa({ lib, matFor, ctx, descentRootId }) {
       sweep.current.children[0].material.opacity = 0.34 * a;
     }
   });
+  // Slice 13-3 (item 4): the centre disc is the DISPLAY ROOT's
+  // seat, as the standalone page's centre pillar is its focus
+  // node's: hovering it reports the root as the mesa's
+  // sub-node (its card reads the whole — name, total, depth
+  // 0), and F on it is the resolver's honest no-op. Reporting
+  // is gated on the mesa being current, like every sub-node.
+  const st = () => ctx.stateRef.current;
+  const rootId = descentRootId || hierarchyRoot().id;
+  const reportRoot = () => {
+    if (st().currentId !== "mesa" || !st().onSubHover) return;
+    st().onSubHover("mesa", rootId);
+  };
+  const clearRoot = () => { if (st().onSubHover) st().onSubHover("mesa", null); };
   return (
     <group>
-      <mesh position={[0, 3, 0]}>
+      <mesh position={[0, 3, 0]}
+        onPointerOver={reportRoot} onPointerMove={reportRoot} onPointerOut={clearRoot}>
         <cylinderGeometry args={[7.6, 8.4, 6, 40]} />
         <primitive object={matFor(0x8a97a0, { rough: 0.5 })} attach="material" />
       </mesh>
-      <SunburstWedges kind="mesa" lib={lib} matFor={matFor} ctx={ctx} descentRootId={descentRootId} />
+      <SunburstWedges kind="mesa" lib={lib} matFor={matFor} ctx={ctx} descentRootId={descentRootId}
+        mesaTerrace={mesaTerrace} mesaGap={mesaGap} />
       {/* A light sweep travels the rings — the disc itself never turns. */}
       <group ref={sweep}>
         <mesh position={[0, 12.7, 0]} rotation-x={-Math.PI / 2}>
@@ -3328,7 +3379,7 @@ const MINIATURES = {
 
 /* ---------- one citizen of the space ---------- */
 
-function SpaceObject({ def, ctx, lib, descentRootId, tangleDataset, bookStyle, bookAccess, bookSpread }) {
+function SpaceObject({ def, ctx, lib, descentRootId, tangleDataset, bookStyle, bookAccess, bookSpread, mesaTerrace, mesaGap }) {
   const outer = useRef(null);
   const inner = useRef(null);
   const spin = useRef(null);
@@ -3387,6 +3438,14 @@ function SpaceObject({ def, ctx, lib, descentRootId, tangleDataset, bookStyle, b
     <group
       ref={outer}
       onPointerOver={(e) => { e.stopPropagation(); st().onTouch(); st().onHover(def.id); }}
+      onPointerMove={(e) => {
+        // Slice 13-3 (item 2): the raw cursor point on this
+        // citizen's body, published on the shared ref — the
+        // dolly's third focus (the Rig composes it with the
+        // ground-plane raycast into shared.cursorPoint).
+        const s = st();
+        if (s.shared) s.shared.cursorObj = { point: [e.point.x, e.point.y, e.point.z], at: performance.now() };
+      }}
       onPointerOut={() => st().onHover(null)}
       onClick={(e) => {
         if (e.delta > 5) return;
@@ -3419,7 +3478,8 @@ function SpaceObject({ def, ctx, lib, descentRootId, tangleDataset, bookStyle, b
         <group ref={spin}>
           <group position={[0, -(CENTRE_Y[def.id] || 0), 0]}>
             <Mini lib={lib} matFor={mats.matFor} ctx={ctx} descentRootId={descentRootId} tangleDataset={tangleDataset}
-              bookStyle={bookStyle} bookAccess={bookAccess} bookSpread={bookSpread} />
+              bookStyle={bookStyle} bookAccess={bookAccess} bookSpread={bookSpread}
+              mesaTerrace={mesaTerrace} mesaGap={mesaGap} />
           </group>
         </group>
       </group>
@@ -3808,8 +3868,12 @@ function Cable({ a, b, offset, ctx }) {
   );
   useFrame((state) => {
     const frame = ctx.frame;
-    const pa = frame.anchorWorld.get(a);
-    const pb = frame.anchorWorld.get(b);
+    // The cables live inside the world group, so their ends
+    // are the citizens' LOCAL anchors (frame.anchorLocal — the
+    // Rig publishes them through the one citizen transform;
+    // slice 13-3, item 5).
+    const pa = frame.anchorLocal.get(a);
+    const pb = frame.anchorLocal.get(b);
     if (!pa || !pb || !tube.current) return;
     const curve = cableCurve(pa, pb);
     const geo = new THREE.TubeGeometry(curve, 32, 0.55, 6);
@@ -3846,11 +3910,14 @@ function PendingCable({ ctx }) {
     const st = ctx.stateRef.current;
     const frame = ctx.frame;
     if (!tube.current) return;
-    const from = st.pendingId ? frame.anchorWorld.get(st.pendingId) : null;
+    const from = st.pendingId ? frame.anchorLocal.get(st.pendingId) : null;
     if (!from || !frame.worldGroup) { tube.current.visible = false; return; }
     tube.current.visible = true;
     const g = st.shared.groundLocal;
-    const end = frame.worldGroup.localToWorld(new THREE.Vector3(g.x, 1.5, g.z));
+    // Both ends are world-group LOCAL (the cable is drawn
+    // inside the group): the source's local anchor, and the
+    // cursor's ground point, which is already local.
+    const end = new THREE.Vector3(g.x, 1.5, g.z);
     const curve = cableCurve(from, end, 2);
     const geo = new THREE.TubeGeometry(curve, 24, 0.5, 6);
     tube.current.geometry = geo;
@@ -4826,7 +4893,17 @@ function Rig({ ctx, cameras }) {
     if (wg) {
       const hit = new THREE.Vector3();
       state.raycaster.setFromCamera(state.pointer, camera);
-      if (state.raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit)) {
+      const planeHit = state.raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit);
+      // Slice 13-3 (item 2): the dolly's raw CURSOR POINT,
+      // published on the shared ref each frame — a fresh point
+      // on an actual surface (a citizen's body or the slab,
+      // published by their pointer handlers as shared.cursorObj)
+      // wins; otherwise the ray's point on the world's ground
+      // plane, from this same hover raycast.
+      const cursorObj = st.shared.cursorObj;
+      const freshObj = cursorObj && performance.now() - cursorObj.at < 150 ? cursorObj.point : null;
+      st.shared.cursorPoint = freshObj || (planeHit ? [hit.x, hit.y, hit.z] : null);
+      if (planeHit) {
         wg.worldToLocal(hit);
         const c = clampGround(hit.x, hit.z);
         st.shared.groundLocal = c;
@@ -4880,6 +4957,30 @@ function Rig({ ctx, cameras }) {
       // quaternion's +Z axis, projected on the ground plane.
       _zVec.set(0, 0, 1).applyQuaternion(wg.quaternion);
       frame.worldYaw = Math.atan2(_zVec.x, _zVec.z);
+      // Slice 13-3 (item 5) — THE GIMBAL: the counter-rotation
+      // each citizen's mount applies against this composed
+      // rotation (gimbalQuatFor in space-state.js: Q⁻¹ ∘
+      // Ry(yaw(Q)), so Q ∘ gimbal = Ry(yaw(Q)) exactly). The
+      // citizen loop below premultiplies it onto each citizen's
+      // rotation group: the citizen's PIVOT stays fixed in the
+      // slab at its plot point (the outer group is the slab's
+      // child, unrotated, exactly as before), while its
+      // orientation becomes slab yaw ∘ its own transform — it
+      // rides the turntable and keeps its facing, but the
+      // slab's pitch and roll never reach it. Its clearance is
+      // its socket: the pivot stands CENTRE_Y above the slab
+      // plane at the plot point under any slab rotation, and
+      // the protective sphere's cross-section there is the
+      // socket radius at any relative tilt (the sphere is
+      // invariant under rotations about its own centre — see
+      // gimbalQuatFor and the slice's numeric test). The slab
+      // itself, the datum walls, the ring, the stage and the
+      // walls' furniture stay in this tilting assembly — they
+      // are the platter's furniture, not objects on it.
+      if (!frame.gimbalQuat) frame.gimbalQuat = new THREE.Quaternion();
+      frame.gimbalQuat.fromArray(
+        gimbalQuatFor([wg.quaternion.x, wg.quaternion.y, wg.quaternion.z, wg.quaternion.w]),
+      );
     }
 
     // Objects: ease every displayed value toward the state.
@@ -4920,6 +5021,14 @@ function Rig({ ctx, cameras }) {
       d.scale = damp(d.scale, tScale, 8, dt);
       outer.position.set(d.x, d.lift, d.z);
       inner.rotation.set(d.pitch * DEG, d.yaw * DEG, d.roll * DEG);
+      // THE GIMBAL (slice 13-3, item 5): the mount's counter-
+      // rotation, premultiplied in the slab's frame — the
+      // citizen's world orientation becomes slab yaw ∘ its own
+      // tumble, never the slab's pitch/roll. The pivot (this
+      // group's origin, CENTRE_Y above the plot point in the
+      // slab) does not move: outer is unrotated, as it always
+      // was — only the orientation the citizen presents changes.
+      if (frame.gimbalQuat) inner.quaternion.premultiply(frame.gimbalQuat);
       inner.scale.setScalar(Math.max(0.05, d.scale));
       // The spin group turns about the citizen's plane axis, in
       // its local frame, inside the tumble above.
@@ -4960,6 +5069,17 @@ function Rig({ ctx, cameras }) {
       frame.baseWorld.set(def.id, tmpV.clone());
       tmpV.y += ANCHOR_H[def.id] * d.scale;
       frame.anchorWorld.set(def.id, tmpV.clone());
+      // The citizen's anchor in WORLD-GROUP LOCAL coordinates —
+      // the patch cables' ends. The cables are drawn inside the
+      // world group (slice 13-3, item 5 routing): they consume
+      // this local anchor, the one transform every citizen
+      // consumer shares, exactly as the network cables consume
+      // netHubLocal. (Before this slice the cables read
+      // anchorWorld — world points drawn inside the rotated
+      // group, a double transform that detached them from
+      // their citizens by the world's whole turn whenever the
+      // platter had turned.)
+      frame.anchorLocal.set(def.id, new THREE.Vector3(d.x, d.lift + ANCHOR_H[def.id] * d.scale, d.z));
     }
 
     // The data knot's parts: each part's world midpoint, from the
@@ -5031,6 +5151,19 @@ function Rig({ ctx, cameras }) {
           });
         }
       }
+    }
+    // Slice 13-3 (item 2): the live sub-hover's world anchor,
+    // republished on the shared ref for the App's dolly
+    // resolution — the anchor the cards already read, carried
+    // to the one place pressZoom can see it. Null whenever the
+    // sub-hover has no anchor this frame (the App validates it
+    // against its own sub-hover before honouring it).
+    {
+      const key = st.subHover ? `${st.subHover.objectId}:${st.subHover.nodeId}` : null;
+      const entry = key ? frame.subWorld.get(key) : null;
+      st.shared.subAnchor = entry
+        ? { key, point: [entry.centre.x, entry.centre.y, entry.centre.z], radius: entry.radius }
+        : null;
     }
 
     // The wall cards and the clipboard tray: same easing discipline,
@@ -5197,6 +5330,36 @@ function Rig({ ctx, cameras }) {
       seat = centre.clone().addScaledVector(dir, 158).add(new THREE.Vector3(0, 62, 0));
       look = centre.clone();
       if (camera === cameras.ortho) { camera.zoom = 1.3 / st.zoomMul; camera.updateProjectionMatrix(); }
+    } else if (st.citizenView && st.cardId === st.citizenView.id
+      && frame.baseWorld.get(st.citizenView.id)) {
+      // Slice 13-3 (item 1): a CITIZEN-RELATIVE named view —
+      // the camera seats around the ENTERED citizen (the state
+      // is live only while its card stands; goView sets it, the
+      // backs clear it). FRONT is the entered seat itself, so
+      // this branch computes only PLAN and SIDE, through the
+      // pure citizenViewSeat; ELEVATION falls to the card
+      // branch below, which is that seat. The dolly scaling of
+      // the offsets follows the card seat's rule.
+      const id = st.citizenView.id;
+      const base = frame.baseWorld.get(id);
+      if (st.citizenView.view === "front") {
+        const cs = citizenSeat(id, base, st.zoomFocusId === id);
+        seat = cs.seat;
+        look = cs.look;
+      } else {
+        const d = frame.disp.get(id);
+        const sc = d ? d.scale : 1;
+        const off = citizenSeatOffsets(sc, st.zoomFocusId === id ? st.zoomMul : 1);
+        const vs = citizenViewSeat(
+          st.citizenView.view,
+          [base.x, base.y, base.z],
+          off,
+          ANCHOR_H[id] * 0.55 * sc,
+        );
+        seat = new THREE.Vector3(...vs.seat);
+        look = new THREE.Vector3(...vs.look);
+      }
+      if (camera === cameras.ortho) { camera.zoom = 1.35 / st.zoomMul; camera.updateProjectionMatrix(); }
     } else if (st.cardId && cardBase) {
       const cs = citizenSeat(st.cardId, cardBase, st.zoomFocusId === st.cardId);
       seat = cs.seat;
@@ -5211,6 +5374,23 @@ function Rig({ ctx, cameras }) {
       const zs = citizenSeat(st.zoomFocusId, frame.baseWorld.get(st.zoomFocusId), true);
       seat = zs.seat;
       look = zs.look;
+      if (camera === cameras.ortho) { camera.zoom = 1.35 / st.zoomMul; camera.updateProjectionMatrix(); }
+    } else if (st.zoomFocusPoint) {
+      // Slice 13-3 (item 2): a POINT dolly focus — a hovered
+      // element's anchor, or the raw cursor point. The seat
+      // stands off the point along the camera's CURRENT view
+      // direction (from its eased look target), at the point
+      // seat's distance for the dolly multiplier — deepened by
+      // the citizen seat's curve, floored at the minimum
+      // stand-off (pointSeatDistance) — looking at the point.
+      // As the camera eases in, the direction settles onto the
+      // point and the seat holds.
+      const p = new THREE.Vector3(...st.zoomFocusPoint);
+      const fwd = A.look.clone().sub(camera.position);
+      if (fwd.lengthSq() < 0.01) fwd.set(0, 0, 1);
+      fwd.normalize();
+      seat = p.clone().addScaledVector(fwd, -pointSeatDistance(st.zoomMul));
+      look = p;
       if (camera === cameras.ortho) { camera.zoom = 1.35 / st.zoomMul; camera.updateProjectionMatrix(); }
     } else if (st.viewName && st.viewName !== "home" && viewSeat(st.viewName, st.zoomMul)
       && !(st.openApp && st.openApp.appId)) {
@@ -5344,7 +5524,7 @@ const SOCKET_LIP_W = 8;
  * and convention, its inner radius a further clearance out
  * from the cut — so each socket reads as a gimbal seat.
  */
-function PlatterDrum({ positions }) {
+function PlatterDrum({ positions, onSlabPoint }) {
   const signature = OBJECT_IDS.map((id) => {
     const p = positions ? positions[id] : null;
     return p ? `${p.x.toFixed(2)},${p.z.toFixed(2)}` : "_";
@@ -5356,7 +5536,7 @@ function PlatterDrum({ positions }) {
   useEffect(() => () => geo.dispose(), [geo]);
   return (
     <group>
-      <mesh geometry={geo}>
+      <mesh geometry={geo} onPointerMove={onSlabPoint}>
         <meshStandardMaterial color={0x12181c} roughness={0.85} />
       </mesh>
       {circles.map((c) => (
@@ -5375,11 +5555,12 @@ export default function SpaceView(props) {
   const {
     space, currentId, hoverId, cardId, pendingId,
     projection, rotation, elevation, zoomMul,
-    zoomFocusId, platterQuat, ringSpinDeg, fieldIndex,
+    zoomFocusId, zoomFocusPoint, citizenView, platterQuat, ringSpinDeg, fieldIndex,
     turntableOn, pulsesOn, ambientOn, labelsOn, sharedRef,
     libraryOpen, clipHeld, clipSummoned, inspectedId, inspectRot, pastes, inspectPanel,
     partFocus, partHoverId, branchHoverId, subHover, descents,
     bookStyle, bookAccess, bookSpread,
+    mesaTerrace, mesaGap,
     tangleDataset,
     viewName, snapOn, strata, layers,
     openApp, audio, tokenHoverId, appFocusId, regionHover,
@@ -5395,11 +5576,12 @@ export default function SpaceView(props) {
   stateRef.current = {
     space, currentId, hoverId, cardId, pendingId,
     projection, rotation, elevation, zoomMul,
-    zoomFocusId, platterQuat, ringSpinDeg, fieldIndex,
+    zoomFocusId, zoomFocusPoint, citizenView, platterQuat, ringSpinDeg, fieldIndex,
     turntableOn, pulsesOn, ambientOn, labelsOn,
     libraryOpen, clipSummoned, inspectedId, inspectRot,
     partFocus, partHoverId, branchHoverId, subHover, descents,
     bookStyle, bookAccess, bookSpread,
+    mesaTerrace, mesaGap,
     tangleDataset,
     viewName, snapOn, strata, layers,
     openApp, audio, tokenHoverId, appFocusId, regionHover,
@@ -5418,7 +5600,7 @@ export default function SpaceView(props) {
       disp: new Map(), outerRefs: new Map(), innerRefs: new Map(),
       spinRefs: new Map(), ringRefs: new Map(), matsMap: new Map(),
       turntableAngle: 0, worldYaw: 0,
-      anchorWorld: new Map(), baseWorld: new Map(), partWorld: new Map(),
+      anchorWorld: new Map(), anchorLocal: new Map(), baseWorld: new Map(), partWorld: new Map(),
       branchWorld: new Map(), branchLocal: null, treeGroupRef: null,
       subLocal: new Map(), subWorld: new Map(), subGroupRefs: new Map(),
       devicesAnchors: null, netHubLocal: null,
@@ -5469,6 +5651,8 @@ export default function SpaceView(props) {
   const subRef = useRef(null);
   const branchChipRefs = useRef([]);
   const faceChipRefs = useRef([]);
+  const wedgeChipRefs = useRef([]);
+  const mesaCentreRef = useRef(null);
   const cardFacesRef = useRef(null);
   const cardRef = useRef(null);
   const tokenCapRefs = useRef(new Map());
@@ -5766,6 +5950,68 @@ export default function SpaceView(props) {
           el.style.transform = `translate(-50%, -130%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
         });
       }
+      // Slice 13-3 (item 4): label mode names the MESA's wedges —
+      // the standalone page's label rule, in the space's label
+      // mode: while the mesa is current, each rendered wedge
+      // whose span has room (mesaWedgeLabelVisible, off its
+      // share of the display root) wears its name at its world
+      // anchor. The centre disc is skipped — it names itself
+      // through the centre tag below.
+      {
+        const showWedges = st.labelsOn && st.currentId === "mesa"
+          && !(st.layers && !isAddressable(st.layers, "mesa"));
+        const rootId = st.descents ? displayRootOf(st.descents.mesa, "mesa") : null;
+        const centreId = rootId || hierarchyRoot().id;
+        let i = 0;
+        if (showWedges) {
+          for (const [key, sw] of frame.subWorld) {
+            if (!key.startsWith("mesa:") || i >= wedgeChipRefs.current.length) continue;
+            const nid = key.slice("mesa:".length);
+            if (nid === centreId) continue;
+            const node = subnodeById("mesa", nid, rootId, st.tangleDataset);
+            if (!node || !mesaWedgeLabelVisible(node.share)) continue;
+            const el = wedgeChipRefs.current[i];
+            i += 1;
+            if (!el) continue;
+            if (el.textContent !== node.name) el.textContent = node.name;
+            const [sx, sy, front] = project(sw.centre);
+            if (!front) { el.style.display = "none"; continue; }
+            el.style.display = "";
+            el.style.transform = `translate(-50%, -130%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
+          }
+        }
+        for (; i < wedgeChipRefs.current.length; i += 1) {
+          const el = wedgeChipRefs.current[i];
+          if (el) el.style.display = "none";
+        }
+      }
+      // Slice 13-3 (item 4): the mesa's CENTRE TAG — the display
+      // root's name and total, standing over the centre disc
+      // while the mesa is hovered or current (the standalone
+      // page's centre text, carrying the total the brief asks
+      // for). Under descent it names the descended root.
+      {
+        const mcEl = mesaCentreRef.current;
+        if (mcEl) {
+          const rootId = st.descents ? displayRootOf(st.descents.mesa, "mesa") : null;
+          const whole = (st.currentId === "mesa" || st.hoverId === "mesa")
+            && !(st.layers && !isAddressable(st.layers, "mesa"))
+            ? subnodeRootOf("mesa", rootId) : null;
+          const anchor = whole
+            ? (frame.subWorld.get(`mesa:${whole.id}`)?.centre || frame.anchorWorld.get("mesa"))
+            : null;
+          if (whole && anchor) {
+            const txt = `${whole.name} · ${whole.value.toLocaleString("en-US")} bytes`;
+            if (mcEl.textContent !== txt) mcEl.textContent = txt;
+            const [sx, sy, front] = project(anchor);
+            if (!front) mcEl.style.display = "none";
+            else {
+              mcEl.style.display = "";
+              mcEl.style.transform = `translate(-50%, -140%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
+            }
+          } else mcEl.style.display = "none";
+        }
+      }
       const inspEl = inspectRef.current;
       if (inspEl) {
         const anchor = st.inspectedId ? frame.anchorWorld.get(st.inspectedId) : null;
@@ -5950,8 +6196,15 @@ export default function SpaceView(props) {
           {strata?.scenery ? (
             <>
               {/* The drum, its top cut with the citizens'
-                  sockets, re-cut when their positions change. */}
-              <PlatterDrum positions={space.positions} />
+                  sockets, re-cut when their positions change.
+                  Slice 13-3 (item 2): the slab also reports the
+                  cursor point on itself, for the dolly's third
+                  focus — the handler rides the drum's mesh. */}
+              <PlatterDrum positions={space.positions}
+                onSlabPoint={(e) => {
+                  const s = stateRef.current;
+                  if (s.shared) s.shared.cursorObj = { point: [e.point.x, e.point.y, e.point.z], at: performance.now() };
+                }} />
               <primitive object={geo.rim} position={[0, 0.05, 0]} />
               <AtmosphereKnots ctx={ctx} />
               <CrystalCluster ctx={ctx} />
@@ -5967,7 +6220,8 @@ export default function SpaceView(props) {
                 <SpaceObject key={def.id} def={def} ctx={ctx} lib={lib}
                   descentRootId={descents ? displayRootOf(descents[def.id], def.id) : null}
                   tangleDataset={tangleDataset}
-                  bookStyle={bookStyle} bookAccess={bookAccess} bookSpread={bookSpread} />
+                  bookStyle={bookStyle} bookAccess={bookAccess} bookSpread={bookSpread}
+                  mesaTerrace={mesaTerrace} mesaGap={mesaGap} />
               ))}
               {space.cables.map(([a, b], i) => (
                 <Cable key={`${a}|${b}`} a={a} b={b} offset={(i * 0.37) % 1} ctx={ctx} />
@@ -6089,6 +6343,15 @@ export default function SpaceView(props) {
             ref={(el) => { faceChipRefs.current[i] = el; }}
             className="us-chip" style={{ display: "none", pointerEvents: "none" }} />
         ))}
+        {/* Slice 13-3 (item 4): the mesa's wedge name labels (a
+            pool, filled by the overlay loop under label mode)
+            and its centre tag (the display root's name + total). */}
+        {Array.from({ length: 96 }, (_, i) => (
+          <div key={`wedge-${i}`}
+            ref={(el) => { wedgeChipRefs.current[i] = el; }}
+            className="us-chip us-sublabel" style={{ display: "none", pointerEvents: "none" }} />
+        ))}
+        <div ref={mesaCentreRef} className="us-centre-tag" style={{ display: "none" }} />
         <div ref={cardRef} className="us-info" style={{ display: "none" }}>
           {cardObj && cardTr ? (
             <>

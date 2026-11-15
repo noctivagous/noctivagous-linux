@@ -36,7 +36,9 @@
  * by their EVENTS (A FINISH, S GO BACK I, D GO BACK II, Esc
  * CANCEL), the DOLLY sits on C/V (§14: the dolly moves the
  * camera; the ZOOM is the focal pair), copy on H, strip cables
- * on J, and the punctuation caps stand bare. The number row is
+ * on J, and the punctuation caps stand bare — except [ and ]
+ * (slice 13-3), which carry the platter's plane spin, derived
+ * from PLATTER_SPIN_KEYS like the rest. The number row is
  * the camera and the room (§14/§15): 1–4 the named views (the
  * fieldset's order), 5/6 the field sizes, 7/8/9 the object
  * layouts. The rotate
@@ -51,6 +53,7 @@
 import {
   TRANSFORM_KEYS,
   transformOpOf,
+  PLATTER_SPIN_KEYS,
   LAYOUT_KEYS,
   LAYOUTS,
   VIEW_KEYS,
@@ -169,6 +172,28 @@ function transformBindings(ctx = {}) {
 }
 
 /**
+ * The platter plane caps on [ and ] (slice 13-3, item 8),
+ * derived from PLATTER_SPIN_KEYS: the platter's own plane spin,
+ * platter-scoped — the caps light wherever the digit camera
+ * keys light (space and label scopes; the armed line owns the
+ * characters, an open app keeps its scope, a drag lock shrinks
+ * the board to its four). ] steps the spin up —
+ * counter-clockwise seen from overhead; [ steps it down.
+ */
+function platterSpinBindings() {
+  const out = {};
+  for (const [ch, opName] of Object.entries(PLATTER_SPIN_KEYS)) {
+    const code = codeForChar(ch);
+    if (!code) continue;
+    const sign = opName.endsWith("+") ? "+" : "-";
+    out[code] = op(`PLATTER PLANE ${sign}`, {
+      hint: "the platter's plane spin — the rotation parameter; citizens keep B/N for their own plane",
+    });
+  }
+  return out;
+}
+
+/**
  * The layout caps on 7 / 8 / 9, derived from LAYOUT_KEYS +
  * LAYOUTS. §13: the layouts are OBJECT keys — they rearrange
  * the citizens on the platter; the camera does not move — and
@@ -236,6 +261,7 @@ function spaceBindings(ctx) {
     ...layoutBindings(),
     ...viewBindings(),
     ...fieldBindings(ctx),
+    ...platterSpinBindings(),
     Tab: op("CYCLE"),
     KeyA: op("FINISH"),
     KeyS: op("GO BACK I"),
@@ -271,6 +297,7 @@ function labelBindings(ctx) {
     ...layoutBindings(),
     ...viewBindings(),
     ...fieldBindings(ctx),
+    ...platterSpinBindings(),
     Tab: op("CYCLE"),
     Space: op("DRAG LOCK"),
     Enter: op("COMMAND LINE"),

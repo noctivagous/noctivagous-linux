@@ -53,8 +53,11 @@ import {
   IDENTITY_QUAT,
   stepPlatterQuat,
   stepPlatterSpin,
+  platterSpinOpFor,
   resolveScaleTarget,
   resolveDollyTarget,
+  resolveDollyFocus,
+  resolveViewTarget,
   stepRingSpin,
   applyTransformKey,
   applyTransformPatch,
@@ -258,6 +261,13 @@ const PARAM_DEFS = [
       { value: "spread", label: "Spread — two pages at a time" },
     ],
   },
+  // Slice 13-3 (item 4): the sunburst mesa's terraces, ported
+  // from the standalone sunburst page — the step each ring
+  // stands below the ring inside it, and the radial gap
+  // between rings. The miniature rebuilds its wedges from
+  // these; the provider's values and shares never read them.
+  { id: "mesaTerrace", label: "Mesa terrace", type: "number", min: 0, max: 12, step: 0.5, defaultValue: 5.5 },
+  { id: "mesaGap", label: "Mesa ring gap", type: "number", min: 0, max: 1.4, step: 0.05, defaultValue: 0.35 },
   { id: "layerData", label: "Layer · DATA", type: "boolean", defaultValue: true },
   { id: "layerDataLock", label: "Lock · DATA", type: "boolean", defaultValue: false },
   { id: "layerInstruments", label: "Layer · INSTRUMENTS", type: "boolean", defaultValue: true },
@@ -360,11 +370,12 @@ const KEY_GROUPS = [
     title: "Camera",
     rows: [
       ["C", "dolly out — the camera itself pulls back; there is no scroll-wheel zoom"],
-      ["V", "dolly in — and no mouse orbit; pressed over a citizen, the dolly runs toward that citizen"],
+      ["V", "dolly in — and no mouse orbit; the dolly runs toward what the hand is on: a hovered element (a wedge, a page, a host), the hovered or opened citizen, or the point under the cursor"],
+      ["[ ]", "the platter's plane spin: ] counter-clockwise seen from overhead, [ clockwise — always the platter, never a citizen (citizens keep B N)"],
       ["5", "field − — one field size wider (the zoom: the lens changes, the camera stays)"],
       ["6", "field + — one field size narrower: LONG · MEDIUM LONG · MEDIUM · MEDIUM CLOSE · CLOSE"],
-      ["1 2 3 4", "the named views: PLAN · ELEVATION · SIDE · HOME — the VIEW fieldset's order, the same goView"],
-      ["v › t/f/s/h", "the same views on the command line — loading one levels the platter's camera turns"],
+      ["1 2 3 4", "the named views: PLAN · ELEVATION · SIDE · HOME — the VIEW fieldset's order, the same goView. With a citizen entered, PLAN · ELEVATION · SIDE seat around THAT citizen; HOME stays the whole space's"],
+      ["v › t/f/s/h", "the same views on the command line — a global view levels the platter's camera turns; a citizen's view leaves them as they stand"],
     ],
   },
   {
@@ -392,6 +403,7 @@ const KEY_GROUPS = [
       ["treemap nodes", "with the tray current, hover a plate or a cuboid — it lights, its card stands in the space, and F flies into the node"],
       ["tangled figures", "with the tangled tree current, hover a figure — its card names the figure and its line; F flies into it. PARAMETERS switches the tree's course: the Greek genealogy, or demo-de's own module import graph"],
       ["sunburst wedges", "with the mesa or the drum current, hover a wedge to read it — F on a leaf wedge flies into it; F on a branch wedge descends"],
+      ["the mesa's terraces", "the mesa is terraced like its own page (sunburst.html): each ring stands a step below the ring inside it, with a gap between rings — PARAMETERS · Mesa terrace and Mesa ring gap set the relief. Its centre disc names the whole (the repository, and its total); hover it to read the root, F there does nothing — F descends into a wedge. In label mode the mesa's wedges name themselves where their spans have room"],
       ["sunburst descent", "F on a branch wedge re-roots the sunburst at that wedge — values and shares are of the new root, and the readout shows the path from the repository root. The backs climb out, one root per level, until the true root stands again. Descent is a display state only: rotation, plane spin and MAGNIFY are exactly as you left them, on the way down and on the way back up"],
       ["the book's tiers", "with the sample book current, its tiers are sub-addresses: hover a CHAPTER band segment (the drum's upper band), a SECTION segment (the lower band) or a PAGE leaf at the rim — it lights, its card stands in the space, and the readout's NODE line follows"],
       ["book access", "F on a chapter or section ACCESSES it: the drum turns so the accessed arc faces the front, and the tiers outside it ghost. F on a page slides the page OUT of the drum to be read in full. The backs climb page → section → chapter → whole book, one tier per level — access is a display state, never a transform"],
@@ -430,9 +442,21 @@ html, body, #root { height:100%; margin:0; overflow:hidden; background:#0b0e10; 
 .us-page { position:fixed; inset:0; height:100dvh; overflow:hidden; background:#0b0e10; color:#cfd8dc; font-family:Tahoma, Verdana, sans-serif; margin:0; }
 .us-stage { position:absolute; inset:0; overflow:hidden; background:#0b0e10; }
 .us-stage-view { position:absolute; inset:0; }
-.us-head { position:absolute; z-index:30; top:10px; left:12px; right:12px; min-height:38px; display:flex; align-items:center; gap:16px; padding:5px 10px;
+/* Slice 13-3 (item 7): the chrome is FULL-BLEED — every panel
+   sits flush against the viewport edges; the old 10–12px outer
+   inset is gone, and the head's title element with it.
+   Knock-ons recomputed against the flush edges: the head bar
+   is still 50px tall (38 min-height + padding + border), so
+   the side panels' top moves 60px → 50px (they stood 10px
+   below the head's top edge + its height; now they stand at
+   its bottom edge directly), and the vertical budgets that
+   reserved the inset shrink by the same 10px (hud 190 → 180,
+   params 196 → 186, guide 500 → 490, and their ≤1180px
+   variants). The guide's bottom stays 360px — the bottom dock
+   it clears was already flush and its height is unchanged.
+   Internal padding is untouched everywhere. */
+.us-head { position:absolute; z-index:30; top:0; left:0; right:0; min-height:38px; display:flex; align-items:center; gap:16px; padding:5px 10px;
   border:1px solid rgba(44,58,65,.9); border-radius:6px; background:rgba(13,18,22,.86); backdrop-filter:blur(8px); box-shadow:0 8px 28px rgba(0,0,0,.35); }
-.us-head h1 { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:600; font-size:18px; letter-spacing:.08em; text-transform:uppercase; color:#e8f3ee; margin:0; white-space:nowrap; }
 .us-nav { display:flex; align-items:center; gap:13px; overflow-x:auto; white-space:nowrap; scrollbar-width:none; }
 .us-nav::-webkit-scrollbar { display:none; }
 .us-nav a { color:#7fd4c1; font-size:12px; text-decoration:none; }
@@ -447,13 +471,13 @@ html, body, #root { height:100%; margin:0; overflow:hidden; background:#0b0e10; 
 .us-panel-toggle { flex:none; font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:600; font-size:11px; letter-spacing:.08em; text-transform:uppercase;
   color:#ffa726; background:rgba(255,167,38,.08); border:1px solid rgba(255,167,38,.55); border-radius:3px; padding:2px 7px; cursor:pointer; }
 .us-panel-toggle:hover { background:#ffa726; color:#0b0e10; }
-.us-hud { left:12px; top:60px; width:304px; max-height:min(322px, calc(100dvh - 190px)); }
+.us-hud { left:0; top:50px; width:304px; max-height:min(322px, calc(100dvh - 180px)); }
 .us-hud .us-readout { overflow-y:auto; min-height:0; padding-right:2px; }
-.us-params { right:12px; top:60px; width:308px; max-height:calc(100dvh - 196px); }
+.us-params { right:0; top:50px; width:308px; max-height:calc(100dvh - 186px); }
 .us-params-body { overflow-y:auto; min-height:0; padding-right:2px; }
 .us-overlay-panel.collapsed { width:auto; }
 .us-overlay-panel.collapsed .us-panel-head { margin-bottom:0; }
-.us-firstmoves { position:absolute; z-index:23; top:60px; left:354px; right:354px; display:flex; justify-content:center; align-items:flex-start; flex-wrap:wrap; gap:5px; pointer-events:none; }
+.us-firstmoves { position:absolute; z-index:23; top:50px; left:354px; right:354px; display:flex; justify-content:center; align-items:flex-start; flex-wrap:wrap; gap:5px; pointer-events:none; }
 .us-move { display:inline-flex; align-items:center; gap:6px; padding:3px 7px; border:1px solid rgba(44,58,65,.9); border-radius:3px; background:rgba(13,18,22,.82);
   font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:500; font-size:12px; letter-spacing:.07em; text-transform:uppercase; color:#8fa3ab; backdrop-filter:blur(6px); }
 .us-move b { color:#ffa726; font-weight:600; }
@@ -461,7 +485,7 @@ html, body, #root { height:100%; margin:0; overflow:hidden; background:#0b0e10; 
    dock WITH the keyboard panel seated in it (the dock is ~350px
    tall then, against ~118px before) at the desktop widths where
    the centred panel would otherwise reach the guide's column. */
-.us-guide { left:12px; bottom:360px; width:min(404px, calc(100vw - 24px)); max-height:min(500px, calc(100dvh - 500px)); }
+.us-guide { left:0; bottom:360px; width:min(404px, 100vw); max-height:min(500px, calc(100dvh - 490px)); }
 .us-guide-tabs { flex:none; display:flex; flex-wrap:wrap; gap:5px; margin-bottom:9px; }
 .us-guide-tab { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:600; font-size:12px; letter-spacing:.08em; text-transform:uppercase;
   color:#8fa3ab; background:#0b0e10; border:1px solid #2c3a41; border-radius:3px; padding:2px 8px; cursor:pointer; }
@@ -490,15 +514,14 @@ html, body, #root { height:100%; margin:0; overflow:hidden; background:#0b0e10; 
 .us-statusbar .context { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .us-statusbar .dyn { flex:none; max-width:44%; color:#ffa726; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 @media (max-width:1180px) {
-  .us-firstmoves { left:12px; right:12px; top:calc(60px + min(322px, calc(100dvh - 190px)) + 10px); justify-content:flex-start; }
+  .us-firstmoves { left:0; right:0; top:calc(50px + min(322px, calc(100dvh - 180px)) + 10px); justify-content:flex-start; }
   .us-hud { width:282px; }
   .us-params { width:282px; }
-  .us-guide { max-height:min(430px, calc(100dvh - 470px)); }
+  .us-guide { max-height:min(430px, calc(100dvh - 460px)); }
 }
 @media (max-width:760px) {
-  .us-head h1 { font-size:15px; }
   .us-hud { display:none; }
-  .us-params { width:min(308px, calc(100vw - 24px)); }
+  .us-params { width:min(308px, 100vw); }
   .us-guide { bottom:112px; }
   .us-firstmoves { display:none; }
 }
@@ -516,6 +539,17 @@ html, body, #root { height:100%; margin:0; overflow:hidden; background:#0b0e10; 
   padding:1px 5px; border-radius:3px; border:1px solid rgba(255,167,38,.65); background:rgba(6,12,14,.82); color:#ffa726; cursor:pointer; will-change:transform; }
 .us-chip:hover { background:#ffa726; color:#0b0e10; }
 .us-chip.target { background:#ffa726; color:#0b0e10; }
+/* Slice 13-3 (item 4): the mesa's wedge NAME labels under label
+   mode — chips by position, not by letter: file and folder
+   names in their natural case, never clickable. */
+.us-chip.us-sublabel { pointer-events:none; cursor:default; text-transform:none; letter-spacing:.02em; max-width:150px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* Slice 13-3 (item 4): the mesa's centre tag — the display
+   root's name and total, standing over the centre disc like
+   the standalone page's centre text. */
+.us-centre-tag { position:absolute; left:0; top:0; font-family:'IBM Plex Mono', ui-monospace, monospace; font-size:11px; letter-spacing:.04em;
+  color:#e8f3ee; background:rgba(6,12,14,.78); border:1px solid rgba(127,212,193,.6); border-radius:3px; padding:2px 7px;
+  pointer-events:none; white-space:nowrap; will-change:transform; }
 .us-chip.pending { background:#cc7a00; color:#0b0e10; }
 .us-name { position:absolute; left:0; top:0; font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:600; font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:#e8f3ee;
   text-shadow:0 1px 5px #000; pointer-events:none; white-space:nowrap; will-change:transform; }
@@ -726,7 +760,23 @@ export default function SpaceApp() {
   const [inspectRot, setInspectRot] = useState({ yaw: 0, pitch: 0, roll: 0, scale: 1, spin: 0 });
   const [pastes, setPastes] = useState([]);
   // Slice 4: the named view, the drag axis lock, dynamic input.
-  const [viewName, setViewName] = useState("home");
+  // Slice 13-3 (item 8): the space OPENS in the plan view —
+  // the initial state is exactly what goView("top") produces
+  // (viewName "top", no card, identity platter turns), so the
+  // world stands overhead and the [ ] plane spin reads as the
+  // world turning under a fixed overhead camera. HOME (4, the
+  // fieldset button) keeps its own meaning — the standing home
+  // view — so opening-in-plan and HOME are deliberately
+  // different seats.
+  const [viewName, setViewName] = useState("top");
+  // Slice 13-3 (item 1): a CITIZEN-RELATIVE named view, set by
+  // goView while a citizen stands entered — { id, view } with
+  // view "top" | "front" | "side". The Rig seats the camera
+  // around that citizen while its card stands; the state is
+  // inert the moment the card closes (the Rig checks it
+  // against cardId), and the back events clear it like the
+  // dolly focus.
+  const [citizenView, setCitizenView] = useState(null);
   const [axisLock, setAxisLock] = useState(null);
   // Slice 5: the data knot's part focus (F into a hovered part)
   // and the part under the cursor while the knot is current.
@@ -754,6 +804,10 @@ export default function SpaceApp() {
   // A figure of one course is not an address in the other, so a
   // tangle hover or focus does not survive the switch.
   const tangleDataset = String(values.tangleData || "genealogy");
+  // Slice 13-3 (item 4): the mesa's terrace + ring gap, from
+  // PARAMETERS — the View rebuilds the mesa's wedges from them.
+  const mesaTerrace = Number(values.mesaTerrace ?? 5.5);
+  const mesaGap = Number(values.mesaGap ?? 0.35);
   // Slice 13-2: the book's presentation, from PARAMETERS (the U
   // key writes the same parameter while the book is current).
   const bookStyle = String(values.bookStyle || "cylinder");
@@ -799,7 +853,13 @@ export default function SpaceApp() {
   const dynTimer = useRef(null);
   // The overlay shell: parameters and the guide are stationary
   // panels over the scene, each collapsible on its own head.
-  const [paramsOpen, setParamsOpen] = useState(true);
+  // Slice 13-3 (item 6): the PARAMETERS panel and the READOUT
+  // both start COLLAPSED — the keyboard panel's treatment (a
+  // head bar that stays, with its toggle) on both, each state
+  // independent. (The guide already starts collapsed; the
+  // keyboard panel starts expanded — both left as they are.)
+  const [paramsOpen, setParamsOpen] = useState(false);
+  const [readoutOpen, setReadoutOpen] = useState(false);
   // Slice 11 (§9): the guide starts COLLAPSED at every width —
   // it stands as its button until the user opens it.
   const [guideOpen, setGuideOpen] = useState(false);
@@ -1277,6 +1337,7 @@ export default function SpaceApp() {
       subId: subNode ? subNode.id : null,
       subLeaf: subNode ? subNode.isLeaf : false,
       subTier: subNode ? subNode.depth : 0,
+      subRoot: subNode ? subNode.depth === 0 : false,
       bookStyle,
       inspectIds: [...MEDIA_IDS, "clipboard"],
     });
@@ -1315,11 +1376,21 @@ export default function SpaceApp() {
         // and the tiers outside it ghost. A display state only:
         // the book's transform is untouched, and the backs climb
         // the access one tier per level.
+        // Slice 13-3 (item 3 — THE BOOK F FIX): the card STAYS
+        // OPEN. The book's entered seat IS the card seat (the
+        // access has no seat of its own in the Rig), so the
+        // slice 13-2 code's setCardId(null) closed the card on
+        // every access and the camera fell through to the home
+        // seat — F "left the citizen view" on the very tiers it
+        // was meant to click. Access now enters like F itself
+        // does: the card stands, the access deepens inside it,
+        // and the release stack gains the card level BELOW the
+        // access levels, where it belongs.
         const node = subnodeById("book", action.nodeId);
         setCurrentId("book");
         setBookAccess(bookAccessTo(bookAccess, action.nodeId));
         setPartFocus(endPartFocus());
-        setCardId(null);
+        setCardId("book");
         setSubHover(null);
         showDyn(`ACCESSED — ${node ? node.path.join(" › ") : action.nodeId}`);
         return;
@@ -1328,12 +1399,13 @@ export default function SpaceApp() {
         // F on a page in the cylinder presentation: the page
         // comes OUT of the drum — the access path extended to the
         // page — and its card shows the page's full text. The
-        // backs slide it home again, one tier at a time.
+        // backs slide it home again, one tier at a time. The
+        // card stays open (the item-3 fix, as bookAccess above).
         const node = subnodeById("book", action.nodeId);
         setCurrentId("book");
         setBookAccess(bookAccessTo(bookAccess, action.nodeId));
         setPartFocus(endPartFocus());
-        setCardId(null);
+        setCardId("book");
         setSubHover(null);
         showDyn(`PAGE OUT — ${node ? node.name : action.nodeId}`);
         return;
@@ -1341,13 +1413,33 @@ export default function SpaceApp() {
       case "bookSpreadTo": {
         // F on a standing leaf in the spread presentation turns
         // the book to that page's spread — navigation within the
-        // presentation, not a level of the release stack.
+        // presentation, not a level of the release stack. The
+        // card stands here too (item 3), so a turn from a merely
+        // current book enters it, as the cylinder's access does.
         const at = spreadIndexForPage(action.nodeId);
         const node = subnodeById("book", action.nodeId);
         setCurrentId("book");
+        setCardId("book");
         if (at >= 0) setBookSpread(at);
         setSubHover(null);
         showDyn(`SPREAD ${at + 1} / ${SPREAD_COUNT} — ${node ? node.name : action.nodeId}`);
+        return;
+      }
+      case "bookNoop": {
+        // Slice 13-3 (item 3): F on the book itself — its root
+        // tier, or (via the "open" guard below) no tier at all
+        // while the book stands entered. An honest no-op: F
+        // acts inside the book or says why not; leaving is the
+        // back events' work, never F's.
+        setEcho({ text: "the book stands open — F acts on its chapters, sections and pages", error: true });
+        return;
+      }
+      case "rootNoop": {
+        // Slice 13-3 (item 4): F on a sunburst's centre disc —
+        // the disc names the whole (the display root); it is
+        // not a wedge and does not descend.
+        const whole = subnodeRootOf(action.targetId, displayRootOf(descents[action.targetId], action.targetId));
+        setEcho({ text: `the centre names ${whole ? whole.name : "the whole"} — F descends into a wedge`, error: true });
         return;
       }
       case "openMessage": {
@@ -1371,6 +1463,19 @@ export default function SpaceApp() {
         beginInspectThing(action.targetId);
         return;
       case "open":
+        // Slice 13-3 (item 3): F on the ENTERED book with no
+        // tier addressed (the pointer rests on the plinth, the
+        // cap, or between bands — or the access turn moved the
+        // drum under the pointer and the hover went stale)
+        // resolves here, to the generic open. While the book
+        // stands entered that must not re-seat or silently
+        // swallow the press: it is the bookNoop echo instead.
+        // From merely current, the same press enters, as F
+        // always has.
+        if (action.targetId === "book" && cardId === "book") {
+          setEcho({ text: "the book stands open — F acts on its chapters, sections and pages", error: true });
+          return;
+        }
         setCurrentId(action.targetId);
         setCardId(action.targetId);
         return;
@@ -1436,6 +1541,7 @@ export default function SpaceApp() {
    */
   const dispatchBack = (event) => {
     setZoomFocus(null);
+    setCitizenView(null); // a back event also releases a citizen-relative view (item 1)
     if (event === EVENTS.CANCEL || event === EVENTS.GO_BACK_I) {
       if (lockRef.current && sharedRef.current.axisLock) {
         clearAxisLock();
@@ -1550,24 +1656,49 @@ export default function SpaceApp() {
 
   /**
    * C/V: the DOLLY (§14 — the camera itself moves; the focal
-   * zoom is 5/6). The dolly's target is resolved purely
-   * (resolveDollyTarget): a hovered citizen wins (§4's
-   * dolly-at-cursor, unchanged); otherwise the OPENED citizen —
-   * the one F flew to, its card standing open — so C/V travel
-   * into the opened thing after the pointer has left it, where
-   * MAGNIFY (Z/X) only grows the thing in place; otherwise the
-   * plain global dolly, and any stale zoom focus goes. A target
-   * sets the zoomFocus (cleared when the step lands back on
-   * 1.0, and by the standing rules — selection change, back
-   * events, layout change), and the Rig seats the camera on
-   * that citizen's seat scaled by the dolly: the one seat math
-   * for the hovered and the opened citizen alike.
+   * zoom is 5/6). The dolly's focus is resolved purely
+   * (resolveDollyFocus, slice 13-3 item 2): (a) the hovered
+   * SUB-NODE's anchor point — the View publishes the live
+   * sub-hover's world anchor on the shared ref, and it is
+   * honoured only while it names the App's own sub-hover;
+   * (b) a hovered citizen, else the OPENED citizen — the one
+   * F flew to, its card standing open — through
+   * resolveDollyTarget, unchanged; (c) the raw cursor point
+   * the View's hover raycast publishes; (d) the world dolly.
+   * A citizen focus seats the camera on that citizen's seat
+   * scaled by the dolly; a point focus seats it along its
+   * current view direction toward the point (the Rig's half).
+   * The zoomFocus clears when the step lands back on 1.0, and
+   * by the standing rules — selection change, back events,
+   * layout change.
    */
   const pressZoom = (dir) => {
-    const target = resolveDollyTarget({ hoverId, currentId, cardId });
     const next = zoomStep(zoomMul, dir);
+    const published = sharedRef.current.subAnchor;
+    const subAnchor = published && subHover
+      && published.key === `${subHover.objectId}:${subHover.nodeId}` ? published : null;
+    const focus = resolveDollyFocus({
+      subAnchor, hoverId, currentId, cardId,
+      cursorPoint: sharedRef.current.cursorPoint || null,
+    });
     setZoomMul(next);
-    setZoomFocus(target && next !== 1 ? { id: target } : null);
+    if (next === 1 || focus.kind === "world") setZoomFocus(null);
+    else if (focus.kind === "citizen") setZoomFocus({ kind: "citizen", id: focus.id });
+    else setZoomFocus({ kind: "point", point: focus.point, via: focus.via });
+    touch();
+  };
+
+  /**
+   * Slice 13-3 (item 8): [ and ] — the platter's plane spin on
+   * its own keys, stepping the same rotation parameter B/N
+   * steps when the rotate target is the platter (the one
+   * transition handleTransformKey's platter path uses), but
+   * platter-scoped: they turn the platter whatever is hovered.
+   */
+  const pressPlatterSpin = (op) => {
+    const next = stepPlatterSpin(values.rotation, op);
+    setValue("rotation", next);
+    showDyn(`PLATTER PLANE ${next > 0 ? `+${next}` : `${next}`}°`);
     touch();
   };
 
@@ -1824,22 +1955,19 @@ export default function SpaceApp() {
       case "layout":
         setSpace((s) => applyLayout(s, intent.layout));
         setZoomFocus(null); // a layout change clears dolly-at-cursor (§4)
+        setCitizenView(null);
         return `layout ${LAYOUTS[intent.layout].name}`;
       case "zoom":
         setZoomMul((m) => zoomStep(m, intent.dir));
         return intent.dir > 0 ? "dolly in" : "dolly out";
       case "view": {
-        // Choosing a view cancels any in-flight F camera work
-        // (the entered card's seat); HOME also releases, as it
-        // always did — goView is the one transition, shared with
-        // the VIEW fieldset's buttons. Inspection moves the
-        // thing, not the camera, so it is not camera work and is
-        // unreachable here anyway (the line is disarmed then).
-        const hadTurns = platterQuat.some((v, i) => Math.abs(v - IDENTITY_QUAT[i]) > 1e-9);
-        goView(intent.view);
-        const reset = hadTurns ? " · platter turns reset" : "";
-        if (intent.view === "home") return `view HOME — released${reset}`;
-        return `view ${VIEWS[intent.view].name}${reset}`;
+        // goView is the one transition, shared with the VIEW
+        // fieldset's buttons and the digit keys, and it speaks
+        // its own echo: a citizen-relative view names the
+        // citizen, a global view names the view (and the
+        // platter-turn reset, when it levels them). HOME also
+        // releases, as it always did.
+        return goView(intent.view);
       }
       case "help":
         return helpText();
@@ -1851,22 +1979,41 @@ export default function SpaceApp() {
   };
 
   // The named views are pure camera moves. The command line's
-  // v › t/f/s/h intents and the VIEW fieldset's buttons in the
-  // PARAMETERS panel are two doors to this one transition: the
-  // view takes its seat, any entered card closes, and HOME also
-  // releases — the selection and a live patch end with it.
-  // Slice 11 (§12): loading a named view also RESETS the
-  // platter's camera-space turns to identity — a named view is
-  // an absolute camera position, and leftover world turns
-  // would fight it.
+  // v › t/f/s/h intents, the VIEW fieldset's buttons and the
+  // digit keys are three doors to this one transition, which
+  // returns its own echo text (the doors display it).
+  // Slice 11 (§12): loading a GLOBAL named view also RESETS
+  // the platter's camera-space turns to identity — a named
+  // view is an absolute camera position, and leftover world
+  // turns would fight it.
+  // Slice 13-3 (item 1): with a citizen ENTERED (its card
+  // stands and it is current), PLAN / ELEVATION / SIDE resolve
+  // to THAT citizen instead (resolveViewTarget): the camera
+  // seats around it at its own seat distance, and the citizen
+  // view is NOT exited — card, selection and the platter's
+  // turns all stand (a relative view has no absolute position
+  // for the turns to fight). HOME stays global, and releases.
+  const VIEW_TITLES = { top: "PLAN", front: "ELEVATION", side: "SIDE", home: "HOME" };
   const goView = (view) => {
+    const enteredId = cardId && cardId === currentId && objectById(cardId) ? cardId : null;
+    const target = resolveViewTarget({ view, enteredId });
+    if (target.kind === "citizen") {
+      setCitizenView({ id: target.id, view: target.view });
+      touch();
+      return `VIEW · ${VIEW_TITLES[target.view]} — ${thingName(target.id).toUpperCase()}`;
+    }
+    const hadTurns = platterQuat.some((v, i) => Math.abs(v - IDENTITY_QUAT[i]) > 1e-9);
+    setCitizenView(null);
     setViewName(view);
     setCardId(null);
     setPlatterQuat([...IDENTITY_QUAT]);
+    const reset = hadTurns ? " · platter turns reset" : "";
     if (view === "home") {
       setPendingId(null);
       setCurrentId(null);
+      return `VIEW · HOME — released${reset}`;
     }
+    return `VIEW · ${VIEW_TITLES[view]}${reset}`;
   };
 
   const feedCmd = (key) => {
@@ -2284,13 +2431,29 @@ export default function SpaceApp() {
       // same goView as the buttons), 5/6 the field sizes, 7/8/9
       // the object layouts. In app scope the app branch above
       // has already returned: digits stay bare there.
-      if (VIEW_KEYS[e.key]) { e.preventDefault(); goView(VIEW_KEYS[e.key]); return; }
+      if (VIEW_KEYS[e.key]) {
+        e.preventDefault();
+        const t = goView(VIEW_KEYS[e.key]);
+        if (t) setEcho({ text: t, error: false });
+        return;
+      }
       if (e.key === "5") { e.preventDefault(); pressField(-1); return; }
       if (e.key === "6") { e.preventDefault(); pressField(1); return; }
+      // Slice 13-3 (item 8): [ and ] — the platter's plane
+      // spin, standing with the digit camera keys and sharing
+      // their scope exactly: they work in label mode (they are
+      // not letters), and the branches above have already
+      // claimed the armed command line (which owns them as
+      // characters), an open app or message, and a drag lock.
+      {
+        const spinOp = platterSpinOpFor(e.key);
+        if (spinOp) { e.preventDefault(); pressPlatterSpin(spinOp); return; }
+      }
       if (LAYOUT_KEYS[e.key]) {
         e.preventDefault();
         setSpace((s) => applyLayout(s, LAYOUT_KEYS[e.key]));
         setZoomFocus(null); // a layout change clears dolly-at-cursor (§4)
+        setCitizenView(null);
         return;
       }
       if (e.key === "f" || e.key === "F") { e.preventDefault(); doF(); return; }
@@ -2692,7 +2855,9 @@ export default function SpaceApp() {
             rotation={Number(values.rotation)}
             elevation={Number(values.elevation)}
             zoomMul={zoomMul}
-            zoomFocusId={zoomFocus?.id || null}
+            zoomFocusId={zoomFocus?.kind === "citizen" ? zoomFocus.id : null}
+            zoomFocusPoint={zoomFocus?.kind === "point" ? zoomFocus.point : null}
+            citizenView={citizenView}
             platterQuat={platterQuat}
             ringSpinDeg={ringSpin}
             fieldIndex={fieldIndex}
@@ -2721,6 +2886,8 @@ export default function SpaceApp() {
             bookStyle={bookStyle}
             bookAccess={bookAccess}
             bookSpread={bookSpread}
+            mesaTerrace={mesaTerrace}
+            mesaGap={mesaGap}
             tangleDataset={tangleDataset}
             pastes={pastes}
             inspectPanel={inspectPanel}
@@ -2757,7 +2924,9 @@ export default function SpaceApp() {
         </div>
 
         <header className="us-head">
-          <h1>DEMO-DE · UI SPACE</h1>
+          {/* Slice 13-3 (item 7): the "DEMO-DE · UI SPACE" title
+              is removed — the head bar is the nav alone now, and
+              the whole chrome sits flush (see the CSS). */}
           <nav className="us-nav" aria-label="demo-de pages">
             <a href="../">key-clicks</a>
             <a href="../react.html">shell + panelization</a>
@@ -2773,14 +2942,23 @@ export default function SpaceApp() {
           </nav>
         </header>
 
-        <section className="us-box us-overlay-panel us-hud" data-testid="space-hud" aria-label="Space readout">
+        <section className={`us-box us-overlay-panel us-hud${readoutOpen ? "" : " collapsed"}`} data-testid="space-hud" aria-label="Space readout">
           <div className="us-panel-head">
             <h3>READOUT</h3>
             <span className="us-cmdtag">{mode}</span>
+            <button
+              type="button"
+              className="us-panel-toggle"
+              aria-expanded={readoutOpen}
+              onClick={(e) => { setReadoutOpen((v) => !v); e.currentTarget.blur(); }}
+            >
+              {readoutOpen ? "Collapse" : "Open"}
+            </button>
           </div>
+          {readoutOpen ? (
           <div className="us-readout">
             <span className="k">LAYOUT</span>{"   "}{layout.name}{"\n"}
-            <span className="k">VIEW</span>{"     "}{VIEWS[viewName].name}{"\n"}
+            <span className="k">VIEW</span>{"     "}{citizenView ? `${VIEW_TITLES[citizenView.view]} · ${thingName(citizenView.id)}` : VIEWS[viewName].name}{"\n"}
             <span className="k">DOLLY</span>{"    "}distance ×{zoomMul.toFixed(2)}{"\n"}
             <span className="k">FIELD</span>{"    "}{FIELD_SIZES[fieldIndex].name}{"\n"}
             <span className="k">LAYERS</span>{"   "}DATA {layers.data.visible ? "shown" : "hidden"}{layers.data.locked ? " · locked" : ""}{"\n"}
@@ -2877,6 +3055,7 @@ export default function SpaceApp() {
             <span className="k">LABELS</span>{"   "}{uiMode.labelMode ? "ON" : "off"}{"\n"}
             <span className="k">MODE</span>{"     "}{mode}
           </div>
+          ) : null}
         </section>
 
         <div className="us-firstmoves" data-testid="first-moves" aria-label="First moves">
@@ -2943,15 +3122,27 @@ export default function SpaceApp() {
                       summons the clipboard tray.
                     </p>
                     <p>
-                      The space opens in <b>perspective</b> at elevation <b>50</b>. The
+                      The space opens <b>overhead, in plan</b> — the camera starts at the
+                      PLAN seat, looking down at the platter (in <b>perspective</b>; the
+                      elevation parameter still reads <b>50</b>, for the home seat it
+                      shapes). <b>HOME</b> returns to the home view, which is a different
+                      seat: opening-in-plan and HOME are deliberately not the same. The
                       PARAMETERS gather the camera into a <b>VIEW</b> fieldset — projection,
                       rotation, elevation — with the named seats on buttons beside them:
                       <b> PLAN</b> (top), <b>ELEVATION</b> (front, square-on to the XY wall),
                       <b>SIDE</b> and <b>HOME</b>, the same views the command line speaks as
-                      v › t/f/s/h. The number row is the camera and the room: <b>1</b>–<b>4</b>{" "}
+                      v › t/f/s/h. And the named views are relative to where you stand:
+                      with a citizen <b>entered</b> (its card up), PLAN, ELEVATION and SIDE
+                      seat around <b>that citizen</b> — above it, before it, beside it, at
+                      its own seat distance — and the citizen view is not exited; HOME
+                      alone stays the whole space's. The number row is the camera and the
+                      room: <b>1</b>–<b>4</b>{" "}
                       call those same views in the fieldset's order, <b>5</b> and <b>6</b> step
                       the field size, <b>7</b>–<b>9</b> load the object layouts — while
                       Alt+digits stay the layer and clipboard chords they always were.
+                      The platter also has its own plane keys: <b>[</b> and <b>]</b> spin
+                      the platter in its plane (] counter-clockwise seen from overhead,
+                      [ clockwise) — always the platter, never a citizen.
                     </p>
                     <p>
                       The platter wears a <b>ring</b> now, and the ring carries the first app:
@@ -3320,12 +3511,18 @@ export default function SpaceApp() {
                       5 and 6 step the field through its named sizes — LONG, MEDIUM LONG,
                       MEDIUM, MEDIUM CLOSE, CLOSE — the camera itself not moving at all;
                       that is what makes it a zoom and not a dolly. Operations land
-                      under the cursor when something there accepts them: pressed while a
-                      citizen is hovered, the dolly runs toward that citizen instead of the
-                      whole scene, and the rotate keys turn what the cursor addresses. While
-                      a citizen stands open, C and V dolly on it whether the cursor still
-                      hovers it or not — you travel toward the opened thing, which is how
-                      you zoom in on it; MAGNIFY is the other way (the thing grows, you
+                      under the cursor when something there accepts them: C and V dolly
+                      toward what the hand is on — a hovered ELEMENT first (a sunburst
+                      wedge, a book page, a device, a host token, a mail folder: the
+                      camera travels along its own view direction toward the element's
+                      anchor, so any element can be zoomed into), then the hovered
+                      citizen, then — while a citizen stands open — the opened citizen
+                      whether the cursor still hovers it or not (you travel toward the
+                      opened thing, which is how you zoom in on it), and otherwise the
+                      raw point under the cursor, on a citizen's body, the platter or
+                      the slab; with nothing under the hand at all, the dolly is the
+                      whole scene's. The rotate keys turn what the cursor addresses.
+                      MAGNIFY is the other way from the dolly (the thing grows, you
                       stay). An
                       object is addressed by the cursor's hover or the Tab cycle; its letter
                       joins them only in label mode (Alt+L), which is off by default — and the
@@ -3347,9 +3544,22 @@ export default function SpaceApp() {
                       addressed, the platter itself. On the platter the cluster turns the
                       whole space as the camera sees it — yaw about the camera's up, pitch
                       about its right, roll about its view axis — while B and N still spin
-                      the platter in its own plane, inside those turns; the platter cannot be
-                      magnified (C and V dolly the camera instead), and loading a named view
-                      levels its turns again. F is the click: it flies you to a seat before the
+                      the platter in its own plane, inside those turns (and [ and ] now
+                      spin that plane directly, whatever is addressed); the platter cannot be
+                      magnified (C and V dolly the camera instead), and loading a global
+                      named view levels its turns again. The citizens do NOT turn WITH
+                      the slab, though: each rides its plot point as the slab turns —
+                      its position follows the slab completely, and it takes the slab's
+                      yaw, so it keeps its facing as the turntable turns — but a
+                      level-keeping gimbal mount at its pivot refuses the slab's pitch
+                      and roll, so pitching the platter shows you the citizens' own
+                      undersides swinging over their sockets, not the slab's underside
+                      with everything frozen to it. The socket is the clearance: each
+                      citizen's protective sphere, cut into the slab at its plot, is
+                      exactly the room its level-kept swing needs, at any slab tilt.
+                      (The datum walls, the ring, the stage and the walls' furniture
+                      are the platter's own furniture, not objects on it — they still
+                      turn with the assembly.) F is the click: it flies you to a seat before the
                       object and stands its card in the space. The backs are events: S and Esc
                       come back one level, D up to two. F goes to the thing — the camera
                       flies, the thing stays home. I brings the thing to you: whatever you
@@ -3466,9 +3676,13 @@ export default function SpaceApp() {
                     <button
                       key={view}
                       type="button"
-                      className={`us-view-btn${viewName === view ? " here" : ""}`}
-                      aria-pressed={viewName === view}
-                      onClick={(e) => { goView(view); e.currentTarget.blur(); }}
+                      className={`us-view-btn${(citizenView ? citizenView.view === view : viewName === view) ? " here" : ""}`}
+                      aria-pressed={citizenView ? citizenView.view === view : viewName === view}
+                      onClick={(e) => {
+                        const t = goView(view);
+                        if (t) setEcho({ text: t, error: false });
+                        e.currentTarget.blur();
+                      }}
                     >
                       {label}
                     </button>

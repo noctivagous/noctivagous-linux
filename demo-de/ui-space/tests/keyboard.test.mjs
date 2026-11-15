@@ -56,7 +56,9 @@ test("the database is sparse: a binding exists only where a scope binds the key"
   assert.ok(cmdBound < cmd.caps.length / 2, `${cmdBound} of ${cmd.caps.length} bound`);
   // In space scope the slice-11 letter cluster binds many caps —
   // but the unbound remainder still stands bare: ordinary letters
-  // with no operator, digit 0, and the punctuation row.
+  // with no operator, digit 0, and the punctuation row — except
+  // [ and ], which slice 13-3 bound to the platter's plane spin
+  // (asserted in slice-13-3.test.mjs).
   const kb = resolveKeyboard({ scope: "space" });
   assert.equal(labelOf(kb, "KeyU"), null);
   assert.equal(labelOf(kb, "KeyP"), null);
@@ -64,7 +66,6 @@ test("the database is sparse: a binding exists only where a scope binds the key"
   assert.equal(labelOf(kb, "Digit0"), null);
   assert.equal(labelOf(kb, "Minus"), null);
   assert.equal(labelOf(kb, "Equal"), null);
-  assert.equal(labelOf(kb, "BracketLeft"), null);
   assert.equal(labelOf(kb, "Semicolon"), null);
   assert.equal(labelOf(kb, "Period"), null);
   assert.equal(labelOf(kb, "Slash"), null);

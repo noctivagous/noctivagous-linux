@@ -124,8 +124,10 @@ export const SCALE_MAX = 2.5;
  * rotation about the shape's own plane normal, in its own
  * plane, leaving every other axis untouched. The first-listed
  * key of each pair is the negative step). The punctuation keys
- * are UNBOUND in the space scope now. Letters are matched on
- * e.key, lower-cased by the App; these operators live OUTSIDE
+ * stood UNBOUND in the space scope until slice 13-3, which put
+ * the PLATTER's plane spin on [ and ] (PLATTER_SPIN_KEYS below);
+ * the rest of the punctuation row stays unbound. Letters are
+ * matched on e.key, lower-cased by the App; these operators live OUTSIDE
  * label mode only — inside it, letters are addresses (B is the
  * drum, N the tree). The typed transforms on the command line
  * (o › y/t/r/z/p) are a different input path.
@@ -348,6 +350,31 @@ export function stepPlatterSpin(rotation, op) {
   return cur;
 }
 
+/**
+ * Slice 13-3 (item 8): [ and ] — the PLATTER's plane spin on
+ * dedicated keys. They step the same "rotation" parameter
+ * stepPlatterSpin steps when B/N falls back to the platter, but
+ * they are PLATTER-SCOPED: they always turn the platter, never
+ * a hovered or current citizen (citizens keep B/N for their own
+ * plane). [ is the negative step, ] the positive — the house
+ * convention that a pair's first-listed key steps negative. As
+ * seen from overhead (the plan view the space now opens in):
+ * the parameter turns about +Y, which takes the platter's
+ * north edge toward the west — so ] turns the platter
+ * counter-clockwise from above and [ clockwise. The keys are
+ * not letters, so they stand outside the label alphabet and
+ * work in label mode too; like the digit camera keys they live
+ * in the space scope — the armed command line owns them as
+ * characters, an open app or message keeps its own scope, and
+ * a drag lock suspends them.
+ */
+export const PLATTER_SPIN_KEYS = { "[": "spin-", "]": "spin+" };
+
+/** The platter-spin op a key carries, or null (pure resolution). */
+export function platterSpinOpFor(key) {
+  return PLATTER_SPIN_KEYS[key] || null;
+}
+
 /* ---------------- the platter's camera-space orientation (§12) ---------------- */
 
 /**
@@ -384,6 +411,72 @@ export function quatMultiply(a, b) {
     aw * bz + ax * by - ay * bx + az * bw,
     aw * bw - ax * bx - ay * by - az * bz,
   ];
+}
+
+/** The inverse rotation (conjugate, normalised). */
+export function quatInvert(q) {
+  const [x, y, z, w] = q;
+  const n = x * x + y * y + z * z + w * w || 1;
+  return [-x / n, -y / n, -z / n, w / n];
+}
+
+/** Rotate a vector [x, y, z] by a quaternion [x, y, z, w]. */
+export function quatRotateVec(q, v) {
+  const [x, y, z, w] = q;
+  const ix = w * v[0] + y * v[2] - z * v[1];
+  const iy = w * v[1] + z * v[0] - x * v[2];
+  const iz = w * v[2] + x * v[1] - y * v[0];
+  const iw = -x * v[0] - y * v[1] - z * v[2];
+  return [
+    ix * w + iw * -x + iy * -z - iz * -y,
+    iy * w + iw * -y + iz * -x - ix * -z,
+    iz * w + iw * -z + ix * -y - iy * -x,
+  ];
+}
+
+/**
+ * A rotation's YAW: the heading of its +Z axis on the ground
+ * plane, in radians — the same extraction the Rig publishes as
+ * frame.worldYaw (atan2 of the rotated +Z), as a pure function.
+ */
+export function quatYawOf(q) {
+  const z = quatRotateVec(q && q.length === 4 ? q : IDENTITY_QUAT, [0, 0, 1]);
+  return Math.atan2(z[0], z[2]);
+}
+
+/**
+ * Slice 13-3 (item 5) — THE GIMBAL. The counter-rotation a
+ * citizen's mount applies against the platter's composed
+ * rotation Q (platterQuat ∘ rotation parameter ∘ turntable
+ * yaw): gimbal = Q⁻¹ ∘ Ry(yaw(Q)), so that
+ *
+ *   Q ∘ gimbal = Ry(yaw(Q))   exactly.
+ *
+ * A citizen whose pivot is fixed in the slab at its plot point
+ * and whose orientation is composed as Q ∘ gimbal ∘ (its own
+ * transform) therefore ends up oriented by slab YAW ∘ its own
+ * transform alone: it rides its plot point as the slab turns
+ * (its position follows the slab completely), keeps its facing
+ * relative to the platter as the turntable turns, and does NOT
+ * inherit the slab's pitch or roll — a level-keeping gimbal
+ * mount. Pitch the platter and you see the citizens' own
+ * undersides swing over their sockets, not the slab's underside
+ * with everything frozen to it. Clearance is the socket's own
+ * argument: the citizen's geometry lies inside its protective
+ * sphere about its pivot (PROTECTIVE_R, below); the pivot stays
+ * CENTRE_Y above the slab plane at the plot point under ANY
+ * slab rotation (the mount is slab-fixed), and a sphere's
+ * cross-section at that plane is a disc of
+ * sphereCutRadius(R + clearance, CENTRE_Y, 0) — the socket
+ * radius — whatever the relative tilt, because the relative
+ * rotation is a rotation about the pivot and a sphere is
+ * invariant under those. The numeric test in
+ * tests/slice-13-3.test.mjs samples exactly this claim.
+ */
+export function gimbalQuatFor(platterQuat) {
+  const q = platterQuat && platterQuat.length === 4 ? platterQuat : IDENTITY_QUAT;
+  const yawDeg = (quatYawOf(q) * 180) / Math.PI;
+  return quatMultiply(quatInvert(q), quatAxisAngle([0, 1, 0], yawDeg));
 }
 
 const PLATTER_AXIS_FOR_OP = { yaw: "up", pitch: "right", roll: "forward" };
@@ -506,6 +599,7 @@ export function resolveFAction({
   subId = null,
   subLeaf = false,
   subTier = 0,
+  subRoot = false,
   bookStyle = "cylinder",
   inspectIds = [],
 } = {}) {
@@ -523,6 +617,13 @@ export function resolveFAction({
     return { type: "branchFocus", targetId, partId: branchId };
   }
   if (targetId === "book" && subId) {
+    // Slice 13-3 (item 3): the book's ROOT tier (subTier 0 —
+    // the whole book itself) is not an access target: its tier
+    // chain is empty, so "accessing" it would silently reset
+    // every accessed tier — an F that undoes the book's state
+    // while claiming to act inside it. It resolves to an
+    // honest no-op instead; the backs are how access unwinds.
+    if (subTier < 1) return { type: "bookNoop", targetId };
     if (subTier >= 3) {
       return bookStyle === "spread"
         ? { type: "bookSpreadTo", targetId, nodeId: subId }
@@ -544,6 +645,13 @@ export function resolveFAction({
     return { type: "partFocus", targetId, partId: subId };
   }
   if ((targetId === "mesa" || targetId === "drum") && subId) {
+    // Slice 13-3 (item 4): the centre disc reports the DISPLAY
+    // ROOT itself as its sub-node (subRoot) — F there is an
+    // honest no-op, never a descent into the root (whose
+    // "descent" would rebuild the same wedges under a phantom
+    // level of the release stack). The centre names the whole;
+    // F descends into a wedge.
+    if (subRoot) return { type: "rootNoop", targetId };
     return subLeaf
       ? { type: "partFocus", targetId, partId: subId }
       : { type: "descend", targetId, nodeId: subId };
@@ -748,6 +856,16 @@ export function setObjectPosition(state, id, x, z) {
 export const PLATTER_PROTECTIVE_R = 315;
 /** Extra radius the base keeps beyond the sphere itself. */
 export const PROTECTIVE_CLEARANCE = 2;
+
+/**
+ * Each citizen's own envelope — CENTRE_Y (its rotation pivot)
+ * and PROTECTIVE_R (its protective sphere) — is tabulated
+ * below, beside the socket math that consumes it; the gimbal
+ * (slice 13-3, item 5) and its clearance proof read the same
+ * tables. citizenSocketRadius is that section's socketRadius
+ * under the name slice 13-3 gave it.
+ */
+
 /** The ground plane's height — the one static base's surface. */
 export const GROUND_Y = -3.6;
 
@@ -844,7 +962,7 @@ export const PROTECTIVE_R = {
   knot: 20.04, // a sweep vertex, measured on the tube geometry itself
   crystal: 20.16, // the pedestal's bottom rim (r 14 at y 0); the living solid never reaches it, in any drift state — state-independent
   devices: 24.06, // the shelf's bottom corners (±19, 0, ±13) about (0, 7, 0): √579 — measured on MiniDevices, which postdates the analysis
-  mail: 23.65, // measured on the built MiniMail in slice 13-3's session — the mail citizen postdates the sockets slice, so its sphere joins the table at this integration
+  mail: 23.65, // the cabinet's plinth corners bind (√559.5) — measured on the built MiniMail in slice 13-3's session; the mail citizen postdates the sockets slice, so its sphere joins the table at this integration
 };
 
 /**
@@ -864,6 +982,11 @@ export function socketRadius(id) {
   if (r == null || cy == null) return null;
   return sphereCutRadius(r + PROTECTIVE_CLEARANCE, cy, 0);
 }
+
+/** Slice 13-3's name for the same radius — its gimbal clearance
+ *  proof reads it under this name. One function, two call sites'
+ *  vocabularies. */
+export const citizenSocketRadius = socketRadius;
 
 /**
  * The socket circles for a positions map ({ id: {x, z} } — the
@@ -965,6 +1088,103 @@ export function citizenSeatOffsets(scale = 1, mul = 1) {
 export function citizenSeatDistance(scale = 1, mul = 1) {
   const o = citizenSeatOffsets(scale, mul);
   return Math.hypot(o.radial, o.up);
+}
+
+/**
+ * Slice 13-3 (item 2): the dolly's focus, generalised from a
+ * citizen to whatever the hand is on. The priority is the
+ * brief's: (a) the hovered SUB-NODE's anchor point — a wedge, a
+ * book page, a device, a host token, a mail folder or letter,
+ * at the world anchor the sub-node system publishes for its
+ * cards; (b) the hovered citizen's seat, else the OPENED
+ * citizen's (resolveDollyTarget, unchanged); (c) the raw
+ * CURSOR POINT — the world point under the pointer, published
+ * by the View's hover raycast (a citizen body with no sub-node
+ * hovered, the platter, the slab); (d) the world dolly.
+ * `subAnchor` is the View's published anchor for the CURRENT
+ * sub-hover ({ point: [x, y, z], radius } | null — the caller
+ * validates it against the live sub-hover); `cursorPoint` is
+ * [x, y, z] | null. Point foci seat the camera along its
+ * current view direction toward the point (the Rig's half);
+ * citizen foci keep the citizen seat. The release rules are
+ * the standing zoomFocus rules, unchanged: the focus clears on
+ * selection change, on any back event, on a layout change, and
+ * when the multiplier returns to 1.
+ */
+export function resolveDollyFocus({
+  subAnchor = null, hoverId = null, currentId = null, cardId = null, cursorPoint = null,
+} = {}) {
+  if (subAnchor && Array.isArray(subAnchor.point)) {
+    return { kind: "point", via: "sub", point: [...subAnchor.point], radius: subAnchor.radius || 0 };
+  }
+  const citizen = resolveDollyTarget({ hoverId, currentId, cardId });
+  if (citizen) return { kind: "citizen", id: citizen };
+  if (Array.isArray(cursorPoint)) {
+    return { kind: "point", via: "cursor", point: [...cursorPoint], radius: 0 };
+  }
+  return { kind: "world" };
+}
+
+/** A point focus's standing reading distance at multiplier 1. */
+export const DOLLY_POINT_BASE = 60;
+/**
+ * A point focus's minimum stand-off: the camera never enters
+ * the point. Sub-node anchors carry radii up to ~9 (a book
+ * leaf, a host plate); 14 stands clear of every element the
+ * anchors name, with the element still framed.
+ */
+export const DOLLY_POINT_MIN = 14;
+
+/**
+ * A point focus's seat distance for a dolly multiplier: the
+ * base distance scaled by the citizen seat's deepening curve
+ * (citizenSeatScale — the inward range remaps onto
+ * [CITIZEN_SEAT_MIN..1], so V travels as deep on an element as
+ * it does on a citizen), floored at the minimum stand-off.
+ */
+export function pointSeatDistance(mul = 1) {
+  return Math.max(DOLLY_POINT_MIN, DOLLY_POINT_BASE * citizenSeatScale(mul));
+}
+
+/* ---------------- the sunburst mesa's terraces (slice 13-3, item 4) ---------------- */
+
+/**
+ * Ported from the standalone sunburst page (sunburst.html):
+ * its mesa is a TERRACED amphitheatre — each ring stands a
+ * `terrace` step below the ring inside it (the page's
+ * top = base + (2 − depth) × terrace, read off its animated
+ * y0), and a ring GAP separates the rings radially. The
+ * miniature mesa had two unrelated flat heights instead (12
+ * for the inner ring, 6.5 for the outer); the formula below
+ * reproduces them exactly at the defaults — MESA_BASE_H is
+ * the outer ring's height and the default terrace the step
+ * between the rings — and makes both adjustable PARAMETERS
+ * (mesaTerrace / mesaGap in the App's panel), rebuilt into the
+ * wedge geometry whenever they change, at rest and under
+ * descent alike (a descended set is the same two rings of its
+ * display root, so the same formula keeps descent coherent).
+ * Rendering only: the sub-node provider's values, shares and
+ * totals never read these numbers.
+ */
+export const MESA_BASE_H = 6.5;
+export const MESA_TERRACE_DEFAULT = 5.5;
+export const MESA_GAP_DEFAULT = 0.35;
+
+/** A mesa wedge's height for its (display-relative) depth. */
+export function mesaWedgeHeight(depth, terrace = MESA_TERRACE_DEFAULT) {
+  return MESA_BASE_H + Math.max(0, 2 - depth) * terrace;
+}
+
+/**
+ * The standalone's label rule (labelVisible in the layout
+ * module): a slice carries a label when its span has room —
+ * (y1 − y0) × (x1 − x0) > 0.03. A mesa wedge's radial span is
+ * one unit, so the rule reads off its angular span, which is
+ * its share of the display root × 2π. Used for the wedge name
+ * labels the space's label mode shows (slice 13-3, item 4).
+ */
+export function mesaWedgeLabelVisible(share) {
+  return share * Math.PI * 2 > 0.03;
 }
 
 /**
@@ -1122,6 +1342,76 @@ export function viewSeat(name, zoomMul = 1) {
   if (!v || !v.seat) return null;
   const seat = v.look.map((l, i) => l + (v.seat[i] - l) * zoomMul);
   return { seat, look: [...v.look] };
+}
+
+/**
+ * Slice 13-3 (item 1): CITIZEN-RELATIVE named views. When a
+ * citizen view is ENTERED — a citizen stands open, its card up
+ * (cardId === currentId, a citizen id) — PLAN / ELEVATION /
+ * SIDE stop naming seats around the whole space and name seats
+ * around THE ENTERED CITIZEN instead: plan above it looking
+ * down, elevation in front of it, side beside it, all at the
+ * citizen's own seat distance (the citizenSeat offsets). HOME
+ * stays the space's global home view, and with no citizen
+ * entered every view is global, exactly as before. The
+ * resolution is pure: entered citizen + view name → a citizen
+ * seat spec; anything else → the global view. The App's one
+ * goView transition serves the fieldset buttons, the digit
+ * keys and the command line alike, so all three doors resolve
+ * here.
+ */
+export function resolveViewTarget({ view = null, enteredId = null } = {}) {
+  if (enteredId && OBJECT_IDS.includes(enteredId)
+    && (view === "top" || view === "front" || view === "side")) {
+    return { kind: "citizen", view, id: enteredId };
+  }
+  return { kind: "global", view };
+}
+
+/**
+ * A citizen-relative view's seat, as data — the direction
+ * variants of the one citizen seat. `base` is the citizen's
+ * world base [x, y, z]; `offsets` are citizenSeatOffsets(scale,
+ * mul) (radial + up); `anchorY` is the look height the entered
+ * card's seat uses (ANCHOR_H × 0.55 × scale, the View's table).
+ * FRONT is the entered seat itself — out along the citizen's
+ * radial, raised, looking at the anchor height — the same
+ * composition the Rig's card branch makes, so ELEVATION while
+ * entered is the seat F flew to. SIDE is that seat turned a
+ * quarter-turn about the citizen: out along the TANGENT at the
+ * same offsets, the same look. PLAN is above: up the seat
+ * distance (the offsets' length) with a hair of the radial
+ * kept — the global top view's own trick, keeping the camera's
+ * up vector stable — looking down at the citizen's heart.
+ * A citizen standing on the platter's axis has no radial; the
+ * fallback faces it from the south, as the Rig's seat does.
+ */
+export function citizenViewSeat(view, base, offsets, anchorY) {
+  const [bx, by, bz] = base;
+  let rx = bx;
+  let rz = bz;
+  const rl = Math.hypot(rx, rz);
+  if (rl < 1) { rx = 0; rz = 1; } else { rx /= rl; rz /= rl; }
+  const look = [bx, by + anchorY, bz];
+  if (view === "side") {
+    // The tangent: the radial turned a quarter-turn in the plane.
+    return {
+      seat: [bx + -rz * offsets.radial, by + offsets.up, bz + rx * offsets.radial],
+      look,
+    };
+  }
+  if (view === "top") {
+    const dist = Math.hypot(offsets.radial, offsets.up);
+    return {
+      seat: [bx + rx * offsets.radial * 0.12, by + dist, bz + rz * offsets.radial * 0.12],
+      look: [bx, by + anchorY * 0.4, bz],
+    };
+  }
+  // "front" — and any other name — is the entered seat itself.
+  return {
+    seat: [bx + rx * offsets.radial, by + offsets.up, bz + rz * offsets.radial],
+    look,
+  };
 }
 
 /* ---------------- drag snapping + axis lock ---------------- */
