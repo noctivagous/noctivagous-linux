@@ -2843,6 +2843,30 @@ export default function SpaceApp() {
                       this machine — review before committing, it names real
                       devices and endpoints.
                     </p>
+                    <p>
+                      The platter keeps one rule at two scales — THE PROTECTIVE
+                      SPHERE: a thing that turns is enclosed by the sphere its
+                      turning sweeps about its pivot, and the base yields to
+                      the sphere; geometry is subtracted, and the thing is
+                      never confined to fit inside it. Beneath the platter the
+                      rule is cut into the ground itself — the floor is a
+                      static base with a circular well under the whole
+                      assembly, so the world tips over ground it can never
+                      reach. The same rule is now cut at citizen scale, into
+                      the platter's own top: EVERY CITIZEN SITS IN A SOCKET, a
+                      circular through-hole in the slab at its plot, the
+                      cross-section of its own protective sphere — the tray's
+                      the widest, the crystal's the narrowest, the book's
+                      sized for a page slid out, its largest turning state —
+                      with a machined lip on the hole's edge, so each citizen
+                      tumbles in a gimbal seat and the platter is simply
+                      absent where its swing would pass. The slab is three
+                      units thick and every sphere reaches deeper than that,
+                      so the holes go through, as the well does: the base
+                      gives way entirely. And the sockets follow their
+                      citizens — load a layout, or carry a citizen somewhere
+                      new and drop it, and its hole is cut at its new home.
+                    </p>
                     <h4>Media, the Ring and the Apps</h4>
                     <p>
                       Media representations for files matter, because the aim is parity with the

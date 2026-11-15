@@ -754,6 +754,109 @@ export const PLATTER_WELL_R = sphereCutRadius(
   PLATTER_PROTECTIVE_R + PROTECTIVE_CLEARANCE, 0, GROUND_Y,
 );
 
+/* ---------------- the citizens' sockets: the rule at citizen scale ---------------- */
+
+/**
+ * Slice 11 (§5): the ROTATION PIVOT of each citizen — the centre
+ * of its local 3D bounds, as built. The citizen's rotation group
+ * sits at (0, CENTRE_Y, 0) with the content offset by −CENTRE_Y
+ * inside it, so yaw/pitch/roll turn the object about its bounds
+ * centre in all three axes, not about its ground origin. Each
+ * value is the midpoint of the miniature's built height range.
+ * (The table lives here, beside the socket math that consumes
+ * it; SpaceView imports it for the rotation groups.)
+ */
+export const CENTRE_Y = {
+  mesa: 6, // sunburst wedges stack 0..12
+  drum: 11.5, // drum wall and wedges 0..22.9, rim torus at 22.2
+  tray: 4, // tray floor and cuboids 0..8.2
+  cube: 16, // the shell is centred at 16, 32.5 across
+  tangle: 12, // base plate plus seven level sheets to ~23.8
+  horizon3d: 8, // base at 1.6, towers to ~15.6
+  horizonflat: 14.5, // the panel stands ~1..29 (group at y 15, panel 28 tall)
+  arch: 17, // the sheet cylinder is centred at 17, 31 tall
+  definition: 9.5, // base plate plus nodes/wires to ~19
+  knot: 12.5, // KNOT_CY — the tube rides ±~8 about it
+  crystal: 14.5, // pedestal 0..4; the solid ±12.1 about CRYSTAL_CY 17 → bounds 0..29
+  tree: 14.7, // segments 0..27.2 in the sway group at 2.2, soil 0..2.2 → bounds 0..29.4
+  book: 13, // plinth 0..1.6, drum body to 25.6, cap rim ~26.3 → bounds 0..26.3
+  devices: 7, // shelf 0..1.6, the display's screen top ~14.4 → bounds 0..14.4
+};
+
+/**
+ * THE PROTECTIVE SPHERE AT CITIZEN SCALE — the user's rule
+ * again, the same one that cut the well beneath the platter:
+ * each citizen tumbles about its pivot, its turning sweeps a
+ * sphere, and the base yields to it. Here the base is the
+ * platter's own top, and it yields with a SOCKET: a circular
+ * through-hole at the citizen's plot, of the sphere's
+ * cross-section radius at the platter plane, so the citizen
+ * dips through the slab instead of into it. The slab is 3
+ * thick and every sphere's reach below the plane is deeper
+ * than that (5.7–35.2, per the measurement), so no socket
+ * could be a mere dish — the base gives way entirely, exactly
+ * as the ground did.
+ *
+ * PROTECTIVE_R is each citizen's sphere radius: the farthest
+ * reach of its geometry from its pivot, measured on the built
+ * miniatures (the sockets analysis; the binding point is named
+ * per citizen). Each citizen is sized for the LARGEST state it
+ * can be in while it can tumble — see the book.
+ */
+export const PROTECTIVE_R = {
+  tray: 39.20, // the glass tray's own bottom corners (±29.5, 0, ±25.5)
+  horizon3d: 33.96, // the base cylinder's bottom rim (r 33 at y 0)
+  tangle: 36.73, // the base plate's bottom corners (±26, 0, ±23) — either course
+  definition: 31.48, // the base plate's bottom corners (±26, 0, ±15)
+  mesa: 25.86, // the depth-2 wedge rim (r 25.15 at y 0)
+  drum: 29.81, // the plinth's bottom rim (r 27.5 at y 0)
+  arch: 33.12, // a foot block's bottom outer corner (22, 0, 18) — the feet bind, not the sheet
+  horizonflat: 30.27, // the foot block's back-bottom corner (25, 0, 9)
+  book: 43.54, // PAGE OUT: a slid-out leaf's edge reaches r 42.2 (the standing form measures 28.30)
+  cube: 28.22, // face-tile corners ≈ shell corners
+  tree: 26.04, // the soil disc's bottom rim (r 21.5 at y 0); its ambient sway is small — the clearance covers it
+  knot: 20.04, // a sweep vertex, measured on the tube geometry itself
+  crystal: 20.16, // the pedestal's bottom rim (r 14 at y 0); the living solid never reaches it, in any drift state — state-independent
+  devices: 24.06, // the shelf's bottom corners (±19, 0, ±13) about (0, 7, 0): √579 — measured on MiniDevices, which postdates the analysis
+};
+
+/**
+ * The radius of citizen id's socket: its protective sphere,
+ * grown by PROTECTIVE_CLEARANCE — the well's convention exactly
+ * (the clearance grows the sphere before the cross-section is
+ * taken; it is not added to the cut radius) — cross-sectioned
+ * at the citizens' standing plane, y = 0. The slab's top face
+ * lies 0.05 below that plane, where the sphere's section is a
+ * hair smaller, so the cut is conservative at the face itself;
+ * and below the plane the section only shrinks, so this one
+ * radius clears the whole slab.
+ */
+export function socketRadius(id) {
+  const r = PROTECTIVE_R[id];
+  const cy = CENTRE_Y[id];
+  if (r == null || cy == null) return null;
+  return sphereCutRadius(r + PROTECTIVE_CLEARANCE, cy, 0);
+}
+
+/**
+ * The socket circles for a positions map ({ id: {x, z} } — the
+ * App state's plots, rewritten by layout switches and drag
+ * drops): one circle per citizen at its current home. The View
+ * cuts exactly these into the platter's top (platter-top.js)
+ * and cuts them again when the map changes; during a drag the
+ * map does not move, so no socket is ever cut mid-carry.
+ */
+export function socketCircles(positions) {
+  const out = [];
+  for (const id of OBJECT_IDS) {
+    const p = positions ? positions[id] : null;
+    const r = socketRadius(id);
+    if (!p || r == null) continue;
+    out.push({ id, x: p.x, z: p.z, r });
+  }
+  return out;
+}
+
 /* ---------------- the dolly (C/V) and the focal zoom (5/6) ---------------- */
 
 export const ZOOM_MIN = 0.5;

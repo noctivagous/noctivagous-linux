@@ -49,6 +49,8 @@ import {
   GROUND_Y,
   PLATTER_WELL_R,
   PROTECTIVE_CLEARANCE,
+  CENTRE_Y,
+  socketCircles,
   clampGround,
   glowLevel,
   inspectScaleFor,
@@ -63,6 +65,7 @@ import {
   bookAccessedId,
   bookPageOutId,
 } from "./space-state.js";
+import { buildPlatterSolid } from "./platter-top.js";
 import { subnodeById, subnodeRootOf, hierarchyDataOf, tangleLevels } from "./subnodes.js";
 import { bookTable, bookSpreads, bookNodeById, BOOK_TOTALS, SPREAD_COUNT } from "./book.js";
 import {
@@ -144,30 +147,9 @@ export const ANCHOR_H = {
   tree: 30, book: 28, devices: 16,
 };
 
-/**
- * Slice 11 (§5): the ROTATION PIVOT of each citizen — the centre
- * of its local 3D bounds, as built. The citizen's rotation group
- * sits at (0, CENTRE_Y, 0) with the content offset by −CENTRE_Y
- * inside it, so yaw/pitch/roll turn the object about its bounds
- * centre in all three axes, not about its ground origin. Each
- * value is the midpoint of the miniature's built height range:
- */
-export const CENTRE_Y = {
-  mesa: 6, // sunburst wedges stack 0..12
-  drum: 11.5, // drum wall and wedges 0..22.9, rim torus at 22.2
-  tray: 4, // tray floor and cuboids 0..8.2
-  cube: 16, // the shell is centred at 16, 32.5 across
-  tangle: 12, // base plate plus seven level sheets to ~23.8
-  horizon3d: 8, // base at 1.6, towers to ~15.6
-  horizonflat: 14.5, // the panel stands ~1..29 (group at y 15, panel 28 tall)
-  arch: 17, // the sheet cylinder is centred at 17, 31 tall
-  definition: 9.5, // base plate plus nodes/wires to ~19
-  knot: 12.5, // KNOT_CY — the tube rides ±~8 about it
-  crystal: 14.5, // pedestal 0..4; the solid ±12.1 about CRYSTAL_CY 17 → bounds 0..29
-  tree: 14.7, // segments 0..27.2 in the sway group at 2.2, soil 0..2.2 → bounds 0..29.4
-  book: 13, // plinth 0..1.6, drum body to 25.6, cap rim ~26.3 → bounds 0..26.3
-  devices: 7, // shelf 0..1.6, the display's screen top ~14.4 → bounds 0..14.4
-};
+/* CENTRE_Y — each citizen's rotation pivot, the midpoint of
+   its built height range — lives in space-state.js, beside the
+   socket table that consumes it; it is imported above. */
 
 /**
  * Slice 11 (§11): each citizen's PLANE AXIS — the normal of the
@@ -4464,6 +4446,55 @@ function GroundBase() {
   );
 }
 
+/* ---------- the platter drum: the slab, its sockets, their lips ---------- */
+
+/** The socket lips' height: a hair proud of the slab's top
+ *  face (−0.05 + 0.13), so the ring clears the citizens' glass
+ *  plot plates, whose bottoms rest at y 0. */
+const SOCKET_LIP_Y = 0.08;
+/** The lip's width — the well lip's proportion, at citizen scale. */
+const SOCKET_LIP_W = 8;
+
+/**
+ * THE PLATTER DRUM, with the citizens' SOCKETS cut into its
+ * top: the protective-sphere rule at citizen scale (see
+ * space-state.js's PROTECTIVE_R and platter-top.js). The slab
+ * is one CSG solid — the drum's own cylinder minus a cylinder
+ * per citizen at its current home — re-evaluated only when the
+ * positions signature changes: a layout switch, a drag drop.
+ * During a drag the positions map does not move (the carried
+ * citizen rides the drag point on the shared ref, lifted clear
+ * by the drag machinery), so the surface is never re-cut
+ * mid-carry; on drop it is cut at the new home. A machined lip
+ * ring lies on each hole's edge — the ground well lip's finish
+ * and convention, its inner radius a further clearance out
+ * from the cut — so each socket reads as a gimbal seat.
+ */
+function PlatterDrum({ positions }) {
+  const signature = OBJECT_IDS.map((id) => {
+    const p = positions ? positions[id] : null;
+    return p ? `${p.x.toFixed(2)},${p.z.toFixed(2)}` : "_";
+  }).join("|");
+  // The signature is the positions map's content; the circles
+  // and the solid rebuild exactly when it changes.
+  const circles = useMemo(() => socketCircles(positions), [signature]); // eslint-disable-line react-hooks/exhaustive-deps
+  const geo = useMemo(() => buildPlatterSolid(circles), [circles]);
+  useEffect(() => () => geo.dispose(), [geo]);
+  return (
+    <group>
+      <mesh geometry={geo}>
+        <meshStandardMaterial color={0x12181c} roughness={0.85} />
+      </mesh>
+      {circles.map((c) => (
+        <mesh key={c.id} position={[c.x, SOCKET_LIP_Y, c.z]} rotation-x={-Math.PI / 2}>
+          <ringGeometry args={[c.r + PROTECTIVE_CLEARANCE, c.r + PROTECTIVE_CLEARANCE + SOCKET_LIP_W, 64]} />
+          <meshStandardMaterial color={0x232e35} roughness={0.55} metalness={0.35} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
 /* ---------- the view ---------- */
 
 export default function SpaceView(props) {
@@ -4965,10 +4996,9 @@ export default function SpaceView(props) {
               included, no ghost exception. */}
           {strata?.scenery ? (
             <>
-              <mesh position={[0, -1.55, 0]}>
-                <cylinderGeometry args={[PLATTER_R, PLATTER_R + 7, 3, 96]} />
-                <meshStandardMaterial color={0x12181c} roughness={0.85} />
-              </mesh>
+              {/* The drum, its top cut with the citizens'
+                  sockets, re-cut when their positions change. */}
+              <PlatterDrum positions={space.positions} />
               <primitive object={geo.rim} position={[0, 0.05, 0]} />
               <AtmosphereKnots ctx={ctx} />
               <CrystalCluster ctx={ctx} />

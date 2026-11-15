@@ -14,7 +14,9 @@
     "d3-scale": "^4.0.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "three": "^0.187.0"
+    "three": "^0.187.0",
+    "three-bvh-csg": "^0.0.17",
+    "three-mesh-bvh": "^0.8.3"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.4.1",
