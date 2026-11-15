@@ -25,6 +25,9 @@ import {
   ringItemPosition,
   RING_R,
   PLATTER_R,
+  GROUND_Y,
+  PLATTER_WELL_R,
+  PROTECTIVE_CLEARANCE,
   clampGround,
   glowLevel,
   inspectScaleFor,
@@ -3475,6 +3478,45 @@ function Rig({ ctx, cameras }) {
   return null;
 }
 
+/* ---------- the base: the ground, and the well cut into it ---------- */
+
+/**
+ * THE GROUND — the scene's one STATIC base, and the platter's
+ * protective sphere made visible. It does NOT ride the world
+ * group: the assembly turns over it, and the sphere's circle
+ * is subtracted from it — the disc is a Shape with a circular
+ * hole of PLATTER_WELL_R at the ground plane, so at any
+ * yaw/pitch/roll the assembly (every point within
+ * PLATTER_PROTECTIVE_R of the pivot) swings through the well
+ * while the floor that remains (every point at least
+ * PLATTER_PROTECTIVE_R + PROTECTIVE_CLEARANCE from the pivot)
+ * can never be reached. A machined lip ring lies on the cut's
+ * edge, its inner radius a further clearance out, so the well
+ * reads as a gimbal seat the platter turns in, not as damage.
+ */
+function GroundBase() {
+  const geo = useMemo(() => {
+    const shape = new THREE.Shape();
+    shape.absarc(0, 0, 900, 0, Math.PI * 2, false);
+    const hole = new THREE.Path();
+    hole.absarc(0, 0, PLATTER_WELL_R, 0, Math.PI * 2, true);
+    shape.holes.push(hole);
+    return new THREE.ShapeGeometry(shape, 72);
+  }, []);
+  useEffect(() => () => geo.dispose(), [geo]);
+  return (
+    <group>
+      <mesh geometry={geo} position={[0, GROUND_Y, 0]} rotation-x={-Math.PI / 2}>
+        <meshStandardMaterial color={0x0d1113} roughness={1} />
+      </mesh>
+      <mesh position={[0, GROUND_Y + 0.05, 0]} rotation-x={-Math.PI / 2}>
+        <ringGeometry args={[PLATTER_WELL_R + PROTECTIVE_CLEARANCE, PLATTER_WELL_R + 16, 128]} />
+        <meshStandardMaterial color={0x232e35} roughness={0.55} metalness={0.35} />
+      </mesh>
+    </group>
+  );
+}
+
 /* ---------- the view ---------- */
 
 export default function SpaceView(props) {
@@ -3896,15 +3938,17 @@ export default function SpaceView(props) {
 
         <Rig ctx={ctx} cameras={cameras} />
 
+        {/* The ground is the one STATIC base: it stands outside
+            the world group, and the platter's protective sphere
+            has its circle subtracted from it (GroundBase). A
+            hidden scenery stratum hides it with the rest. */}
+        {strata?.scenery ? <GroundBase /> : null}
+
         <group ref={worldRef}>
           {/* Layers: a hidden stratum is NOT RENDERED — scenery
               included, no ghost exception. */}
           {strata?.scenery ? (
             <>
-              <mesh position={[0, -3.6, 0]} rotation-x={-Math.PI / 2}>
-                <circleGeometry args={[900, 64]} />
-                <meshStandardMaterial color={0x0d1113} roughness={1} />
-              </mesh>
               <mesh position={[0, -1.55, 0]}>
                 <cylinderGeometry args={[PLATTER_R, PLATTER_R + 7, 3, 96]} />
                 <meshStandardMaterial color={0x12181c} roughness={0.85} />

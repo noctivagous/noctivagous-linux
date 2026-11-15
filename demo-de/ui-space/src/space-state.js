@@ -640,6 +640,82 @@ export function setObjectPosition(state, id, x, z) {
   return { ...state, positions: { ...state.positions, [id]: { x: p.x, z: p.z } } };
 }
 
+/* ---------------- the protective sphere: the platter's well ---------------- */
+
+/**
+ * THE PROTECTIVE SPHERE (the user's rule): a rotating thing is
+ * enclosed by the swept envelope of its rotation about its
+ * pivot — a sphere — and the BASE yields to it: geometry is
+ * subtracted from the base wherever the sphere would intersect
+ * it. The thing is never confined to fit inside a semisphere;
+ * the base is cut instead. This section is the rule's first
+ * application, to the main platter itself.
+ *
+ * THE ASSEMBLY: the world group — everything that receives the
+ * composed rotation (platterQuat ∘ the rotation parameter +
+ * turntable yaw) in the Rig. Its pivot is the group origin,
+ * the platter's centre at its surface plane (0,0,0). Riding it:
+ * the platter drum (the pedestal cylinder, r 198/205, top at
+ * y −0.05, bottom −3.05) and rim, all twelve citizens and their
+ * cables, the ring and its tokens, the waveform stage, the XY
+ * media wall and the YZ datum wall, and the scenery (atmosphere
+ * knots, crystal cluster, botanical tree).
+ *
+ * PLATTER_PROTECTIVE_R is the assembly's farthest reach from
+ * the pivot, enumerated from the scene's own numbers (the
+ * platter-well tests recompute each and hold the constant to
+ * them):
+ *   XY back wall top corners (±184, 164, −196) .... 314.9  ← max
+ *   YZ side wall top corners (196, 164, ±184) ..... 314.9
+ *   ring outer edge + app tokens (235, ~14) ....... 235.4
+ *   a citizen at the drag clamp (184) + its
+ *     miniature's extent (≤ ~35) .................. ≤ ~219
+ *   platter drum bottom rim (205, −3.05) .......... 205.0
+ *   botanical tree (centre 174.1 + ~21 grown) ..... ~196
+ *   crystal cluster ............................... ~192
+ *   waveform stage, full dais + fence ............. ~188
+ *   atmosphere knots .............................. ~177
+ *   an inspected citizen (centre held at 36 by the
+ *     facing math, + its scaled extent ≤ ~52) ..... ≤ ~88
+ * Citizens in standing form are inside it. A citizen's OWN
+ * envelope under its own transforms (magnify, its private
+ * turns) is the same rule's next application — its socket in
+ * the platter's top — and is not this sphere's business.
+ */
+export const PLATTER_PROTECTIVE_R = 315;
+/** Extra radius the base keeps beyond the sphere itself. */
+export const PROTECTIVE_CLEARANCE = 2;
+/** The ground plane's height — the one static base's surface. */
+export const GROUND_Y = -3.6;
+
+/**
+ * The radius of the circle a protective sphere of the given
+ * radius cuts in a horizontal plane at planeY, for a pivot at
+ * pivotY: sqrt(R² − d²) where d is the plane's distance from
+ * the pivot. Null when the plane never meets the sphere (at or
+ * beyond its reach, or a degenerate radius) — nothing to cut.
+ */
+export function sphereCutRadius(sphereRadius, pivotY, planeY) {
+  if (!(sphereRadius > 0)) return null;
+  const d = Math.abs(planeY - pivotY);
+  if (d >= sphereRadius) return null;
+  return Math.sqrt(sphereRadius * sphereRadius - d * d);
+}
+
+/**
+ * The well cut into the ground for the platter's sphere: the
+ * sphere, grown by the clearance, cross-sectioned at the
+ * ground plane. Every point of the floor that remains is at
+ * least PLATTER_PROTECTIVE_R + PROTECTIVE_CLEARANCE from the
+ * pivot, and every point of the assembly is within
+ * PLATTER_PROTECTIVE_R of it — rotation preserves distances,
+ * so at ANY yaw/pitch/roll the assembly cannot reach the
+ * floor. ≈316.98.
+ */
+export const PLATTER_WELL_R = sphereCutRadius(
+  PLATTER_PROTECTIVE_R + PROTECTIVE_CLEARANCE, 0, GROUND_Y,
+);
+
 /* ---------------- the dolly (C/V) and the focal zoom (5/6) ---------------- */
 
 export const ZOOM_MIN = 0.5;
