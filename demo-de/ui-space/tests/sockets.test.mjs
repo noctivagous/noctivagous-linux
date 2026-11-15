@@ -197,9 +197,13 @@ function layoutPositions(name) {
   return positions;
 }
 
+/* Re-measured at the slice-15 integration (fifteen citizens):
+   the ring respaced for the mail citizen (one more overlapping
+   pair among the old citizens), and mail's socket reaches
+   under the dais in districts. Theatre's counts are unchanged. */
 const MEASURED = {
-  ring: { overlaps: 9, dais: 9, maxReach: ["book", 173.6] },
-  districts: { overlaps: 7, dais: 13, maxReach: ["book", 178.0] },
+  ring: { overlaps: 10, dais: 9, maxReach: ["book", 173.6] },
+  districts: { overlaps: 7, dais: 14, maxReach: ["book", 178.0] },
   theatre: { overlaps: 6, dais: 13, maxReach: ["horizon3d", 173.3] },
 };
 
@@ -282,8 +286,12 @@ test("the slab stays a closed solid: side and bottom answer rays too", () => {
   assert.ok(side.length > 0, "the side wall is present and outward-facing");
   assert.ok(Math.abs(side[0].point.x - 201.5) < 1.5,
     `the side at mid-height is the frustum's ~201.5, got ${side[0].point.x.toFixed(2)}`);
+  // The probe point must be open slab: in the fifteen-citizen
+  // ring layout the tangle's socket covers (150, 0), so the ray
+  // samples (190, 0) — outside every socket in every layout,
+  // the compass precondition above.
   const bottom = new THREE.Raycaster(
-    new THREE.Vector3(150, -10, 0), new THREE.Vector3(0, 1, 0),
+    new THREE.Vector3(190, -10, 0), new THREE.Vector3(0, 1, 0),
   ).intersectObject(mesh);
   assert.ok(bottom.length > 0, "the bottom face is present and downward-facing");
   assert.ok(Math.abs(bottom[0].point.y - (PLATTER_SLAB.topY - PLATTER_SLAB.height)) < 0.01,

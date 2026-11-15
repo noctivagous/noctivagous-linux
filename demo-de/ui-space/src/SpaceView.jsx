@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { scaleLinear } from "d3-scale";
@@ -35,6 +35,12 @@ import {
   formatBytes,
   ENV_TOTALS,
 } from "./environment.js";
+import {
+  folderCells, folderNodes, mailNodeById, messageById, recentMessages, MAIL_TOTALS,
+} from "./mail.js";
+import {
+  WEBFRAME, WEB_LAYOUT, WEB_PAGE, layoutWebSection, wrapText,
+} from "./webframe.js";
 import { SPACE_LANES } from "./horizon-lanes.js";
 import {
   OBJECTS,
@@ -101,7 +107,7 @@ import {
 /**
  * UI Space — SpaceView: the R3F scene.
  *
- * Fourteen miniature frames stand on the platter as citizens of one
+ * Fifteen miniature frames stand on the platter as citizens of one
  * space. The scene is declared (one component per object, cables as
  * components), and ONE useFrame driver (the Rig) eases every
  * displayed value toward the pure state in space-state.js: object
@@ -144,7 +150,7 @@ export const COMPASS = [
 export const ANCHOR_H = {
   mesa: 16, drum: 24, tray: 10, cube: 36, tangle: 26,
   horizon3d: 16, horizonflat: 28, arch: 32, definition: 18, knot: 26, crystal: 32,
-  tree: 30, book: 28, devices: 16,
+  tree: 30, book: 28, devices: 16, mail: 27,
 };
 
 /* CENTRE_Y — each citizen's rotation pivot, the midpoint of
@@ -168,6 +174,7 @@ export const PLANE_AXIS = {
   mesa: "y", drum: "y", tray: "y", cube: "y", tangle: "y",
   horizon3d: "y", horizonflat: "z", arch: "y", definition: "z",
   knot: "y", crystal: "y", tree: "y", book: "y", devices: "y",
+  mail: "z", // the cabinet's broad face stands in XY, like the flat horizon's panel
 };
 
 const DEG = Math.PI / 180;
@@ -277,6 +284,142 @@ function pageNumberTexture(n) {
   g.fillStyle = "#ffa726"; g.font = "600 46px 'Barlow Condensed', sans-serif";
   g.textAlign = "center"; g.fillText(String(n), 48, 63);
   const tex = new THREE.CanvasTexture(cv);
+  _texCache.set(key, tex);
+  return tex;
+}
+
+/** A letter's face on the post shelf (slice 15): paper, the
+ *  sender's name in the display face, the subject in mono, the
+ *  date small, an amber rule and a stamp — a letter reads as a
+ *  letter before it is opened. */
+function letterTexture(node) {
+  const key = `letter:${node.id}`;
+  if (_texCache.has(key)) return _texCache.get(key);
+  const cv = document.createElement("canvas");
+  cv.width = 256; cv.height = 352;
+  const g = cv.getContext("2d");
+  g.fillStyle = "#e9e4d4"; g.fillRect(0, 0, 256, 352);
+  g.fillStyle = "#ffa726"; g.fillRect(0, 0, 256, 10);
+  g.strokeStyle = "rgba(38,48,58,.35)"; g.strokeRect(10, 18, 236, 324);
+  // The stamp.
+  g.fillStyle = "#2e7d74"; g.fillRect(196, 30, 42, 52);
+  g.fillStyle = "#e9e4d4"; g.font = "600 24px 'Barlow Condensed', sans-serif";
+  g.textAlign = "center"; g.fillText("✉", 217, 66); g.textAlign = "left";
+  g.fillStyle = "#26303a"; g.font = "600 30px 'Barlow Condensed', sans-serif";
+  const fromLines = wrapText(node.from.name, 13).slice(0, 2);
+  fromLines.forEach((ln, i) => g.fillText(ln, 22, 62 + i * 32));
+  g.fillStyle = "#4a5a63"; g.font = "15px 'IBM Plex Mono', monospace";
+  g.fillText(node.date, 22, 62 + fromLines.length * 32 + 6);
+  g.strokeStyle = "rgba(38,48,58,.25)";
+  g.beginPath(); g.moveTo(22, 168); g.lineTo(234, 168); g.stroke();
+  g.fillStyle = "#26303a"; g.font = "600 21px 'IBM Plex Mono', monospace";
+  wrapText(node.subject, 17).slice(0, 4).forEach((ln, i) => g.fillText(ln, 22, 202 + i * 27));
+  g.fillStyle = "#7a6a4a"; g.font = "600 13px 'IBM Plex Mono', monospace";
+  g.fillText(node.folder.toUpperCase(), 22, 330);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.anisotropy = 4;
+  _texCache.set(key, tex);
+  return tex;
+}
+
+/** The opened letter's sheet (slice 15): the full message on
+ *  paper — from, subject, date, then the body whole, wrapped
+ *  at the sheet's measure. */
+function letterSheetTexture(node) {
+  const key = `sheet:${node.id}`;
+  if (_texCache.has(key)) return _texCache.get(key);
+  const cv = document.createElement("canvas");
+  cv.width = 640; cv.height = 832;
+  const g = cv.getContext("2d");
+  g.fillStyle = "#ece7da"; g.fillRect(0, 0, 640, 832);
+  g.fillStyle = "#ffa726"; g.fillRect(0, 0, 640, 12);
+  g.fillStyle = "#26303a"; g.font = "600 34px 'Barlow Condensed', sans-serif";
+  g.fillText(node.from.name, 44, 74);
+  g.fillStyle = "#4a5a63"; g.font = "19px 'IBM Plex Mono', monospace";
+  g.fillText(node.from.address, 44, 106);
+  g.fillText(`${node.date} · ${node.folder}`, 44, 136);
+  g.fillStyle = "#26303a"; g.font = "600 27px 'IBM Plex Mono', monospace";
+  wrapText(node.subject, 34).slice(0, 2).forEach((ln, i) => g.fillText(ln, 44, 186 + i * 34));
+  g.strokeStyle = "rgba(38,48,58,.4)"; g.lineWidth = 2;
+  g.beginPath(); g.moveTo(44, 236); g.lineTo(596, 236); g.stroke();
+  g.fillStyle = "#2b3640"; g.font = "23px 'IBM Plex Mono', monospace";
+  let y = 286;
+  for (const para of node.body) {
+    for (const ln of wrapText(para, 40)) {
+      if (y > 780) break;
+      g.fillText(ln, 44, y);
+      y += 36;
+    }
+    y += 22;
+  }
+  g.fillStyle = "#8a7a52"; g.font = "600 15px 'IBM Plex Mono', monospace";
+  g.fillText("SAMPLE MAILBOX — SAMPLE CORRESPONDENCE", 44, 806);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.anisotropy = 4;
+  _texCache.set(key, tex);
+  return tex;
+}
+
+/** The web sheet's page for one section (slice 15): the
+ *  captured document laid out exactly as webframe.js's
+ *  layoutWebSection lays it out — header, contents rail, the
+ *  section's body with its links as amber spans, the
+ *  attribution at the foot. The painter and the hover zones
+ *  read the one layout, so the thing read is the thing lit. */
+function webSectionTexture(index) {
+  const key = `webpage:${index}`;
+  if (_texCache.has(key)) return _texCache.get(key);
+  const L = layoutWebSection(index);
+  const P = WEB_PAGE;
+  const cv = document.createElement("canvas");
+  cv.width = P.width; cv.height = P.height;
+  const g = cv.getContext("2d");
+  g.fillStyle = "#ece7da"; g.fillRect(0, 0, P.width, P.height);
+  g.fillStyle = "#ffa726"; g.fillRect(0, 0, P.width, 10);
+  // Header: the page's title and its capture line.
+  g.fillStyle = "#26303a"; g.font = `600 ${P.titleSize}px 'Barlow Condensed', sans-serif`;
+  g.fillText(WEBFRAME.title, P.padX, P.headerY + P.titleSize);
+  g.fillStyle = "#4a5a63"; g.font = "19px 'IBM Plex Mono', monospace";
+  g.fillText(`captured ${WEBFRAME.captured} · ${WEBFRAME.source}`, P.padX, P.headerY + P.titleSize + 30);
+  // The contents rail: one band per section, the current one lit.
+  g.font = `600 ${P.tocSize}px 'Barlow Condensed', sans-serif`;
+  for (const e of L.toc) {
+    if (e.current) {
+      g.fillStyle = "rgba(255,167,38,.28)";
+      g.fillRect(P.tocX - 10, e.y0 - 6, P.tocW + 20, e.y1 - e.y0 + 12);
+    }
+    g.fillStyle = e.current ? "#8a5a00" : "#4a5a63";
+    const lines = wrapText(e.heading, 15).slice(0, 2);
+    lines.forEach((ln, i) => g.fillText(ln, P.tocX, e.y0 + 28 + i * 26));
+    g.font = "15px 'IBM Plex Mono', monospace";
+    g.fillStyle = "#7a6a4a";
+    g.fillText(`${e.words} words`, P.tocX, e.y1 - 8);
+    g.font = `600 ${P.tocSize}px 'Barlow Condensed', sans-serif`;
+  }
+  g.strokeStyle = "rgba(38,48,58,.25)";
+  g.beginPath(); g.moveTo(P.tocX + P.tocW + 22, L.toc[0] ? L.toc[0].y0 - 6 : 120);
+  g.lineTo(P.tocX + P.tocW + 22, 880); g.stroke();
+  // The body: heading, paragraphs, links.
+  const b = L.body;
+  g.fillStyle = "#1d3a36"; g.font = `600 ${P.headingSize}px 'Barlow Condensed', sans-serif`;
+  g.fillText(b.heading, P.bodyX, b.y0 + P.headingSize);
+  g.fillStyle = "#2b3640"; g.font = `${P.bodySize}px 'IBM Plex Mono', monospace`;
+  for (const para of b.paras) {
+    para.lines.forEach((ln, i) => g.fillText(ln, P.bodyX, para.y0 + P.bodySize + i * P.lineHeight));
+  }
+  g.font = `600 ${P.linkSize}px 'IBM Plex Mono', monospace`;
+  for (const link of b.links) {
+    g.fillStyle = "rgba(255,167,38,.22)";
+    g.fillRect(link.x0, link.y0, link.x1 - link.x0, link.y1 - link.y0);
+    g.fillStyle = "#8a5a00";
+    g.fillText(link.text, link.x0 + P.linkPadX, link.y0 + P.linkSize + 4);
+    g.fillRect(link.x0 + P.linkPadX, link.y1 - 3, (link.x1 - link.x0) - P.linkPadX * 2, 2);
+  }
+  // The foot: the attribution, carried in the capture.
+  g.fillStyle = "#7a6a4a"; g.font = "16px 'IBM Plex Mono', monospace";
+  wrapText(WEBFRAME.attribution, 88).slice(0, 3).forEach((ln, i) => g.fillText(ln, P.padX, 946 + i * 24));
+  const tex = new THREE.CanvasTexture(cv);
+  tex.anisotropy = 4;
   _texCache.set(key, tex);
   return tex;
 }
@@ -2823,6 +2966,247 @@ function MiniDevices({ lib, matFor, ctx }) {
   );
 }
 
+/* ---------- slice 15: the mail citizen and its post shelf ---------- */
+
+/**
+ * THE POST SHELF's place on the XY wall: the RIGHT side of the
+ * wall, beside the media library's cabinet (the cabinet spans
+ * x −88..88 and its opened cards reach x ±74; the shelf stands
+ * clear of both at x 97..177). Two boards, six letters each;
+ * a letter card stands on its board, sender and subject on its
+ * face. Exported so the shelf's cards and the mail citizen's
+ * anchors share the one placement.
+ */
+export const POST_SHELF = { cx: 137, z: -186, boards: [74, 40] };
+
+export function postSlot(i) {
+  const row = i < 6 ? 0 : 1;
+  const col = i % 6;
+  return {
+    x: POST_SHELF.cx + (col - 2.5) * 13.6,
+    y: POST_SHELF.boards[row] + 8.6,
+    z: POST_SHELF.z,
+  };
+}
+
+/**
+ * THE MAIL CITIZEN (slice 15): the mailbox as a PIGEONHOLE
+ * SORTING CABINET. The compartments are the folders, laid out
+ * by mail.js's folderCells with areas proportional to their
+ * message counts — the Archive's broad strip across the top,
+ * Inbox, Projects and Sent sharing the row beneath, Projects'
+ * own cell split between its subfolders and framed as one —
+ * each compartment a recess with the folder's colour, and its
+ * UNREAD count riding as an amber strip whose length is the
+ * count. An envelope slot and a small stack of letters sit on
+ * the cabinet's top.
+ *
+ * Folders are SUB-NODES (subnodes.js) on owned materials, the
+ * devices treatment; the recent MESSAGES are sub-nodes too,
+ * but they stand on the POST SHELF on the wall (PostShelf,
+ * below), outside this plot — so their anchors are republished
+ * each frame from the shelf's world positions into this
+ * group's local frame, exactly as the devices' host tokens
+ * are (token world → group local), and the Rig's sub-node pass
+ * turns them back into world for their cards.
+ */
+function MiniMail({ lib, matFor, ctx }) {
+  const wrapRef = useRef(null);
+  const anchors = useMemo(() => new Map(), []);
+  const cells = useMemo(() => folderCells(32, 17), []);
+  const folders = useMemo(() => folderNodes(), []);
+  const messages = useMemo(() => recentMessages(), []);
+  const scratch = useMemo(() => ({ v: new THREE.Vector3() }), []);
+
+  // Cell geometry per folder node: a leaf folder owns its cell;
+  // a parent (Projects) owns the union of its children's cells.
+  const cellOf = useMemo(() => {
+    const map = new Map();
+    for (const c of cells) map.set(c.id, c);
+    for (const f of folders) {
+      if (map.has(f.id)) continue;
+      const kids = cells.filter((c) => c.id.startsWith(`${f.id}/`));
+      if (!kids.length) continue;
+      const x0 = Math.min(...kids.map((c) => c.x));
+      const y0 = Math.min(...kids.map((c) => c.y));
+      const x1 = Math.max(...kids.map((c) => c.x + c.w));
+      const y1 = Math.max(...kids.map((c) => c.y + c.h));
+      map.set(f.id, { id: f.id, x: x0, y: y0, w: x1 - x0, h: y1 - y0, union: true });
+    }
+    return map;
+  }, [cells, folders]);
+
+  const owned = useMemo(() => {
+    const map = new Map();
+    const mats = {};
+    const own = (id, key, color, opts) => {
+      const mat = matFor(color, opts);
+      if (!map.has(id)) map.set(id, []);
+      map.get(id).push({ mat, base: new THREE.Color(color) });
+      mats[key] = mat;
+      return mat;
+    };
+    for (const f of folders) {
+      own(f.id, `cell-${f.id}`, f.color, { rough: 0.55 });
+    }
+    return { map, mats };
+  }, [folders, matFor]);
+
+  // The cabinet's shared context materials, made once (the
+  // per-cell panels above are the owned ones).
+  const sharedMats = useMemo(() => ({
+    plinth: matFor(0x27313a, { rough: 0.85 }),
+    body: matFor(0x39434b, { rough: 0.7 }),
+    recess: matFor(0x141b1f, { rough: 0.9 }),
+    board: matFor(0x2b3941, { rough: 0.65 }),
+    slot: matFor(0x141b1f, { rough: 0.8 }),
+    amber: matFor(0xffa726, { rough: 0.4 }),
+    paper: matFor(0xe8e4d8, { rough: 0.85 }),
+  }), [matFor]);
+
+  useEffect(() => {
+    const frame = ctx.frame;
+    frame.subGroupRefs.set("mail", wrapRef.current);
+    for (const f of folders) {
+      const c = cellOf.get(f.id);
+      if (!c) continue;
+      anchors.set(f.id, {
+        centre: new THREE.Vector3(-16 + c.x + c.w / 2, 3.4 + c.y + c.h / 2, 3.4),
+        radius: Math.max(2.2, Math.min(c.w, c.h) / 2),
+      });
+    }
+    for (const m of messages) {
+      anchors.set(m.id, { centre: new THREE.Vector3(), radius: 4 });
+    }
+    frame.subLocal.set("mail", anchors);
+    return () => {
+      frame.subGroupRefs.delete("mail");
+      if (frame.subLocal.get("mail") === anchors) frame.subLocal.delete("mail");
+    };
+  }, [ctx, anchors, folders, cellOf, messages]);
+
+  const lastHi = useRef(undefined);
+  useFrame(() => {
+    const st = ctx.stateRef.current;
+    const frame = ctx.frame;
+    // The letters' anchors, republished every frame: the post
+    // shelf stands on the wall, outside this plot — shelf world
+    // → this group's local frame (the devices' host precedent).
+    const wrap = wrapRef.current;
+    if (wrap && frame.worldGroup) {
+      wrap.updateWorldMatrix(true, false);
+      messages.forEach((m, i) => {
+        const a = anchors.get(m.id);
+        if (!a) return;
+        const s = postSlot(i);
+        const world = frame.worldGroup.localToWorld(scratch.v.set(s.x, s.y, s.z).clone());
+        a.centre.copy(wrap.worldToLocal(world));
+        a.radius = 4;
+      });
+    }
+    const hov = st.currentId === "mail" && st.subHover && st.subHover.objectId === "mail"
+      ? st.subHover.nodeId : null;
+    const foc = st.partFocus && st.partFocus.objectId === "mail" ? st.partFocus.partId : null;
+    const hi = foc || hov || null;
+    if (hi !== lastHi.current) {
+      lastHi.current = hi;
+      for (const [id, parts] of owned.map) {
+        const f = !hi ? 1 : id === hi ? 1.9 : 0.55;
+        for (const part of parts) part.mat.color.copy(part.base).multiplyScalar(f);
+      }
+    }
+  });
+
+  const st = () => ctx.stateRef.current;
+  const report = (id) => {
+    if (st().currentId !== "mail" || !st().onSubHover) return;
+    st().onSubHover("mail", id);
+  };
+  const clear = () => { if (st().onSubHover) st().onSubHover("mail", null); };
+  const hoverProps = (id) => ({
+    onPointerOver: () => report(id),
+    onPointerMove: () => report(id),
+    onPointerOut: clear,
+  });
+  const projectsCell = cellOf.get("mail/projects");
+
+  return (
+    <group ref={wrapRef}>
+      {/* The plinth and the cabinet body: context, matte. */}
+      <mesh position={[0, 0.8, 0]}>
+        <boxGeometry args={[38, 1.6, 13]} />
+        <primitive object={sharedMats.plinth} attach="material" />
+      </mesh>
+      <mesh position={[0, 12.6, 0]}>
+        <boxGeometry args={[36, 22, 5]} />
+        <primitive object={sharedMats.body} attach="material" />
+      </mesh>
+      {/* The compartments: a dark recess and the folder's
+          coloured panel inset in it, per cell. */}
+      {cells.map((c) => {
+        const node = mailNodeById(c.id);
+        if (!node) return null;
+        const cx = -16 + c.x + c.w / 2;
+        const cy = 3.4 + c.y + c.h / 2;
+        return (
+          <group key={c.id}>
+            <mesh position={[cx, cy, 2.3]} {...hoverProps(c.id)}>
+              <boxGeometry args={[c.w, c.h, 1]} />
+              <primitive object={sharedMats.recess} attach="material" />
+            </mesh>
+            <mesh position={[cx, cy, 2.9]} material={owned.mats[`cell-${c.id}`]} {...hoverProps(c.id)}>
+              <boxGeometry args={[Math.max(0.6, c.w - 1.2), Math.max(0.6, c.h - 1.2), 0.5]} />
+            </mesh>
+            {node.unread ? (
+              <mesh position={[cx - (c.w - 1.2) / 2 + Math.min(c.w - 2.4, 0.9 + node.unread * 0.55) / 2 + 0.6, cy + (c.h - 1.2) / 2 - 0.95, 3.2]}
+                {...hoverProps(c.id)}>
+                <boxGeometry args={[Math.min(c.w - 2.4, 0.9 + node.unread * 0.55), 0.8, 0.25]} />
+                <primitive object={sharedMats.amber} attach="material" />
+              </mesh>
+            ) : null}
+          </group>
+        );
+      })}
+      {/* Projects' frame: its subfolders' cells read as one
+          compartment, outlined in the parent's colour. */}
+      {projectsCell ? (
+        <group>
+          {[
+            { p: [-16 + projectsCell.x + projectsCell.w / 2, 3.4 + projectsCell.y + projectsCell.h - 0.3, 3.05], s: [projectsCell.w + 0.6, 0.6, 0.3] },
+            { p: [-16 + projectsCell.x + projectsCell.w / 2, 3.4 + projectsCell.y + 0.3, 3.05], s: [projectsCell.w + 0.6, 0.6, 0.3] },
+            { p: [-16 + projectsCell.x - 0.3, 3.4 + projectsCell.y + projectsCell.h / 2, 3.05], s: [0.6, projectsCell.h + 0.6, 0.3] },
+            { p: [-16 + projectsCell.x + projectsCell.w + 0.3, 3.4 + projectsCell.y + projectsCell.h / 2, 3.05], s: [0.6, projectsCell.h + 0.6, 0.3] },
+          ].map((b, i) => (
+            <mesh key={i} position={b.p} material={owned.mats["cell-mail/projects"]} {...hoverProps("mail/projects")}>
+              <boxGeometry args={b.s} />
+            </mesh>
+          ))}
+        </group>
+      ) : null}
+      {/* The top board: an envelope slot, and a small stack of
+          letters waiting to be sorted. */}
+      <mesh position={[0, 24.15, 0]}>
+        <boxGeometry args={[37.5, 1.1, 7]} />
+        <primitive object={sharedMats.board} attach="material" />
+      </mesh>
+      <mesh position={[7, 24.9, 0.6]} rotation-x={0.22}>
+        <boxGeometry args={[13, 1.5, 0.7]} />
+        <primitive object={sharedMats.slot} attach="material" />
+      </mesh>
+      <mesh position={[7, 25.35, 1.35]}>
+        <boxGeometry args={[11.6, 0.22, 0.3]} />
+        <primitive object={sharedMats.amber} attach="material" />
+      </mesh>
+      {[0, 1, 2].map((i) => (
+        <mesh key={i} position={[-9.5, 24.85 + i * 0.36, 0]} rotation-y={i * 0.14 - 0.14}>
+          <boxGeometry args={[9.5, 0.32, 6.5]} />
+          <primitive object={sharedMats.paper} attach="material" />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
 /** The host tokens' colours, in connection order. */
 const NET_TOKEN_COLORS = [0x5b8fd6, 0x2e7d74, 0x8e6cc8, 0xe0a458, 0x7fb069, 0xd66ba0, 0x6baed6, 0xc7b458];
 
@@ -2939,7 +3323,7 @@ const MINIATURES = {
   mesa: MiniMesa, drum: MiniDrum, tray: MiniTray, cube: MiniCube,
   tangle: MiniTangle, horizon3d: MiniSkyline, horizonflat: MiniHorizonPanel,
   arch: MiniArch, definition: MiniDefinition, knot: MiniKnot, crystal: MiniCrystal,
-  tree: MiniTree, book: MiniBook, devices: MiniDevices,
+  tree: MiniTree, book: MiniBook, devices: MiniDevices, mail: MiniMail,
 };
 
 /* ---------- one citizen of the space ---------- */
@@ -3209,6 +3593,110 @@ function MediaCard({ item, index, ctx }) {
   );
 }
 
+/* ---------- the post shelf (slice 15) ---------- */
+
+/**
+ * ONE LETTER on the post shelf: a standing card, sender and
+ * subject on its face (letterTexture). The letters are the
+ * MAIL CITIZEN's sub-nodes (mail/msg/<id>) standing outside
+ * its plot — hover reports the sub-hover (the App gates on
+ * Mail being current), the card in the space stands at the
+ * anchor MiniMail republishes, and a click activates the
+ * letter through the App (first click takes the citizen, the
+ * next opens it — the shelf follows the citizens' discipline).
+ * Its glow is its own: hovered 0.30, the OPEN letter 0.55,
+ * the citizens' two tiers (the NetLink precedent — a thing
+ * outside any citizen's material list drives its own).
+ */
+function PostCard({ node, index, ctx }) {
+  const slot = postSlot(index);
+  const mats = useMemo(() => {
+    const tex = letterTexture(node);
+    const frame = stdMat(0x2b3941, { rough: 0.6 });
+    const face = new THREE.MeshStandardMaterial({
+      map: tex, roughness: 0.75, metalness: 0,
+      emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0,
+    });
+    face.userData.glowScale = 0.5;
+    return { frame, face };
+  }, [node]);
+  useEffect(() => () => { mats.frame.dispose(); mats.face.dispose(); }, [mats]);
+  useFrame((_, dtRaw) => {
+    const dt = Math.min(0.05, dtRaw || 0.016);
+    const st = ctx.stateRef.current;
+    const hov = st.currentId === "mail" && st.subHover
+      && st.subHover.objectId === "mail" && st.subHover.nodeId === node.id;
+    const open = st.openMessage === node.id;
+    const tier = open ? 0.55 : hov ? 0.3 : 0;
+    mats.face.emissiveIntensity = damp(mats.face.emissiveIntensity, tier, 10, dt);
+    mats.frame.emissiveIntensity = damp(mats.frame.emissiveIntensity, tier * 0.8, 10, dt);
+  });
+  const st = () => ctx.stateRef.current;
+  const report = () => {
+    if (st().currentId !== "mail" || !st().onSubHover) return;
+    st().onTouch();
+    st().onSubHover("mail", node.id);
+  };
+  const clear = () => { if (st().onSubHover) st().onSubHover("mail", null); };
+  return (
+    <group position={[slot.x, slot.y, slot.z]} rotation-x={-0.07}>
+      <mesh material={mats.frame}
+        onPointerOver={report} onPointerMove={report} onPointerOut={clear}
+        onClick={(e) => {
+          if (e.delta > 5) return;
+          e.stopPropagation();
+          st().onTouch();
+          if (st().onMessageActivate) st().onMessageActivate(node.id);
+        }}>
+        <boxGeometry args={[12.4, 16.4, 0.7]} />
+      </mesh>
+      <mesh position={[0, 0, 0.42]} material={mats.face}
+        onPointerOver={report} onPointerMove={report} onPointerOut={clear}>
+        <planeGeometry args={[11.6, 15.6]} />
+      </mesh>
+    </group>
+  );
+}
+
+/**
+ * THE POST SHELF: two boards on the XY wall's right side,
+ * beside the media library, carrying the mailbox's recent
+ * letters as standing cards (PostCard). It lives in the
+ * INSTRUMENTS stratum with the wall and the library; the
+ * letters themselves belong to the mail citizen (their
+ * anchors are republished by MiniMail), the way the network's
+ * host tokens belong to Devices.
+ */
+function PostShelf({ ctx }) {
+  const messages = useMemo(() => recentMessages(), []);
+  const mats = useMemo(() => ({
+    board: stdMat(0x27313a, { rough: 0.8 }),
+    rail: stdMat(0x39434b, { rough: 0.6 }),
+  }), []);
+  useEffect(() => () => { for (const m of Object.values(mats)) m.dispose(); }, [mats]);
+  return (
+    <group>
+      {POST_SHELF.boards.map((y) => (
+        <group key={y}>
+          <mesh position={[POST_SHELF.cx, y, POST_SHELF.z]} material={mats.board}>
+            <boxGeometry args={[86, 1.2, 11]} />
+          </mesh>
+          <mesh position={[POST_SHELF.cx, y + 2.4, POST_SHELF.z - 5.2]} material={mats.rail}>
+            <boxGeometry args={[86, 3.6, 0.8]} />
+          </mesh>
+        </group>
+      ))}
+      <mesh position={[POST_SHELF.cx, 96, POST_SHELF.z - 4]}>
+        <planeGeometry args={[64, 7]} />
+        <meshBasicMaterial map={plateTexture("POST SHELF")} transparent />
+      </mesh>
+      {messages.map((m, i) => (
+        <PostCard key={m.id} node={m} index={i} ctx={ctx} />
+      ))}
+    </group>
+  );
+}
+
 /* ---------- the clipboard tray (Alt+0) ---------- */
 
 function ClipboardTray({ ctx, held }) {
@@ -3402,6 +3890,23 @@ export const APP_TOKEN_UI = [
   { id: "tok-loop", caption: (a) => (a.loop ? "LOOP ON" : "LOOP OFF") },
 ];
 
+/** Slice 15: the WEB app's ring tokens while it holds the
+ *  stage — the reading position's furniture, on the same front
+ *  arc the waveform's tokens use: back a section, the top of
+ *  the page, forward a section. */
+export const WEB_TOKEN_SLOTS = [
+  { id: "tok-w-prev", deg: 135 },
+  { id: "tok-w-top", deg: 90 },
+  { id: "tok-w-next", deg: 45 },
+];
+
+/** The web tokens' captions: they speak the reading position. */
+export const WEB_TOKEN_UI = [
+  { id: "tok-w-prev", caption: (w) => (w.section > 0 ? `◀ SECTION ${w.section}` : "— TOP —") },
+  { id: "tok-w-top", caption: () => "TOP OF PAGE" },
+  { id: "tok-w-next", caption: (w) => (w.section < WEB_LAYOUT.sections.length - 1 ? `SECTION ${w.section + 2} ▶` : "— END —") },
+];
+
 const TRACK_HUES = { pulse: 0x2e7d74, voice: 0x8e6cc8, rain: 0x5b8fd6 };
 
 function stdMat(color, opts = {}) {
@@ -3445,14 +3950,17 @@ function writeMiniFence(mesh, track, buckets, width, maxH, baseY) {
  * while its item is hovered or current, while an app is open
  * (either mode — an app's controls must hold still), and for
  * three seconds after any interaction (the turntable-rest
- * lastTouch pattern). At rest at home it carries one item: the
- * WAVEFORM app's token, a slab with a miniature peak fence.
- * While an app holds the stage the ring belongs to the app: the
- * home token withdraws, the ring eases to its canonical angle,
- * and the app's furniture — transport, three track portals, the
- * zoom and loop state tokens — stands on the arc instead, each
- * hovered and clicked like a citizen, each wearing a caption
- * that speaks its state.
+ * lastTouch pattern). At rest at home it carries two items: the
+ * WAVEFORM app's token, a slab with a miniature peak fence, at
+ * the front; and (slice 15) the WEB app's token — a small page
+ * standing on its slab — at the front-left slot (135°), clear
+ * of the network's back arc. While an app holds the stage the
+ * ring belongs to the app: the home tokens withdraw, the ring
+ * eases to its canonical angle, and the app's furniture —
+ * transport, three track portals, the zoom and loop state
+ * tokens; or the web's three reading tokens — stands on the
+ * arc instead, each hovered and clicked like a citizen, each
+ * wearing a caption that speaks its state.
  */
 function PlatterRing({ ctx }) {
   const group = useRef(null);
@@ -3465,6 +3973,13 @@ function PlatterRing({ ctx }) {
     slab: stdMat(0x2b3941, { rough: 0.6 }),
     homeSlab: stdMat(0x39434b, { rough: 0.55 }),
     homeBars: stdMat(0xffffff, { rough: 0.5 }),
+    webSlab: stdMat(0x39434b, { rough: 0.55 }),
+    webPage: stdMat(0xece7da, { rough: 0.7 }),
+    webTok: {
+      "tok-w-prev": stdMat(0x7fd4c1, { rough: 0.4 }),
+      "tok-w-top": stdMat(0xffa726, { rough: 0.4 }),
+      "tok-w-next": stdMat(0x7fd4c1, { rough: 0.4 }),
+    },
     playButton: stdMat(0xffa726, { rough: 0.35 }),
     glyph: new THREE.MeshBasicMaterial({ color: 0xffc46b, side: THREE.DoubleSide }),
     loop: stdMat(0x7fd4c1, { rough: 0.4 }),
@@ -3495,6 +4010,7 @@ function PlatterRing({ ctx }) {
     }
     for (const m of Object.values(mats.track)) m.dispose();
     for (const m of Object.values(mats.trackBars)) m.dispose();
+    for (const m of Object.values(mats.webTok)) m.dispose();
     triGeo.dispose();
   }, [mats, triGeo]);
 
@@ -3517,6 +4033,7 @@ function PlatterRing({ ctx }) {
     } else {
       const still = st.turntableOn === false
         || st.hoverId === "audio" || st.currentId === "audio"
+        || st.hoverId === "web" || st.currentId === "web"
         || performance.now() - (st.shared.lastTouch || 0) <= 3000;
       if (!still) frame.ringAngle += dt * 1.5 * DEG;
     }
@@ -3538,7 +4055,20 @@ function PlatterRing({ ctx }) {
     });
     mats.homeSlab.emissiveIntensity = damp(mats.homeSlab.emissiveIntensity, homeT, 10, dt);
     mats.homeBars.emissiveIntensity = damp(mats.homeBars.emissiveIntensity, homeT * 0.7, 10, dt);
-    if (appOpen && st.audio) {
+    const webT = appOpen ? 0 : glowLevel({
+      current: st.currentId === "web",
+      hovered: st.hoverId === "web",
+    });
+    mats.webSlab.emissiveIntensity = damp(mats.webSlab.emissiveIntensity, webT, 10, dt);
+    mats.webPage.emissiveIntensity = damp(mats.webPage.emissiveIntensity, webT * 0.55, 10, dt);
+    if (appOpen && st.openApp.appId === "web") {
+      const addressed = (id) => (st.tokenHoverId === id || st.appFocusId === id) ? 0.55 : 0;
+      for (const id of Object.keys(mats.webTok)) {
+        mats.webTok[id].emissiveIntensity = damp(
+          mats.webTok[id].emissiveIntensity, addressed(id), 10, dt);
+      }
+    }
+    if (appOpen && st.openApp.appId === "audio" && st.audio) {
       // The transport glyph flips with the state.
       if (playTri.current) playTri.current.visible = !st.audio.playing;
       if (playBars.current) playBars.current.visible = Boolean(st.audio.playing);
@@ -3560,6 +4090,7 @@ function PlatterRing({ ctx }) {
   const st = () => ctx.stateRef.current;
   const frame = ctx.frame;
   const appOpen = Boolean(ctx.stateRef.current.openApp && ctx.stateRef.current.openApp.appId);
+  const webOpen = appOpen && ctx.stateRef.current.openApp.appId === "web";
   const home = ringItemPosition(0, 1, 0);
   const slotPos = (deg) => {
     const a = deg * DEG;
@@ -3615,7 +4146,42 @@ function PlatterRing({ ctx }) {
           </instancedMesh>
         </group>
       ) : null}
-      {appOpen ? TOKEN_SLOTS.map((slot) => {
+      {!appOpen ? (
+        <group
+          position={slotPos(135)}
+          rotation-y={slotRot(135)}
+          ref={(el) => {
+            if (el) frame.ringItemRefs.set("web", el);
+            else frame.ringItemRefs.delete("web");
+          }}
+          onPointerOver={(e) => { e.stopPropagation(); st().onTouch(); st().onHover("web"); }}
+          onPointerOut={() => st().onHover(null)}
+          onClick={(e) => {
+            if (e.delta > 5) return;
+            e.stopPropagation();
+            st().onTouch();
+            st().onObjectClick("web");
+          }}
+        >
+          <mesh position={[0, 2.5, 0]} material={mats.webSlab}>
+            <boxGeometry args={[30, 2.6, 20]} />
+          </mesh>
+          {/* A small page standing on the slab: the captured
+              document, in miniature — a pale sheet with ruled
+              lines, leaning a little on its stand. */}
+          <group position={[0, 3.8, 0]} rotation-x={-0.16}>
+            <mesh position={[0, 5, 0]} material={mats.webPage}>
+              <boxGeometry args={[15, 10.5, 0.5]} />
+            </mesh>
+            {[-2.6, 0, 2.6].map((dy) => (
+              <mesh key={dy} position={[0, 5 + dy, 0.3]} material={mats.webSlab}>
+                <boxGeometry args={[11.5, 0.7, 0.2]} />
+              </mesh>
+            ))}
+          </group>
+        </group>
+      ) : null}
+      {appOpen && !webOpen ? TOKEN_SLOTS.map((slot) => {
         const tid = slot.id.replace("tok-", "");
         const isTrack = Boolean(TRACK_HUES[tid]);
         return (
@@ -3685,6 +4251,44 @@ function PlatterRing({ ctx }) {
           </group>
         );
       }) : null}
+      {webOpen ? WEB_TOKEN_SLOTS.map((slot) => (
+        <group
+          key={slot.id}
+          position={slotPos(slot.deg)}
+          rotation-y={slotRot(slot.deg)}
+          ref={(el) => {
+            if (el) frame.tokenRefs.set(slot.id, el);
+            else frame.tokenRefs.delete(slot.id);
+          }}
+          onPointerOver={(e) => { e.stopPropagation(); st().onTouch(); st().onTokenHover(slot.id); }}
+          onPointerOut={() => st().onTokenHover(null)}
+          onClick={(e) => {
+            if (e.delta > 5) return;
+            e.stopPropagation();
+            st().onTouch();
+            if (st().onWebTokenActivate) st().onWebTokenActivate(slot.id);
+          }}
+        >
+          <mesh position={[0, 2.5, 0]} material={mats.slab}>
+            <boxGeometry args={[30, 2.6, 20]} />
+          </mesh>
+          {slot.id === "tok-w-top" ? (
+            <mesh position={[0, 4.6, 0]} material={mats.webTok[slot.id]}>
+              <coneGeometry args={[3.6, 2.6, 4]} />
+            </mesh>
+          ) : null}
+          {slot.id !== "tok-w-top" ? (
+            <group position={[0, 4.3, 0]} rotation-y={slot.id === "tok-w-prev" ? 0 : Math.PI}>
+              <mesh position={[-1.8, 0, -1.8]} rotation-y={Math.PI / 4} material={mats.webTok[slot.id]}>
+                <boxGeometry args={[1.3, 1, 6.4]} />
+              </mesh>
+              <mesh position={[-1.8, 0, 1.8]} rotation-y={-Math.PI / 4} material={mats.webTok[slot.id]}>
+                <boxGeometry args={[1.3, 1, 6.4]} />
+              </mesh>
+            </group>
+          ) : null}
+        </group>
+      )) : null}
     </group>
   );
 }
@@ -3895,6 +4499,261 @@ function WaveformStage({ ctx }) {
   );
 }
 
+/* ---------- slice 15: the opened letter, and the web sheet ---------- */
+
+/**
+ * THE OPENED LETTER (slice 15): a message stands on the centre
+ * stage to be read — a low plinth at the platter's centre and
+ * a flat paper sheet standing on it, turned to the centre
+ * seat, carrying the message whole (letterSheetTexture: from,
+ * subject, date, the full body). It is not an app: it is a
+ * document opening at the appClose tier of the back chain (the
+ * docClose level, space-state.js), and while it stands, the
+ * message scope owns the keys in the App, as an app's scope
+ * owns its. The sheet's face is lit steadily — a document is
+ * for reading.
+ */
+function MessageStage({ ctx, openMessage }) {
+  const group = useRef(null);
+  const node = openMessage ? messageById(openMessage) : null;
+  const mats = useMemo(() => ({
+    plinth: stdMat(0x1d262c, { rough: 0.85 }),
+    rim: new THREE.MeshBasicMaterial({ color: 0xffa726, transparent: true, opacity: 0.5 }),
+    edge: stdMat(0x8a8272, { rough: 0.7 }),
+  }), []);
+  const face = useMemo(() => {
+    if (!node) return null;
+    const tex = letterSheetTexture(node);
+    const m = new THREE.MeshStandardMaterial({
+      map: tex, roughness: 0.8, metalness: 0,
+      emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.38,
+    });
+    return m;
+  }, [node]);
+  useEffect(() => () => { for (const m of Object.values(mats)) m.dispose(); }, [mats]);
+  useEffect(() => () => { if (face) face.dispose(); }, [face]);
+  useFrame(() => {
+    if (group.current) group.current.visible = Boolean(ctx.stateRef.current.openMessage);
+  });
+  if (!node) return null;
+  return (
+    <group ref={group} visible={false}>
+      <mesh position={[0, 1.5, 0]} material={mats.plinth}>
+        <cylinderGeometry args={[44, 47, 3, 56]} />
+      </mesh>
+      <mesh position={[0, 3.1, 0]} rotation-x={Math.PI / 2} material={mats.rim}>
+        <torusGeometry args={[44, 0.6, 8, 56]} />
+      </mesh>
+      <group position={[0, 3, 0]} rotation-y={Math.PI / 4}>
+        <mesh position={[0, 45, 0]} material={mats.edge}>
+          <boxGeometry args={[70, 90, 1.4]} />
+        </mesh>
+        <mesh position={[0, 45, 0.85]} material={face}>
+          <planeGeometry args={[66, 86]} />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
+/** The web sheet's measure: 118 world units across the layout's
+ *  1024 px (webframe.js's WEB_PAGE) — px → sheet-local units,
+ *  origin at the sheet's centre, y up. */
+const WEB_K = 118 / WEB_PAGE.width;
+const webX = (px) => (px - WEB_PAGE.width / 2) * WEB_K;
+const webY = (py) => (WEB_PAGE.height / 2 - py) * WEB_K;
+
+/**
+ * THE WEB SHEET (slice 15): the captured page stood in the
+ * space — the Detach proof. The sheet stands on the same dais
+ * discipline as the waveform's stage (radius 104 at centre,
+ * easing to the whole platter in full mode) and carries the
+ * page as a DOCUMENT, not a screenshot: webframe.js lays the
+ * capture out (title, contents rail, one section's body, its
+ * links as spans, the attribution) and this stage paints
+ * exactly that layout (webSectionTexture) and zones exactly
+ * that layout — hovering a contents entry or the body lights
+ * its band and names it on the overlay chip; hovering a link
+ * span names the link; F (or a click) follows. The reading
+ * FRAME stands around the section at the reading position.
+ * One section stands on the sheet at a time — a document is
+ * read a spread at a time, as the book taught the space.
+ */
+function WebStage({ ctx }) {
+  const group = useRef(null);
+  const hiTocRef = useRef(null);
+  const hiBodyRef = useRef(null);
+  const hiSig = useRef("");
+  const scaleT = useRef(1);
+  const [section, setSection] = useState(0);
+  const seenSection = useRef(-1);
+  const mats = useMemo(() => ({
+    dais: stdMat(0x1d262c, { rough: 0.85 }),
+    rim: new THREE.MeshBasicMaterial({ color: 0xffa726, transparent: true, opacity: 0.5 }),
+    bed: stdMat(0x141b1f, { rough: 0.9 }),
+    edge: stdMat(0x8a8272, { rough: 0.7 }),
+    frame: new THREE.MeshBasicMaterial({ color: 0xffa726, transparent: true, opacity: 0.85 }),
+    hi: new THREE.MeshBasicMaterial({
+      color: 0xffa726, transparent: true, opacity: 0.16,
+      depthWrite: false, side: THREE.DoubleSide,
+    }),
+    zone: new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+  }), []);
+  const face = useMemo(() => {
+    const tex = webSectionTexture(section);
+    return new THREE.MeshStandardMaterial({
+      map: tex, roughness: 0.8, metalness: 0,
+      emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.38,
+    });
+  }, [section]);
+  useEffect(() => () => { for (const m of Object.values(mats)) m.dispose(); }, [mats]);
+  useEffect(() => () => { face.dispose(); }, [face]);
+
+  useFrame((_, dtRaw) => {
+    const dt = Math.min(0.05, dtRaw || 0.016);
+    const st = ctx.stateRef.current;
+    const g = group.current;
+    if (!g) return;
+    const open = Boolean(st.openApp && st.openApp.appId === "web");
+    g.visible = open;
+    if (!open) return;
+    const target = st.openApp.mode === "full" ? 184 / STAGE_R : 1;
+    scaleT.current = damp(scaleT.current, target, 5, dt);
+    g.scale.set(scaleT.current, 1, scaleT.current);
+    const s = st.web ? st.web.section : 0;
+    if (s !== seenSection.current) {
+      seenSection.current = s;
+      setSection(s);
+    }
+    // The hover highlight, driven per frame (the hover lives in
+    // the state snapshot, not in React state): the hovered
+    // section's contents band lights, and when the hovered
+    // section is the one being read, its body lights with it.
+    const hov = st.webSectionHover;
+    const sig = `${hov}|${seenSection.current}`;
+    if (sig !== hiSig.current) {
+      hiSig.current = sig;
+      const lay = layoutWebSection(Math.max(0, seenSection.current));
+      const tocMesh = hiTocRef.current;
+      const bodyMesh = hiBodyRef.current;
+      const entry = hov != null ? lay.toc[hov] : null;
+      if (tocMesh) {
+        tocMesh.visible = Boolean(entry);
+        if (entry) {
+          tocMesh.position.set(
+            webX(WEB_PAGE.tocX + WEB_PAGE.tocW / 2),
+            59 + webY((entry.y0 + entry.y1) / 2), 1.1);
+          tocMesh.scale.set(
+            (WEB_PAGE.tocW + 20) * WEB_K, (entry.y1 - entry.y0 + 12) * WEB_K, 1);
+        }
+      }
+      if (bodyMesh) {
+        const lit = hov != null && hov === seenSection.current;
+        bodyMesh.visible = lit;
+        if (lit) {
+          bodyMesh.position.set(
+            webX(WEB_PAGE.bodyX + WEB_PAGE.bodyW / 2),
+            59 + webY((lay.body.y0 + lay.body.y1) / 2), 1.1);
+          bodyMesh.scale.set(
+            WEB_PAGE.bodyW * WEB_K, Math.max(8, (lay.body.y1 - lay.body.y0) * WEB_K), 1);
+        }
+      }
+    }
+  });
+
+  const st = () => ctx.stateRef.current;
+  const L = layoutWebSection(section);
+  const P = WEB_PAGE;
+  const frameTopY = 59 + webY(L.body.y0 - 14);
+  const frameBotY = 59 + webY(L.body.y1 + 8);
+  return (
+    <group ref={group} visible={false}>
+      <mesh position={[0, 1.5, 0]} material={mats.dais}>
+        <cylinderGeometry args={[STAGE_R, STAGE_R + 3, 3, 72]} />
+      </mesh>
+      <mesh position={[0, 3.1, 0]} rotation-x={Math.PI / 2} material={mats.rim}>
+        <torusGeometry args={[STAGE_R, 0.7, 8, 72]} />
+      </mesh>
+      <mesh position={[0, 4, -4]} material={mats.bed}>
+        <boxGeometry args={[176, 2, 128]} />
+      </mesh>
+      <group position={[0, 5, 0]} rotation-y={Math.PI / 4}>
+        <mesh position={[0, 59, 0]} material={mats.edge}>
+          <boxGeometry args={[122, 122, 1.6]} />
+        </mesh>
+        <mesh position={[0, 59, 0.95]} material={face}>
+          <planeGeometry args={[118, 118]} />
+        </mesh>
+        {/* The hover highlights: unit planes the frame loop
+            places and scales (see useFrame) — the hovered
+            section's contents band, and its body when the
+            hovered section is the one being read. */}
+        <mesh ref={hiTocRef} visible={false} material={mats.hi}>
+          <planeGeometry args={[1, 1]} />
+        </mesh>
+        <mesh ref={hiBodyRef} visible={false} material={mats.hi}>
+          <planeGeometry args={[1, 1]} />
+        </mesh>
+        {/* The reading frame: around the section being read. */}
+        {[
+          { p: [webX(P.bodyX + P.bodyW / 2), frameTopY, 1.15], s: [P.bodyW * WEB_K + 3, 0.7] },
+          { p: [webX(P.bodyX + P.bodyW / 2), frameBotY, 1.15], s: [P.bodyW * WEB_K + 3, 0.7] },
+          { p: [webX(P.bodyX - 12), (frameTopY + frameBotY) / 2, 1.15], s: [0.7, Math.abs(frameTopY - frameBotY)] },
+          { p: [webX(P.bodyX + P.bodyW + 12), (frameTopY + frameBotY) / 2, 1.15], s: [0.7, Math.abs(frameTopY - frameBotY)] },
+        ].map((b, i) => (
+          <mesh key={i} position={b.p} material={mats.frame}>
+            <boxGeometry args={[b.s[0], b.s[1], 0.4]} />
+          </mesh>
+        ))}
+        {/* Hover zones: the contents entries, the body, and the
+            body's link spans — invisible, exactly on the layout. */}
+        {L.toc.map((e) => (
+          <mesh
+            key={`toc-${e.index}`}
+            position={[webX(P.tocX + P.tocW / 2), 59 + webY((e.y0 + e.y1) / 2), 1.6]}
+            material={mats.zone}
+            onPointerOver={(ev) => { ev.stopPropagation(); st().onTouch(); if (st().onWebSectionHover) st().onWebSectionHover(e.index); }}
+            onPointerOut={() => { if (st().onWebSectionHover) st().onWebSectionHover(null); }}
+            onClick={(ev) => {
+              if (ev.delta > 5) return;
+              ev.stopPropagation();
+              st().onTouch();
+              if (st().onWebSectionActivate) st().onWebSectionActivate(e.index);
+            }}
+          >
+            <boxGeometry args={[(P.tocW + 20) * WEB_K, (e.y1 - e.y0 + 10) * WEB_K, 2]} />
+          </mesh>
+        ))}
+        <mesh
+          position={[webX(P.bodyX + P.bodyW / 2), 59 + webY((L.body.y0 + L.body.y1) / 2), 1.5]}
+          material={mats.zone}
+          onPointerOver={(ev) => { ev.stopPropagation(); st().onTouch(); if (st().onWebSectionHover) st().onWebSectionHover(section); }}
+          onPointerOut={() => { if (st().onWebSectionHover) st().onWebSectionHover(null); }}
+        >
+          <boxGeometry args={[P.bodyW * WEB_K, Math.max(8, (L.body.y1 - L.body.y0) * WEB_K), 2]} />
+        </mesh>
+        {L.body.links.map((link, i) => (
+          <mesh
+            key={`link-${i}`}
+            position={[webX((link.x0 + link.x1) / 2), 59 + webY((link.y0 + link.y1) / 2), 1.7]}
+            material={mats.zone}
+            onPointerOver={(ev) => { ev.stopPropagation(); st().onTouch(); if (st().onWebLinkHover) st().onWebLinkHover({ text: link.text, href: link.href }); }}
+            onPointerOut={() => { if (st().onWebLinkHover) st().onWebLinkHover(null); }}
+            onClick={(ev) => {
+              if (ev.delta > 5) return;
+              ev.stopPropagation();
+              st().onTouch();
+              if (st().onWebLinkActivate) st().onWebLinkActivate({ text: link.text, href: link.href });
+            }}
+          >
+            <boxGeometry args={[Math.max(3, (link.x1 - link.x0) * WEB_K), Math.max(2.4, (link.y1 - link.y0) * WEB_K), 2]} />
+          </mesh>
+        ))}
+      </group>
+    </group>
+  );
+}
+
 /* ---------- the driver ---------- */
 
 /**
@@ -3993,7 +4852,8 @@ function Rig({ ctx, cameras }) {
     const shared = st.shared;
     const idle = performance.now() - (shared.lastTouch || 0) > 8000;
     const modeActive = Boolean(shared.drag || st.pendingId || st.cardId || st.inspectedId
-      || (st.partFocus && st.partFocus.partId) || (st.openApp && st.openApp.appId));
+      || (st.partFocus && st.partFocus.partId) || (st.openApp && st.openApp.appId)
+      || st.openMessage);
     if (wg) {
       frame.turntabling = Boolean(st.turntableOn && idle && !modeActive);
       if (frame.turntabling) frame.turntableAngle += dt * 2 * DEG;
@@ -4323,6 +5183,20 @@ function Rig({ ctx, cameras }) {
       seat = centre.clone().addScaledVector(dir, 168).add(new THREE.Vector3(0, 108, 0));
       look = centre.clone();
       if (camera === cameras.ortho) { camera.zoom = 1.3 / st.zoomMul; camera.updateProjectionMatrix(); }
+    } else if (st.openMessage) {
+      // Slice 15: an opened letter stands on the centre stage —
+      // the app seat's shape, raised to the sheet: the seat
+      // stands off along the home azimuth and looks at the
+      // sheet's middle (the sheet stands 3..93, turned π/4 to
+      // face this azimuth, as the stage's furniture is).
+      const centre = frame.worldGroup
+        ? frame.worldGroup.localToWorld(new THREE.Vector3(0, 46, 0))
+        : new THREE.Vector3(0, 46, 0);
+      const az = Math.PI / 4;
+      const dir = new THREE.Vector3(Math.sin(az), 0, Math.cos(az));
+      seat = centre.clone().addScaledVector(dir, 158).add(new THREE.Vector3(0, 62, 0));
+      look = centre.clone();
+      if (camera === cameras.ortho) { camera.zoom = 1.3 / st.zoomMul; camera.updateProjectionMatrix(); }
     } else if (st.cardId && cardBase) {
       const cs = citizenSeat(st.cardId, cardBase, st.zoomFocusId === st.cardId);
       seat = cs.seat;
@@ -4509,9 +5383,12 @@ export default function SpaceView(props) {
     tangleDataset,
     viewName, snapOn, strata, layers,
     openApp, audio, tokenHoverId, appFocusId, regionHover,
+    openMessage, web, webSectionHover, webLinkHover,
     onHover, onPartHover, onBranchHover, onSubHover, onObjectClick, onSelect, onTouch,
     onRingHover,
     onTokenHover, onTokenActivate, onRegionHover, onRegionActivate, onAudioEnd,
+    onWebTokenActivate, onWebSectionHover, onWebLinkHover,
+    onWebSectionActivate, onWebLinkActivate, onMessageActivate,
   } = props;
 
   const stateRef = useRef({});
@@ -4526,10 +5403,13 @@ export default function SpaceView(props) {
     tangleDataset,
     viewName, snapOn, strata, layers,
     openApp, audio, tokenHoverId, appFocusId, regionHover,
+    openMessage, web, webSectionHover, webLinkHover,
     shared: sharedRef.current,
     onHover, onPartHover, onBranchHover, onSubHover, onObjectClick, onSelect, onTouch,
     onRingHover,
     onTokenHover, onTokenActivate, onRegionHover, onRegionActivate, onAudioEnd,
+    onWebTokenActivate, onWebSectionHover, onWebLinkHover,
+    onWebSectionActivate, onWebLinkActivate, onMessageActivate,
   };
 
   const frameRef = useRef(null);
@@ -4593,6 +5473,8 @@ export default function SpaceView(props) {
   const cardRef = useRef(null);
   const tokenCapRefs = useRef(new Map());
   const regionChipRef = useRef(null);
+  const msgRef = useRef(null);
+  const webChipRef = useRef(null);
   const xyRef = useRef(null);
   const yzRef = useRef(null);
   const inspectRef = useRef(null);
@@ -4838,6 +5720,26 @@ export default function SpaceView(props) {
               }
             }
           }
+          if (oid === "mail") {
+            // The mail's cards speak in its own terms: a folder
+            // by its count and unread, a letter by its sender,
+            // subject, date and first breath.
+            const mn = mailNodeById(nid);
+            if (mn && mn.kind === "message") {
+              lines = [
+                mn.subject,
+                `from ${mn.from.name} <${mn.from.address}>`,
+                `${mn.date} · ${mn.folder}`,
+                mn.snippet,
+              ];
+            } else if (mn) {
+              lines = [
+                mn.name,
+                `${mn.value} messages${mn.unread ? ` · ${mn.unread} unread` : ""}`,
+                mn.path.join(" › "),
+              ];
+            }
+          }
           const txt = lines.join("\n");
           if (subEl.textContent !== txt) subEl.textContent = txt;
           const [sx, sy, front] = project(sw.centre);
@@ -4895,23 +5797,74 @@ export default function SpaceView(props) {
       // ZOOM token would halve, LOOP ON/OFF). Shown only while
       // the app holds the stage.
       {
-        const showTokens = Boolean(st.openApp && st.openApp.appId && st.audio);
-        for (const t of APP_TOKEN_UI) {
+        const isAudio = Boolean(st.openApp && st.openApp.appId === "audio" && st.audio);
+        const isWeb = Boolean(st.openApp && st.openApp.appId === "web" && st.web);
+        const list = isAudio
+          ? APP_TOKEN_UI.map((t) => ({ ...t, txt: t.caption(st.audio) }))
+          : isWeb
+            ? WEB_TOKEN_UI.map((t) => ({ ...t, txt: t.caption(st.web) }))
+            : [];
+        const all = [...APP_TOKEN_UI, ...WEB_TOKEN_UI];
+        for (const t of all) {
           const el = tokenCapRefs.current.get(t.id);
           if (!el) continue;
-          const o = showTokens && frame.tokenRefs ? frame.tokenRefs.get(t.id) : null;
+          const live = list.find((x) => x.id === t.id);
+          const o = live && frame.tokenRefs ? frame.tokenRefs.get(t.id) : null;
           if (!o) { el.style.display = "none"; continue; }
           const v = new THREE.Vector3();
           o.getWorldPosition(v);
           v.y += 11;
           const [sx, sy, front] = project(v);
           if (!front) { el.style.display = "none"; continue; }
-          const txt = t.caption(st.audio);
-          if (el.textContent !== txt) el.textContent = txt;
+          if (el.textContent !== live.txt) el.textContent = live.txt;
           el.classList.toggle("target",
             st.tokenHoverId === t.id || (st.appFocusId === t.id && st.tokenHoverId == null));
           el.style.display = "";
           el.style.transform = `translate(-50%, -130%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
+        }
+      }
+      // Slice 15: the opened letter's card — the message whole,
+      // standing off the sheet's top (the inspect card's
+      // treatment, at the sheet in the space).
+      {
+        const el = msgRef.current;
+        if (el) {
+          const node = st.openMessage ? messageById(st.openMessage) : null;
+          if (node && frame.worldGroup) {
+            const wp = frame.worldGroup.localToWorld(new THREE.Vector3(30, 96, 30));
+            const [sx, sy, front] = project(wp);
+            if (!front) el.style.display = "none";
+            else {
+              el.style.display = "";
+              el.style.transform = `translate(16px, -50%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
+            }
+          } else el.style.display = "none";
+        }
+      }
+      // Slice 15: the web hover chip — a hovered section names
+      // itself and its word count; a hovered link names its
+      // target. Pinned over the sheet's top.
+      {
+        const el = webChipRef.current;
+        if (el) {
+          const webOpenNow = st.openApp && st.openApp.appId === "web";
+          let txt = null;
+          if (webOpenNow && st.webLinkHover) {
+            txt = `LINK — ${st.webLinkHover.text}`;
+          } else if (webOpenNow && st.webSectionHover != null) {
+            const s = WEB_LAYOUT.sections[st.webSectionHover];
+            if (s) txt = `${s.heading} — ${s.words} words`;
+          }
+          if (txt && frame.worldGroup) {
+            if (el.textContent !== txt) el.textContent = txt;
+            const wp = frame.worldGroup.localToWorld(new THREE.Vector3(0, 128, 0));
+            const [sx, sy, front] = project(wp);
+            if (!front) el.style.display = "none";
+            else {
+              el.style.display = "";
+              el.style.transform = `translate(-50%, -130%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
+            }
+          } else el.style.display = "none";
         }
       }
       // The hovered waveform stretch names itself (its seconds)
@@ -5034,9 +5987,15 @@ export default function SpaceView(props) {
               {MEDIA_ITEMS.map((item, i) => (
                 <MediaCard key={item.id} item={item} index={i} ctx={ctx} />
               ))}
+              {/* Slice 15: the post shelf beside the library,
+                  the opened letter's stage, and the web sheet's
+                  stage — instruments all. */}
+              <PostShelf ctx={ctx} />
               <ClipboardTray ctx={ctx} held={clipHeld} />
               <PlatterRing ctx={ctx} />
               <WaveformStage ctx={ctx} />
+              <MessageStage ctx={ctx} openMessage={openMessage} />
+              <WebStage ctx={ctx} />
             </>
           ) : null}
           <AxisGuide ctx={ctx} />
@@ -5095,7 +6054,28 @@ export default function SpaceView(props) {
             style={{ display: "none", pointerEvents: "none" }}
           />
         ))}
+        {WEB_TOKEN_UI.map((t) => (
+          <div
+            key={t.id}
+            ref={(el) => { if (el) tokenCapRefs.current.set(t.id, el); else tokenCapRefs.current.delete(t.id); }}
+            className="us-chip"
+            style={{ display: "none", pointerEvents: "none" }}
+          />
+        ))}
         <div ref={regionChipRef} className="us-chip" style={{ display: "none", pointerEvents: "none" }} />
+        <div ref={webChipRef} className="us-chip" style={{ display: "none", pointerEvents: "none" }} />
+        <div ref={msgRef} className="us-inspect" style={{ display: "none" }}>
+          {openMessage && messageById(openMessage) ? (
+            <>
+              <b>{messageById(openMessage).subject}</b><br />
+              from {messageById(openMessage).from.name} &lt;{messageById(openMessage).from.address}&gt;<br />
+              {messageById(openMessage).date} · {messageById(openMessage).folder}<br />
+              {messageById(openMessage).body.map((p, i) => (
+                <span key={i} style={{ display: "block", marginTop: 4 }}>{p}</span>
+              ))}
+            </>
+          ) : null}
+        </div>
         <div ref={partRef} className="us-chip" style={{ display: "none", pointerEvents: "none" }} />
         <div ref={branchRef} className="us-chip" style={{ display: "none", pointerEvents: "none" }} />
         <div ref={subRef} className="us-info" style={{ display: "none", pointerEvents: "none", whiteSpace: "pre-line" }} />
@@ -5151,6 +6131,14 @@ export default function SpaceView(props) {
                   {ENV_TOTALS.sample
                     ? "the environment snapshot is a SAMPLE machine — regenerate with snapshot-environment.mjs --real to show this one"
                     : "from this machine's environment snapshot"}
+                </span>
+              ) : null}
+              {cardObj.id === "mail" ? (
+                <span style={{ display: "block", marginTop: 4 }}>
+                  {MAIL_TOTALS.messages} messages · {MAIL_TOTALS.unread} unread · {MAIL_TOTALS.recent} recent letters on the post shelf<br />
+                  {MAIL_TOTALS.sample
+                    ? "the mailbox is a SAMPLE — sample correspondence about the space, on example domains"
+                    : "from this machine's mailbox"}
                 </span>
               ) : null}
             </>

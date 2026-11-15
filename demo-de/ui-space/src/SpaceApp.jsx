@@ -125,6 +125,19 @@ import {
   connectionTotals,
   ENV_TOTALS,
 } from "./environment.js";
+import {
+  MAIL_TOTALS,
+  folderNodes,
+  messageById,
+} from "./mail.js";
+import {
+  WEBFRAME,
+  WEB_LAYOUT,
+  WEB_TOTALS,
+  resolveWebLink,
+  pushWebNav,
+  popWebNav,
+} from "./webframe.js";
 import { SPACE_LANES, laneNow, laneSource } from "./horizon-lanes.js";
 
 // Slice 7: the data tree's own bookkeeping for panels and readout —
@@ -141,7 +154,7 @@ import {
 /**
  * UI Space — an early form of the environment.
  *
- * Fourteen of the lab's frames stand on one platter as miniature
+ * Fifteen of the lab's frames stand on one platter as miniature
  * citizens, and for the first time they are not pages to visit but
  * objects in a space. Addressing is the key-click model: the
  * object under the cursor is the addressee, F is the click, Tab
@@ -287,6 +300,20 @@ const TOKEN_NAMES = {
 };
 const TOKEN_TRACKS = { "tok-pulse": "pulse", "tok-voice": "voice", "tok-rain": "rain" };
 
+/**
+ * The open WEB app's ring furniture (slice 15): while the
+ * captured page holds the stage the ring carries its reading
+ * controls — back to the top, and a section back / forward.
+ * Tab cycles stage → these, in this order; F activates the
+ * addressed one, as the waveform's tokens are activated.
+ */
+const WEB_TOKEN_IDS = ["tok-w-top", "tok-w-prev", "tok-w-next"];
+const WEB_TOKEN_NAMES = {
+  "tok-w-top": "Top of the page",
+  "tok-w-prev": "Previous section",
+  "tok-w-next": "Next section",
+};
+
 /** The whole key-click scheme, grouped by function for the guide. */
 const KEY_GROUPS = [
   {
@@ -295,7 +322,7 @@ const KEY_GROUPS = [
       ["hover", "the object under the cursor is the addressee"],
       ["Tab", "cycle everything addressable (Shift+Tab back)"],
       ["F", "open the addressed object — its card stands in space"],
-      ["F on the ring", "opens the Waveform app onto the centre stage"],
+      ["F on the ring", "opens the addressed app — Waveform, or the captured Web page — onto the centre stage"],
       ["E on the ring", "open the addressed app across the whole platter, citizens hidden — on a citizen, E is yaw"],
       ["Alt+L", "label mode — letter chips appear, bare letters target"],
     ],
@@ -357,7 +384,7 @@ const KEY_GROUPS = [
     rows: [
       ["Enter", "arm the command line: category › action › argument, ⏎ runs — on the line, Enter is the finish (A is a letter there)"],
       ["K", "hide / show the keyboard panel — inside label mode K is the definition's address"],
-      ["Alt+L", "in label mode the letters are addresses (G the tangled tree, M the living crystal, E the sunburst cylinder, B the drum, N the tree, O the sample book, P the devices); outside it they are operators"],
+      ["Alt+L", "in label mode the letters are addresses (G the tangled tree, M the living crystal, E the sunburst cylinder, B the drum, N the tree, O the sample book, P the devices, Q the mail); outside it they are operators"],
       ["H / I", "here I inspects and H copies — KeyPilot's stock I-copy lives on H in this layout"],
       ["F on a card / tray", "inspects it, like I"],
       ["knot parts", "with the knot current, hover a part — F flies into it, D (GO BACK II) backs out to the knot"],
@@ -372,14 +399,17 @@ const KEY_GROUPS = [
       ["spread flipping", "in the spread presentation B and N flip the spread (they read SPREAD − / SPREAD + on the keyboard panel) instead of plane-spinning the book; F on a standing leaf turns to that page's spread. In the cylinder presentation B and N plane-spin as usual"],
       ["devices & hosts", "with Devices current, hover a device on its shelf, the hub, or a host token standing on the ring's back arc — it lights, its card stands in the space, and F flies into it. The printer's card lists its queue: a sheet stands in its tray per job, the printing job's sheet half-fed"],
       ["net lanes", "the horizon citizens' last two lanes are NETWORK IN and NETWORK OUT, driven by the environment snapshot's captured strip of interface rates; the other six lanes keep the tempered walk"],
+      ["mail folders", "with Mail current, its folders are sub-addresses in the pigeonhole cabinet: hover a compartment to read its count and unread, F flies into it. Projects' subfolders nest inside its cell"],
+      ["the post shelf", "beside the media library on the XY wall stands the POST SHELF: the recent letters as standing cards, sender and subject on their faces. With Mail current, hover a letter to read it; F opens it on the centre stage, and the backs close it like an app — one level, at the app's own tier"],
+      ["the web frame", "the ring's second item is WEB: a captured page (Wikipedia's Snow globe), its structure — title, sections, links — laid out as a document on a sheet. It is a capture, not a live page: live pages need the local bridge, a later slice"],
     ],
   },
   {
     title: "In an open app",
     rows: [
-      ["Space", "play / pause — the drag lock waits outside the app"],
-      ["C / V", "over the waveform fence, zoom the window inside the app's own frame — the camera stays; over nothing, they do nothing"],
-      ["F", "activate the addressed ring token; on the waveform, drill into the hovered stretch"],
+      ["Space", "play / pause — the drag lock waits outside the app; in the Web app, step the reading position to the next section"],
+      ["C / V", "over the waveform fence, zoom the window inside the app's own frame — the camera stays; over nothing, they do nothing. In the Web app, step the reading position a section back / forward"],
+      ["F", "activate the addressed ring token; on the waveform, drill into the hovered stretch; on the web sheet, follow the hovered link or read the hovered section"],
       ["Tab", "cycle the stage and the app's ring tokens"],
       ["S / Esc", "CANCEL / GO BACK I — one step back in the app; with its history empty, the step leaves the app"],
       ["D", "GO BACK II — up to two steps back: two history steps, or a step and out, or out and release"],
@@ -750,6 +780,20 @@ export default function SpaceApp() {
   const [tokenHoverId, setTokenHoverId] = useState(null);
   const [appFocusId, setAppFocusId] = useState("stage");
   const [regionHover, setRegionHover] = useState(null);
+  // Slice 15 — the opened MESSAGE: a letter taken from the post
+  // shelf and stood on the centre stage to be read. A dedicated
+  // state at the appClose tier of the release stack (docClose),
+  // not the app state — the app scope's keys are the waveform's
+  // own, and a letter has no transport to run.
+  const [openMessage, setOpenMessage] = useState(null); // message node id | null
+  // Slice 15 — the WEB app's own state: the reading position
+  // (the section at the sheet's reading line) and its nav
+  // history, which the back events walk like the waveform's;
+  // and the sheet's hovers — a section band, a link span —
+  // reported by the view while the app holds the stage.
+  const [web, setWeb] = useState(() => ({ section: 0, nav: [] }));
+  const [webSectionHover, setWebSectionHover] = useState(null);
+  const [webLinkHover, setWebLinkHover] = useState(null);
   const camSnapshot = useRef(null);
   const [dynText, setDynText] = useState("");
   const dynTimer = useRef(null);
@@ -821,7 +865,7 @@ export default function SpaceApp() {
   };
 
   const thingName = (id) =>
-    objectById(id)?.name || ringItemById(id)?.name || TOKEN_NAMES[id] || mediaById(id)?.title ||
+    objectById(id)?.name || ringItemById(id)?.name || TOKEN_NAMES[id] || WEB_TOKEN_NAMES[id] || mediaById(id)?.title ||
     (id === "clipboard" ? "Clipboard" : "");
 
   // A knot part is hovered only while the knot is current — the
@@ -904,6 +948,147 @@ export default function SpaceApp() {
     }
     setCardId(null);
     setCurrentId("audio");
+    touch();
+  };
+
+  /* ----- slice 15: the web app, and the opened message ----- */
+
+  const openWebApp = (mode) => {
+    // The same opening discipline as the waveform's: the camera
+    // seat is snapshotted and given back on close, the space's
+    // other states clear, and the ring's web item is current.
+    camSnapshot.current = { viewName };
+    setOpenAppState((s) => openAppTo(s, "web", mode));
+    setCurrentId("web");
+    setCardId(null);
+    setPendingId(null);
+    setPartFocus(endPartFocus());
+    setPartHoverId(null);
+    setBranchHoverId(null);
+    setSubHover(null);
+    setAppFocusId("stage");
+    setTokenHoverId(null);
+    setWebSectionHover(null);
+    setWebLinkHover(null);
+    if (lockRef.current) lockCancel();
+    touch();
+  };
+
+  const closeWebApp = () => {
+    // The appClose level, for the web app: the camera seat is
+    // restored and the space is exactly as it was, with the
+    // ring's web item current. The reading position and its
+    // history persist — the page stays where you left it, as
+    // the waveform's window does.
+    setOpenAppState((s) => closeAppTo(s));
+    setTokenHoverId(null);
+    setWebSectionHover(null);
+    setWebLinkHover(null);
+    setAppFocusId("stage");
+    if (camSnapshot.current) {
+      setViewName(camSnapshot.current.viewName);
+      camSnapshot.current = null;
+    }
+    setCardId(null);
+    setCurrentId("web");
+    touch();
+  };
+
+  /** The appClose level's closer, whichever app holds the stage. */
+  const closeOpenApp = () => {
+    if (openAppState.appId === "web") closeWebApp();
+    else closeAudioApp();
+  };
+
+  /** Move the web reading position, pushing where it was (the nav discipline). */
+  const goToWebSection = (index, { push = true } = {}) => {
+    const n = WEB_LAYOUT.sections.length;
+    const next = Math.max(0, Math.min(n - 1, index));
+    setWeb((w) => (next === w.section
+      ? w
+      : { section: next, nav: push ? pushWebNav(w.nav, w.section) : w.nav }));
+    touch();
+    return next;
+  };
+
+  // Pop up to `count` of the web nav levels as ONE batch (a
+  // GO_BACK_II dispatch may owe two), the waveform precedent.
+  const popWebNavLevels = (count) => {
+    let nav = web.nav;
+    let last = null;
+    let popped = 0;
+    while (popped < count) {
+      const r = popWebNav(nav);
+      if (!r.entry) break;
+      nav = r.stack;
+      last = r.entry;
+      popped += 1;
+    }
+    if (last) {
+      setWeb((w) => ({ ...w, nav, section: last.section }));
+      touch();
+    }
+    return popped;
+  };
+
+  const activateWebToken = (id) => {
+    touch();
+    if (id === "tok-w-top") {
+      if (web.section === 0) {
+        setEcho({ text: "already at the top of the page", error: false });
+        return;
+      }
+      goToWebSection(0);
+      showDyn("SECTION 1 — TOP");
+      return;
+    }
+    if (id === "tok-w-prev" || id === "tok-w-next") {
+      const next = goToWebSection(web.section + (id === "tok-w-next" ? 1 : -1));
+      const s = WEB_LAYOUT.sections[next];
+      showDyn(`SECTION ${next + 1} / ${WEB_LAYOUT.sections.length}${s ? ` — ${s.heading}` : ""}`);
+    }
+  };
+
+  /**
+   * F on a link of the captured page: an internal anchor moves
+   * the reading position to its section; anything else is a
+   * page the proof did not capture, and the echo says so —
+   * one page only, honestly.
+   */
+  const followWebLink = (link) => {
+    const res = resolveWebLink(link, WEBFRAME);
+    if (res.type === "section") {
+      const next = goToWebSection(res.index);
+      const s = WEB_LAYOUT.sections[next];
+      showDyn(`SECTION ${next + 1} — ${s ? s.heading : ""}`);
+    } else {
+      setEcho({
+        text: `not captured — one page only in this proof: ${link.text} → ${res.href}`,
+        error: true,
+      });
+    }
+    touch();
+  };
+
+  const openMessageSheet = (messageNodeId) => {
+    // A letter opens on the centre stage: the space's other
+    // states clear the way they do for an app opening, the mail
+    // citizen stays current (the letter is its sub-node), and
+    // the docClose level of the chain is now occupied.
+    const node = messageById(messageNodeId);
+    setOpenMessage(messageNodeId);
+    setCardId(null);
+    setPendingId(null);
+    setPartFocus(endPartFocus());
+    setPartHoverId(null);
+    setBranchHoverId(null);
+    if (lockRef.current) lockCancel();
+    showDyn(`READING — ${node ? node.subject : "letter"}`);
+    touch();
+  };
+
+  const closeMessageSheet = () => {
+    setOpenMessage(null);
     touch();
   };
 
@@ -1028,8 +1213,10 @@ export default function SpaceApp() {
   const onObjectClick = (id) => {
     if (!isAddressable(layers, id)) return; // locked/hidden strata don't take clicks
     // While an app holds the stage, citizen clicks wait — the
-    // stage, its tokens and its keys own the interaction.
+    // stage, its tokens and its keys own the interaction. An
+    // opened message holds it the same way.
     if (openAppState.appId) return;
+    if (openMessage) return;
     // While inspecting, clicking another thing inspects THAT thing
     // (beginInspect restores the first to its home first).
     if (inspection.inspectedId) {
@@ -1041,6 +1228,18 @@ export default function SpaceApp() {
   };
   const onSelect = (id) => { touch(); onObjectClick(id); };
 
+  // A click on a letter of the post shelf: the shelf's letters
+  // are the mail citizen's sub-addresses, so a first click takes
+  // the citizen (as a citizen click does) and a click while it
+  // is current opens the letter, as F does.
+  const onMessageActivate = (nodeId) => {
+    touch();
+    if (openAppState.appId || openMessage) return;
+    if (inspection.inspectedId) return;
+    if (currentId === "mail") openMessageSheet(nodeId);
+    else setCurrentId("mail");
+  };
+
   const doF = () => {
     // Slice 8 first: an app-bearing thing (the ring's Waveform)
     // OPENS instead of entering — F takes it to the centre stage.
@@ -1050,7 +1249,11 @@ export default function SpaceApp() {
       const open = resolveOpenAction({
         targetId: addressedId(hoverId, currentId), key: "f", labelMode: uiMode.labelMode,
       });
-      if (open) { openAudioApp(open.mode); return; }
+      if (open) {
+        if (open.appId === "web") openWebApp(open.mode);
+        else openAudioApp(open.mode);
+        return;
+      }
     }
     // F lands on the ADDRESSED thing: hover wins, current is the
     // fallback. The decision itself is pure (resolveFAction in
@@ -1147,6 +1350,14 @@ export default function SpaceApp() {
         showDyn(`SPREAD ${at + 1} / ${SPREAD_COUNT} — ${node ? node.name : action.nodeId}`);
         return;
       }
+      case "openMessage": {
+        // Slice 15: F on a letter of the post shelf opens it —
+        // the message stands on the centre stage to be read,
+        // and the backs close it at the docClose tier.
+        setCurrentId("mail");
+        openMessageSheet(action.messageId);
+        return;
+      }
       case "branchFocus":
         // F on a hovered depth-1 branch of the tree zooms INTO
         // the subtree — the same focus state and the same level
@@ -1177,8 +1388,15 @@ export default function SpaceApp() {
   const backChain = () => ({
     dragLocked: Boolean(lockRef.current),
     inspection: Boolean(inspection.inspectedId),
-    appNav: openAppState.appId ? audio.nav.length : 0,
+    // Slice 15: the nav levels are whichever open app's history
+    // is live — the waveform's window stack, or the web's
+    // reading-position stack.
+    appNav: openAppState.appId === "audio" ? audio.nav.length
+      : openAppState.appId === "web" ? web.nav.length : 0,
     appOpen: Boolean(openAppState.appId),
+    // Slice 15: an opened message occupies the docClose level,
+    // at the appClose tier, immediately after it.
+    docOpen: Boolean(openMessage),
     partFocus: Boolean(partFocus.partId),
     descent:
       currentId && descents[currentId] ? descentDepth(descents[currentId]) : 0,
@@ -1195,6 +1413,7 @@ export default function SpaceApp() {
     drag: "drag cancelled",
     inspection: "inspection ended",
     appClose: "app closed",
+    docClose: "message closed",
     partFocus: "focus released",
     patch: "patch released",
     card: "card closed",
@@ -1223,7 +1442,7 @@ export default function SpaceApp() {
         setEcho({ text: `axis lock released — ${event}`, error: false });
         return;
       }
-      if (!lockRef.current && !openAppState.appId && !inspection.inspectedId && uiMode.labelMode) {
+      if (!lockRef.current && !openAppState.appId && !openMessage && !inspection.inspectedId && uiMode.labelMode) {
         setUiMode((m) => exitLabelMode(m));
         setEcho({ text: `label mode off — ${event}`, error: false });
         return;
@@ -1235,7 +1454,10 @@ export default function SpaceApp() {
       return;
     }
     const navPops = levels.filter((l) => l === "appNav").length;
-    if (navPops) popAudioNavLevels(navPops);
+    if (navPops) {
+      if (openAppState.appId === "web") popWebNavLevels(navPops);
+      else popAudioNavLevels(navPops);
+    }
     const said = [];
     if (navPops) said.push(navPops > 1 ? `app steps back ×${navPops}` : "app step back");
     // Descent climbs are threaded through a local: one dispatch
@@ -1251,7 +1473,8 @@ export default function SpaceApp() {
         case "appNav": break; // applied as one batch above
         case "drag": lockCancel(); said.push(BACK_LEVEL_ECHO.drag); break;
         case "inspection": endInspectThing(); said.push(BACK_LEVEL_ECHO.inspection); break;
-        case "appClose": closeAudioApp(); said.push(BACK_LEVEL_ECHO.appClose); break;
+        case "appClose": closeOpenApp(); said.push(BACK_LEVEL_ECHO.appClose); break;
+        case "docClose": closeMessageSheet(); said.push(BACK_LEVEL_ECHO.docClose); break;
         case "partFocus": setPartFocus(endPartFocus()); said.push(BACK_LEVEL_ECHO.partFocus); break;
         case "descent":
           if (nextDescent) { nextDescent = climbDescent(nextDescent); climbed++; }
@@ -1322,7 +1545,8 @@ export default function SpaceApp() {
   // current, a token hovered (app open), or the cursor over the
   // annulus itself (the view reports that on its own channel).
   const ringAddressedNow = () =>
-    hoverId === "audio" || currentId === "audio" || ringHover || Boolean(tokenHoverId);
+    hoverId === "audio" || currentId === "audio" || hoverId === "web" || currentId === "web"
+    || ringHover || Boolean(tokenHoverId);
 
   /**
    * C/V: the DOLLY (§14 — the camera itself moves; the focal
@@ -1467,7 +1691,7 @@ export default function SpaceApp() {
     // wins, as it does for F — and the source becomes current.
     const source = addressedId(hoverId, currentId);
     if (source && ringItemById(source)) {
-      setEcho({ text: "Waveform opens — F centre-stage, E full platter; it does not patch", error: true });
+      setEcho({ text: `${thingName(source)} opens — F centre-stage, E full platter; it does not patch`, error: true });
       return;
     }
     if (source) { setCurrentId(source); setPendingId(source); return; }
@@ -1869,6 +2093,19 @@ export default function SpaceApp() {
         if (!pendingId && !lockRef.current) armCmdLine();
         return;
       }
+      // MESSAGE SCOPE (slice 15): while a letter stands open on
+      // the centre stage, the reading owns the keys the way an
+      // app's scope owns its — the back events close it at the
+      // docClose tier through the one dispatch, FINISH speaks,
+      // and everything else waits outside the reading.
+      if (openMessage) {
+        const k = e.key;
+        if (k === "Escape") { e.preventDefault(); dispatchBack(EVENTS.CANCEL); return; }
+        if (k === "s" || k === "S") { e.preventDefault(); dispatchBack(EVENTS.GO_BACK_I); return; }
+        if (k === "d" || k === "D") { e.preventDefault(); dispatchBack(EVENTS.GO_BACK_II); return; }
+        if (k === "a" || k === "A") { e.preventDefault(); doFinish(); return; }
+        return;
+      }
       // APP SCOPE (slice 8): while an app holds the stage, the
       // keys are the app's. The command line (above) and Alt+L
       // still work — the line stays live and label mode still
@@ -1884,6 +2121,65 @@ export default function SpaceApp() {
       // Esc here is no longer automatically the big back; D is.
       if (openAppState.appId) {
         const k = e.key;
+        // Slice 15: the WEB app's scope — the captured page's
+        // own keys. The back events are shared (the one
+        // dispatch walks the reading history, then closes);
+        // Space and C/V move the reading position within the
+        // sheet's own frame — the camera stays, as the
+        // waveform's window zoom keeps it; F activates a token,
+        // follows a hovered link, or reads a hovered section.
+        if (openAppState.appId === "web") {
+          if (k === "Escape") { e.preventDefault(); dispatchBack(EVENTS.CANCEL); return; }
+          if (k === "s" || k === "S") { e.preventDefault(); dispatchBack(EVENTS.GO_BACK_I); return; }
+          if (k === "d" || k === "D") { e.preventDefault(); dispatchBack(EVENTS.GO_BACK_II); return; }
+          if (k === "a" || k === "A") { e.preventDefault(); doFinish(); return; }
+          if (k === " ") {
+            e.preventDefault();
+            if (!e.repeat) {
+              if (web.section >= WEB_LAYOUT.sections.length - 1) {
+                setEcho({ text: "the end of the captured page", error: false });
+              } else {
+                const next = goToWebSection(web.section + 1);
+                const s = WEB_LAYOUT.sections[next];
+                showDyn(`SECTION ${next + 1} / ${WEB_LAYOUT.sections.length}${s ? ` — ${s.heading}` : ""}`);
+              }
+            }
+            return;
+          }
+          if (k === "Tab") {
+            e.preventDefault();
+            const ids = ["stage", ...WEB_TOKEN_IDS];
+            setAppFocusId(cycleInList(ids, appFocusId, e.shiftKey ? -1 : 1));
+            return;
+          }
+          if (k === "c" || k === "C" || k === "v" || k === "V") {
+            e.preventDefault();
+            const next = goToWebSection(web.section + (k === "c" || k === "C" ? -1 : 1));
+            const s = WEB_LAYOUT.sections[next];
+            showDyn(`SECTION ${next + 1} / ${WEB_LAYOUT.sections.length}${s ? ` — ${s.heading}` : ""}`);
+            return;
+          }
+          if (k === "f" || k === "F") {
+            e.preventDefault();
+            const tok = tokenHoverId || (appFocusId !== "stage" ? appFocusId : null);
+            if (tok) activateWebToken(tok);
+            else if (webLinkHover) followWebLink(webLinkHover);
+            else if (webSectionHover != null) {
+              const next = goToWebSection(webSectionHover);
+              const s = WEB_LAYOUT.sections[next];
+              showDyn(`SECTION ${next + 1} / ${WEB_LAYOUT.sections.length}${s ? ` — ${s.heading}` : ""}`);
+            }
+            return;
+          }
+          if (k === "e" || k === "E") {
+            e.preventDefault();
+            if (openAppState.mode === "center") {
+              setOpenAppState((s) => setAppModeTo(s, "full"));
+            }
+            return;
+          }
+          return; // everything else waits outside the app
+        }
         if (k === "Escape") { e.preventDefault(); dispatchBack(EVENTS.CANCEL); return; }
         if (k === "s" || k === "S") { e.preventDefault(); dispatchBack(EVENTS.GO_BACK_I); return; }
         if (k === "d" || k === "D") { e.preventDefault(); dispatchBack(EVENTS.GO_BACK_II); return; }
@@ -2008,7 +2304,9 @@ export default function SpaceApp() {
         if (!uiMode.labelMode
           && resolveEKey({ targetId: addressedId(hoverId, currentId), appOpen: false, appMode: null }) === "expand") {
           e.preventDefault();
-          openAudioApp("full");
+          const bearer = addressedId(hoverId, currentId);
+          if (bearer === "web") openWebApp("full");
+          else openAudioApp("full");
           return;
         }
       }
@@ -2110,7 +2408,7 @@ export default function SpaceApp() {
     inspection, inspectRot, libraryOpen, clip, clipSummoned, values,
     openAppState, audio, tokenHoverId, appFocusId, regionHover, viewName,
     partFocus, zoomMul, ringSpin, platterQuat, ringHover, fieldIndex, subHover, descents,
-    bookAccess, bookSpread]);
+    bookAccess, bookSpread, openMessage, web, webSectionHover, webLinkHover]);
 
   // Dynamic input during a locked drag: the footer follows the
   // drag point (platter units) while the lock holds.
@@ -2146,7 +2444,10 @@ export default function SpaceApp() {
     : dragLock ? "DRAG-LOCKED"
     : cmd.armed ? "COMMAND LINE"
     : pendingId ? "PATCHING — a cable is live"
-    : openAppState.appId ? (openAppState.mode === "full" ? "APP FULL — WAVEFORM" : "APP — WAVEFORM")
+    : openMessage ? `READING — ${messageById(openMessage)?.subject || "letter"}`
+    : openAppState.appId ? (openAppState.mode === "full"
+      ? `APP FULL — ${openAppState.appId === "web" ? "WEB" : "WAVEFORM"}`
+      : `APP — ${openAppState.appId === "web" ? "WEB" : "WAVEFORM"}`)
     : partFocus.partId
       ? partFocus.objectId === "tree"
         ? `BRANCH FOCUS — ${dataBranchById(DATA_TREE, partFocus.partId)?.name || ""}`
@@ -2172,8 +2473,12 @@ export default function SpaceApp() {
       ? `carrying ${thingName(dragLock.id)} — move the cursor, Space or A (FINISH) drops, Esc (CANCEL) cancels`
       : pendingId
         ? `patch live from ${pending?.name || thingName(pendingId)} — address a second thing, then G / F / A (FINISH) / click lands it`
-        : openAppState.appId
-          ? `${audioTrack.name} holds the stage — Space ${audio.playing ? "pauses" : "plays"} · F drills the hovered stretch · D (GO BACK II) up to two steps back · Esc / S one step`
+        : openMessage
+          ? `${messageById(openMessage)?.subject || "the letter"} stands open on the stage — Esc / S (one level) closes it; D closes it and releases the level beneath`
+          : openAppState.appId === "web"
+            ? `${WEBFRAME.title} holds the stage — section ${web.section + 1} of ${WEB_LAYOUT.sections.length} at the reading line · Space / V next section · F follows a hovered link · D (GO BACK II) up to two steps back · Esc / S one step`
+            : openAppState.appId
+              ? `${audioTrack.name} holds the stage — Space ${audio.playing ? "pauses" : "plays"} · F drills the hovered stretch · D (GO BACK II) up to two steps back · Esc / S one step`
           : partFocus.partId
           ? partFocus.objectId === "tree"
             ? `${focusBranch?.name || "branch"} focused — D (GO BACK II) backs out to the tree`
@@ -2251,6 +2556,22 @@ export default function SpaceApp() {
         ],
       };
     }
+    if (id === "mail") {
+      const o = objectById(id);
+      return {
+        title: o.name,
+        lines: [
+          `kind — object · ${o.group} · the mailbox, as a cabinet`,
+          MAIL_TOTALS.sample
+            ? "the mailbox is a SAMPLE — sample correspondence about the space, on example domains"
+            : "from this machine's mailbox",
+          `${MAIL_TOTALS.messages} messages · ${MAIL_TOTALS.unread} unread · ${MAIL_TOTALS.recent} recent letters on the post shelf`,
+          ...folderNodes().map((f) => `${f.path.join(" › ")} — ${f.value} messages${f.unread ? ` · ${f.unread} unread` : ""}`),
+          "folders and letters are sub-addresses — hover one; F flies to a folder, F opens a letter on the centre stage",
+          "D / Esc — send it home, exactly as it was",
+        ],
+      };
+    }
     if (id === "devices") {
       const o = objectById(id);
       const printer = printerOf(ENVIRONMENT);
@@ -2322,6 +2643,7 @@ export default function SpaceApp() {
   // resolved target and E's cap its resolved meaning (slice 11).
   const kb = resolveKeyboard({
     scope: openAppState.appId ? "app" : cmd.armed ? "command" : uiMode.labelMode ? "labels" : "space",
+    appKind: openAppState.appId || null,
     playing: audio.playing,
     pending: Boolean(pendingId),
     dragLocked: Boolean(dragLock),
@@ -2404,6 +2726,10 @@ export default function SpaceApp() {
             inspectPanel={inspectPanel}
             openApp={openAppState}
             audio={audio}
+            openMessage={openMessage}
+            web={web}
+            webSectionHover={webSectionHover}
+            webLinkHover={webLinkHover}
             tokenHoverId={tokenHoverId}
             appFocusId={appFocusId}
             regionHover={regionHover}
@@ -2415,6 +2741,12 @@ export default function SpaceApp() {
             onSubHover={onSubHover}
             onTokenHover={onTokenHover}
             onTokenActivate={activateToken}
+            onWebTokenActivate={activateWebToken}
+            onWebSectionHover={setWebSectionHover}
+            onWebLinkHover={setWebLinkHover}
+            onWebSectionActivate={(index) => { goToWebSection(index); }}
+            onWebLinkActivate={followWebLink}
+            onMessageActivate={onMessageActivate}
             onRegionHover={setRegionHover}
             onRegionActivate={drillRegion}
             onAudioEnd={() => setAudio((a) => (a.playing ? { ...a, playing: false } : a))}
@@ -2515,10 +2847,21 @@ export default function SpaceApp() {
                 <span className="k">PASTE</span>{"    "}CLIPBOARD → {thingName(lastPaste.targetId)}: {lastPaste.item.title}{"\n"}
               </>
             ) : null}
-            {openAppState.appId ? (
+            {openAppState.appId === "audio" ? (
               <>
                 <span className="k">APP</span>{"      "}Waveform · {openAppState.mode === "full" ? "FULL PLATTER" : "CENTRE STAGE"} · {audioTrack.name}{"\n"}
                 <span className="k">WINDOW</span>{"   "}{audio.window.start.toFixed(1)}–{audio.window.end.toFixed(1)}s of {audioTrack.seconds}s · {audio.playing ? "PLAYING" : "paused"}{audio.loop ? " · LOOP" : ""} · back-stack {audio.nav.length}{"\n"}
+              </>
+            ) : null}
+            {openAppState.appId === "web" ? (
+              <>
+                <span className="k">APP</span>{"      "}Web · {openAppState.mode === "full" ? "FULL PLATTER" : "CENTRE STAGE"} · {WEBFRAME.title} — captured {WEBFRAME.captured}{"\n"}
+                <span className="k">SECTION</span>{"  "}{web.section + 1} of {WEB_LAYOUT.sections.length} — {WEB_LAYOUT.sections[web.section]?.heading || ""} · {WEB_LAYOUT.sections[web.section]?.words || 0} words · back-stack {web.nav.length}{"\n"}
+              </>
+            ) : null}
+            {openMessage ? (
+              <>
+                <span className="k">MESSAGE</span>{"  "}{messageById(openMessage)?.subject || ""} — from {messageById(openMessage)?.from.name || ""} · {messageById(openMessage)?.date || ""}{"\n"}
               </>
             ) : null}
             {pending ? (
@@ -2618,10 +2961,12 @@ export default function SpaceApp() {
                       fence zoom inside its own frame, and the back events walk the app's own
                       levels — <b>D</b> is now the big step back (two levels: out of a drill
                       and out of the app), <b>Esc</b> and <b>S</b> the single step (one level,
-                      which leaves the app only when its history is already empty).
+                      which leaves the app only when its history is already empty). The ring
+                      has a second item now: <b>Web</b>, one captured page standing as a sheet —
+                      the field notes tell what it is, and what it is not.
                     </p>
                     <p>
-                      <b>FIG. 1</b> — The space at rest in the RING layout: fourteen miniature frames
+                      <b>FIG. 1</b> — The space at rest in the RING layout: fifteen miniature frames
                       on the platter, each one a working object — the mesa and drum really are the
                       sunburst layout, the tray and cube really are the treemap, tiled by the same
                       NCTGraphite modules as their own pages. Left alone for eight seconds the
@@ -2866,6 +3211,61 @@ export default function SpaceApp() {
                       gives way entirely. And the sockets follow their
                       citizens — load a layout, or carry a citizen somewhere
                       new and drop it, and its hole is cut at its new home.
+                    </p>
+                    <p>
+                      Slice 15 adds the last two data kinds. THE MAIL arrives
+                      as a citizen: a PIGEONHOLE SORTING CABINET whose
+                      compartments are the mailbox's folders, each one's
+                      area its message count — the Archive's broad strip
+                      across the top, Inbox, Projects and Sent sharing the
+                      row beneath, Projects' own cell split between its
+                      subfolders, unread counts riding as amber on the
+                      compartments' edges, an envelope slot and a small
+                      stack of letters on the cabinet's top. And because a
+                      mailbox is read one letter at a time, the RECENT
+                      MESSAGES stand as letters on a POST SHELF on the XY
+                      wall, beside the media library — sender and subject
+                      on each card's face. Make Mail current and both
+                      become sub-addresses in the one discipline: hover a
+                      folder or a letter to read its card; F flies into a
+                      folder, and F on a letter OPENS it — the letter
+                      stands as a sheet on the centre stage, from,
+                      subject, date and full body, and the backs close it
+                      at the same tier an app closes at, because a reading
+                      is an opening. The mailbox is a SAMPLE — sample
+                      correspondence about the space and its building, on
+                      example domains — and it says so wherever it shows.
+                    </p>
+                    <p>
+                      THE WEB arrives the converter's way: CARRY, DETACH,
+                      NATIVE — and this slice is the DETACH proof. A
+                      capture tool (ui-space/tools/snapshot-web.mjs)
+                      fetched ONE public page ahead of time — Wikipedia's
+                      SNOW GLOBE article, the master view's own subject,
+                      its text CC BY-SA and the attribution carried in the
+                      capture — and wrote its STRUCTURE: title, sections,
+                      the first paragraphs of each, and the links those
+                      paragraphs carry. That structure is what stands on
+                      the stage when the ring's WEB item opens: not a
+                      screenshot, not a raster of a browser, but the page
+                      laid out as a document on a tall sheet — headings,
+                      text and link spans in one layout, computed once, so
+                      the thing you read is the thing that lights. Hover a
+                      section and it highlights, its heading and word
+                      count on the readout; F on a section moves the
+                      reading line to it; F on a link follows it — an
+                      anchor to a captured section moves the reading
+                      position, and any other link answers honestly: not
+                      captured, one page only in this proof. Space and
+                      C/V step the reading position inside the sheet's
+                      own frame, and the backs walk the reading history
+                      before they leave, as they walk the waveform's.
+                      What this is NOT is a live page: no browser renders
+                      inside the deployed space, and none is pretended.
+                      The live version needs a LOCAL BRIDGE driving your
+                      own browser — the Mission Desk pattern — and that
+                      is a later slice, named here so the proof is not
+                      mistaken for it.
                     </p>
                     <h4>Media, the Ring and the Apps</h4>
                     <p>

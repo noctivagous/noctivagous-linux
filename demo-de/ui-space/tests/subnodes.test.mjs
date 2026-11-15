@@ -98,8 +98,8 @@ function rawImportProgeny(id) {
 
 /* ---------------- the hierarchy citizens (tray, mesa, drum) ---------------- */
 
-test("the sub-node citizens are tray, tangle, mesa, drum, book, devices", () => {
-  assert.deepEqual(SUBNODE_OBJECT_IDS, ["tray", "tangle", "mesa", "drum", "book", "devices"]);
+test("the sub-node citizens are tray, tangle, mesa, drum, book, devices, mail", () => {
+  assert.deepEqual(SUBNODE_OBJECT_IDS, ["tray", "tangle", "mesa", "drum", "book", "devices", "mail"]);
   assert.ok(isSubnodeObject("mesa"));
   assert.ok(!isSubnodeObject("knot")); // the knot has its own parts table
   assert.ok(!isSubnodeObject("tree")); // the tree has its own branches

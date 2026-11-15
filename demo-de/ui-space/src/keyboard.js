@@ -319,6 +319,27 @@ function commandBindings() {
 }
 
 function appBindings(ctx) {
+  if (ctx.appKind === "web") {
+    // Slice 15: the WEB app's scope — the captured page on the
+    // stage. Space steps the reading position forward a
+    // section; C/V step it back and forth within the sheet's
+    // own frame, as the waveform's C/V move its window; F
+    // activates a token, follows a hovered link, or moves to a
+    // hovered section.
+    return {
+      Escape: op("CANCEL"),
+      Space: op("NEXT SECTION"),
+      KeyC: bind("PREV SECTION"),
+      KeyV: bind("NEXT SECTION"),
+      Tab: op("CYCLE TOKENS"),
+      KeyF: op("ACTIVATE", { hint: "the addressed ring token — or follow the hovered link / read the hovered section" }),
+      KeyA: op("FINISH"),
+      KeyS: op("GO BACK I"),
+      KeyD: op("GO BACK II"),
+      ...(ctx.appMode === "center" ? { KeyE: op("FULL PLATTER") } : {}),
+      Enter: op("COMMAND LINE"),
+    };
+  }
   return {
     Escape: op("CANCEL"),
     Space: op(ctx.playing ? "PAUSE" : "PLAY"),
@@ -365,6 +386,9 @@ export const SCOPE_NAMES = {
   app: "WAVEFORM APP",
 };
 
+/** The app scope's name follows the app that holds the stage. */
+const appScopeName = (ctx) => (ctx && ctx.appKind === "web" ? "WEB APP" : SCOPE_NAMES.app);
+
 const SCOPE_TABLES = {
   space: spaceBindings,
   labels: labelBindings,
@@ -403,7 +427,7 @@ export function resolveKeyboard(ctx = {}) {
   );
   return {
     scope,
-    scopeName: SCOPE_NAMES[scope],
+    scopeName: scope === "app" ? appScopeName(ctx) : SCOPE_NAMES[scope],
     rows,
     caps: rows.flat(),
     combos: KEYBOARD_COMBOS,

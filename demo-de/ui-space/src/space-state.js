@@ -90,6 +90,8 @@ export const OBJECTS = [
     blurb: "A sample book whose leaves stand around a cylinder, in tiers: chapters on the drum's upper band, sections on the lower, pages as radial leaves at the rim. Hover a tier to read it, F accesses it — a page slides out of the drum to be read — and U stands the book open instead, two pages at a time, flipped with B and N." },
   { id: "devices", name: "Devices", group: "instruments",
     blurb: "The machine's own attachments on one shelf, from the environment snapshot: the printer a small press whose output tray holds a sheet for every queued job (the printing job's sheet half-fed), keyboard, pointer, display and volumes beside it, and a hub whose connections arc out as cables to host tokens standing on the ring. Its devices, its hub and its hosts are sub-addresses: hover one to read it, F flies into it." },
+  { id: "mail", name: "Mail", group: "instruments",
+    blurb: "The sample mailbox as a pigeonhole sorting cabinet: its folders are compartments sized by their message counts, Projects' subfolders nested in its cell, an envelope slot on top. Its folders are sub-addresses, and so are the recent messages standing as letters on the post shelf beside the library on the XY wall — F on a folder flies into it; F on a letter opens it on the centre stage to be read." },
 ];
 
 export const OBJECT_IDS = OBJECTS.map((o) => o.id);
@@ -227,9 +229,19 @@ export const EVENTS = {
  * levels sit in it:
  *
  *   drag → inspection → appNav (each nav entry its own level) →
- *   appClose → partFocus → descent (each descended level its own)
- *   → bookAccess (each accessed tier its own) → patch → card →
- *   selection
+ *   appClose → docClose → partFocus → descent (each descended
+ *   level its own) → bookAccess (each accessed tier its own) →
+ *   patch → card → selection
+ *
+ * Slice 15 adds DOCCLOSE at the appClose tier, immediately
+ * after it: an opened MESSAGE (a letter taken from the post
+ * shelf and stood on the centre stage to be read) is a document
+ * holding the stage the way an app does, and it closes at the
+ * same tier an app closes at. It is a dedicated state, not the
+ * app state — the app scope's keys are the waveform's own, and
+ * a letter has no transport — but it sits in the chain exactly
+ * where an appClose sits, so the backs treat a reading like an
+ * opening: one level, popped before any focus beneath it.
  *
  * Slice 12 adds DESCENT at the partFocus tier: a sunburst focus
  * (a leaf seat) releases before the climb beneath it, and each
@@ -258,6 +270,7 @@ export function backChainLevels(chain = {}) {
   const nav = Math.max(0, Math.floor(chain.appNav || 0));
   for (let i = 0; i < nav; i++) levels.push("appNav");
   if (chain.appOpen) levels.push("appClose");
+  if (chain.docOpen) levels.push("docClose");
   if (chain.partFocus) levels.push("partFocus");
   const descent = Math.max(0, Math.floor(chain.descent || 0));
   for (let i = 0; i < descent; i++) levels.push("descent");
@@ -517,6 +530,16 @@ export function resolveFAction({
     }
     return { type: "bookAccess", targetId, nodeId: subId };
   }
+  if (targetId === "mail" && subId) {
+    // Slice 15: the mail citizen splits on the node's kind — a
+    // FOLDER takes the part-focus seat, like the tray's plates;
+    // a MESSAGE (mail/msg/<id>, a letter on the post shelf)
+    // OPENS: it stands on the centre stage to be read, at the
+    // docClose tier of the release stack.
+    return subId.startsWith("mail/msg/")
+      ? { type: "openMessage", targetId, messageId: subId }
+      : { type: "partFocus", targetId, partId: subId };
+  }
   if ((targetId === "tray" || targetId === "tangle" || targetId === "devices") && subId) {
     return { type: "partFocus", targetId, partId: subId };
   }
@@ -630,6 +653,7 @@ export const LAYOUTS = {
       tree: [-148, -30],
       book: [-95, 95],
       devices: [30, 108],
+      mail: [96, 30],
     },
     scales: {},
   },
@@ -646,6 +670,7 @@ export const LAYOUTS = {
       tree: [-56, 84],
       book: [0, 92],
       devices: [58, 102],
+      mail: [-112, 84],
     },
     scales: { cube: 1.6 },
   },
@@ -781,6 +806,7 @@ export const CENTRE_Y = {
   tree: 14.7, // segments 0..27.2 in the sway group at 2.2, soil 0..2.2 → bounds 0..29.4
   book: 13, // plinth 0..1.6, drum body to 25.6, cap rim ~26.3 → bounds 0..26.3
   devices: 7, // shelf 0..1.6, the display's screen top ~14.4 → bounds 0..14.4
+  mail: 12.5, // plinth 0..1.6, cabinet body to ~23.6, letters on top ~25 → bounds 0..25
 };
 
 /**
@@ -818,6 +844,7 @@ export const PROTECTIVE_R = {
   knot: 20.04, // a sweep vertex, measured on the tube geometry itself
   crystal: 20.16, // the pedestal's bottom rim (r 14 at y 0); the living solid never reaches it, in any drift state — state-independent
   devices: 24.06, // the shelf's bottom corners (±19, 0, ±13) about (0, 7, 0): √579 — measured on MiniDevices, which postdates the analysis
+  mail: 23.65, // measured on the built MiniMail in slice 13-3's session — the mail citizen postdates the sockets slice, so its sphere joins the table at this integration
 };
 
 /**
@@ -1438,13 +1465,14 @@ export function stepSpread(index, dir, count) {
 /**
  * THE RING: an annulus around the circular platter holding things
  * to open — the platter's way of gaining more items of interest
- * without gaining more plots. One ring to start, and on it exactly
- * one home item: the WAVEFORM app. Ring items are NOT citizens —
+ * without gaining more plots. One ring to start. On it, slice 8
+ * put one home item, the WAVEFORM app; slice 15 adds the second:
+ * the WEB app, the captured page. Ring items are NOT citizens —
  * they have no plot, no transform, no cables; they ride the ring
  * (which turns slowly at rest) and they OPEN.
  *
- * Ring items join the labeled set AFTER the twelve citizens, so
- * the citizens' labels never move and the media cards' labels
+ * Ring items join the labeled set AFTER the citizens, so the
+ * citizens' labels never move and the media cards' labels
  * continue after the ring (media-library.js derives its start
  * from here). Their stratum is INSTRUMENTS (see stratumOf): the
  * ring is the space's furniture, and hiding or locking
@@ -1454,6 +1482,8 @@ export const RING_R = 222; // mid-annulus radius; the platter is 198
 export const RING_ITEMS = [
   { id: "audio", name: "Waveform", kind: "app", stratum: "instruments",
     blurb: "The audio app: a track's waveform as a fence of peaks on the stage, its spectrum falling away behind as a waterfall. F opens it centre-stage, E across the whole platter." },
+  { id: "web", name: "Web", kind: "app", stratum: "instruments",
+    blurb: "The web, detached: one captured page — Wikipedia's Snow globe, its structure taken ahead of time — standing as a readable sheet on the stage, its sections and links addressable. F opens it centre-stage, E across the whole platter. A captured structure, not a live page: live pages need the local bridge, a later slice." },
 ];
 
 export const RING_IDS = RING_ITEMS.map((r) => r.id);

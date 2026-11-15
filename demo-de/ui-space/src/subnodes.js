@@ -66,6 +66,19 @@
  * connection count, and the whole is the count of attached
  * things — the cards carry the specifics (the printer's
  * queue, a host's bytes), as the book's cards carry its text.
+ *
+ * THE MAIL (slice 15) joins as a seventh provider, from the
+ * sample mailbox's table (mail.js): the FOLDERS as sub-nodes
+ * under the root "mail" (mail/<folder>, Projects' children
+ * nested), a folder's value its message count — its own plus
+ * its subfolders', the hierarchy rule — and the RECENT
+ * MESSAGES as sub-nodes too (mail/msg/<id>), each worth 1,
+ * one letter. Their anchors split the difference the devices
+ * proved: the folders' anchors stand in the citizen's
+ * pigeonhole cabinet at its plot, and the messages' anchors
+ * stand OUTSIDE the plot, on the post shelf beside the media
+ * library on the XY wall, republished into the citizen's frame
+ * each frame exactly as the devices' hosts are.
  */
 
 import { HIERARCHY } from "./hierarchy.js";
@@ -73,6 +86,7 @@ import { TANGLE_LEVELS } from "../../src/tangle-data.js";
 import importGraph from "./import-graph.json" with { type: "json" };
 import { bookTable } from "./book.js";
 import { ENVIRONMENT, deviceList, connectionsOf, connectionIds } from "./environment.js";
+import { mailTable } from "./mail.js";
 
 /* ---------------- the hierarchy (tray, mesa, drum) ---------------- */
 
@@ -273,12 +287,16 @@ function buildDevicesTable() {
 
 const DEVICES_TABLE = buildDevicesTable();
 
+/* ---------------- the mail (slice 15) ---------------- */
+
+const MAIL_TABLE = mailTable();
+
 /* ---------------- the provider API ---------------- */
 
 const BOOK_TABLE = bookTable();
 
 /** The citizens with sub-nodes, in the order the guide names them. */
-export const SUBNODE_OBJECT_IDS = ["tray", "tangle", "mesa", "drum", "book", "devices"];
+export const SUBNODE_OBJECT_IDS = ["tray", "tangle", "mesa", "drum", "book", "devices", "mail"];
 
 export const isSubnodeObject = (id) => SUBNODE_OBJECT_IDS.includes(id);
 
@@ -326,6 +344,10 @@ export function subnodeRootOf(objectId, rootId = null, dataset = "genealogy") {
     const root = DEVICES_TABLE.root;
     return { id: root.id, name: root.name, value: root.value };
   }
+  if (objectId === "mail") {
+    const root = MAIL_TABLE.root;
+    return { id: root.id, name: root.name, value: root.value };
+  }
   return null;
 }
 
@@ -359,6 +381,11 @@ export function subnodeById(objectId, nodeId, rootId = null, dataset = "genealog
     const node = DEVICES_TABLE.byId.get(nodeId);
     if (!node) return null;
     return publicNode(node, DEVICES_TABLE.root.value ? node.value / DEVICES_TABLE.root.value : 0, node.depth);
+  }
+  if (objectId === "mail") {
+    const node = MAIL_TABLE.byId.get(nodeId);
+    if (!node) return null;
+    return publicNode(node, MAIL_TABLE.root.value ? node.value / MAIL_TABLE.root.value : 0, node.depth);
   }
   return null;
 }
@@ -409,6 +436,14 @@ export function subnodesFor(objectId, rootId = null, dataset = "genealogy") {
     // hosts out on the ring — all rendered, all addressed.
     const whole = DEVICES_TABLE.root;
     return DEVICES_TABLE.all
+      .filter((n) => n.depth >= 1)
+      .map((n) => publicNode(n, whole.value ? n.value / whole.value : 0, n.depth));
+  }
+  if (objectId === "mail") {
+    // Every folder in the cabinet and every letter on the post
+    // shelf — all rendered, all addressed.
+    const whole = MAIL_TABLE.root;
+    return MAIL_TABLE.all
       .filter((n) => n.depth >= 1)
       .map((n) => publicNode(n, whole.value ? n.value / whole.value : 0, n.depth));
   }
