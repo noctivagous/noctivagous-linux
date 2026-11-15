@@ -4,6 +4,10 @@ import {
   OBJECTS,
   LAYOUTS,
   LAYOUT_KEYS,
+  VIEW_KEYS,
+  FIELD_SIZES,
+  FIELD_DEFAULT_INDEX,
+  fieldStep,
   TRANSFORM_KEYS,
   createSpaceState,
   createUiMode,
@@ -29,6 +33,16 @@ import {
   addressableList,
   addressedId,
   resolveFAction,
+  EVENTS,
+  resolveBackLevels,
+  resolveEKey,
+  resolveRotateTarget,
+  transformOpOf,
+  IDENTITY_QUAT,
+  stepPlatterQuat,
+  stepPlatterSpin,
+  resolveScaleTarget,
+  stepRingSpin,
   applyTransformKey,
   applyTransformPatch,
   applyLayout,
@@ -107,12 +121,15 @@ import {
  * objects in a space. Addressing is the key-click model: the
  * object under the cursor is the addressee, F is the click, Tab
  * also cycles. You turn the addressed object in your hand
- * (- = yaw, [ ] pitch, ; ' roll, . / scale), patch it to another
+ * (Q/W pitch, E/R yaw, T/Y roll, B/N plane-rotate, Z/X magnify —
+ * pivoting at the centre of its bounds), patch it to another
  * with cables (G), pick it up with a Space press (the drag lock —
  * press again to drop, Esc cancels), and rearrange the whole space
- * by loading a layout (3 / 4 / 5). There is no scroll-wheel zoom
- * and no mouse orbit: 1 and 2 move the camera, and the world
- * itself turns slowly when left alone — the turntable rest.
+ * by loading a layout (7 / 8 / 9). There is no scroll-wheel zoom
+ * and no mouse orbit: C and V dolly the camera (toward the hovered
+ * citizen, when there is one), 5 and 6 change the field (the focal
+ * zoom — the lens, not the camera), and the world itself turns
+ * slowly when left alone — the turntable rest.
  *
  * KEY LABELS ARE OPT-IN: Alt+L enters label mode — the letter
  * chips appear and bare letters type-to-target; outside it, bare
@@ -138,9 +155,27 @@ import {
  * whole platter (the citizens hide). While an app holds the
  * stage, the ring belongs to the app — its controls, tools,
  * states and portals ride there — and the keys change scope:
- * Space plays, 1/2 zoom inside the app's own frame, F activates
- * and drills, D steps back through the app's own history, and
- * Esc leaves the app altogether (the big back).
+ * Space plays, C/V zoom inside the app's own frame, F activates
+ * and drills, and the back events walk the app's own levels.
+ *
+ * Slice 11 gives the space EVENT MESSAGING: the completion and
+ * retreat verbs are named events — A is FINISH, S is GO_BACK_I,
+ * D is GO_BACK_II, Esc is CANCEL — resolved against the release
+ * stack by one pure resolver (resolveBackLevels in
+ * space-state.js). CANCEL and GO_BACK_I pop ONE level, GO_BACK_II
+ * up to TWO, so inside an app D is now the big step back and
+ * Esc/S the single step (slice 8's "Esc leaves the app" survives
+ * only as the appClose level: Esc leaves when the app's nav is
+ * already empty). The rotate keys resolve a target — hovered
+ * citizen, the ring (which only spins), the current citizen,
+ * else the platter itself, which the cluster turns in camera
+ * terms (and which cannot be magnified) — and rotations pivot
+ * at each citizen's bounds centre. The number row is the film
+ * crew's (§14/§15): 1–4 the named views, 5/6 the field sizes,
+ * 7/8/9 the object layouts; and the Z/X operation is MAGNIFY
+ * (§16) — it enlarges one thing for examination while the rest
+ * of the space stays in place (the transform record's factor
+ * stays `scale` inside; the operation's name is MAGNIFY).
  *
  * The shell is the space itself: the scene fills the viewport
  * and everything that used to be page furniture around it —
@@ -177,9 +212,14 @@ const PARAM_DEFS = [
 /** The first moves, as a chip strip standing over the scene at rest. */
 const FIRST_MOVES = [
   { key: "F", label: "open" },
-  { key: "E", label: "app · full platter" },
+  { key: "E", label: "yaw · full platter on the ring" },
   { key: "Tab", label: "cycle" },
-  { key: "1 / 2", label: "zoom out · in" },
+  { key: "C / V", label: "dolly out · in" },
+  { key: "1–4", label: "views" },
+  { key: "5 / 6", label: "field − · +" },
+  { key: "7 8 9", label: "object layouts" },
+  { key: "A", label: "finish" },
+  { key: "D", label: "go back II" },
   { key: "Space", label: "carry" },
   { key: "G", label: "patch" },
   { key: "M", label: "library" },
@@ -212,39 +252,57 @@ const KEY_GROUPS = [
       ["Tab", "cycle everything addressable (Shift+Tab back)"],
       ["F", "open the addressed object — its card stands in space"],
       ["F on the ring", "opens the Waveform app onto the centre stage"],
-      ["E", "open the addressed app across the whole platter, citizens hidden"],
-      ["D", "back one level: part → patch → card → selection"],
-      ["Esc", "release a level; cancels a drag before it drops"],
+      ["E on the ring", "open the addressed app across the whole platter, citizens hidden — on a citizen, E is yaw"],
       ["Alt+L", "label mode — letter chips appear, bare letters target"],
+    ],
+  },
+  {
+    title: "Events — finish & back",
+    rows: [
+      ["A", "FINISH — complete what's in flight: land a live patch on the addressed thing, drop a carry"],
+      ["S", "GO BACK I — back exactly one level, the same as Esc"],
+      ["D", "GO BACK II — back up to two levels in one press: focus + card, or out of the app and off it"],
+      ["Esc", "CANCEL — release one level; cancels a drag before it drops"],
+      ["the stack", "drag → inspection → app steps → app close → part / branch focus → patch → card → selection"],
     ],
   },
   {
     title: "Turn & carry",
     rows: [
-      ["- =", "yaw the addressed object"],
-      ["[ ]", "pitch it"],
-      ["; '", "roll it"],
-      [". /", "scale it"],
+      ["E R", "yaw — about the centre of the object's bounds, not its base"],
+      ["Q W", "pitch it"],
+      ["T Y", "roll it"],
+      ["B N", "rotate plane — turn it in its own plane, about its own normal; no other axis changes"],
+      ["Z X", "magnify it — enlarge one thing for examination while the rest of the space stays in place"],
+      ["targets", "rotate lands under the cursor: a hovered citizen first, then the ring (E R B N only spin it), then the current citizen — else the platter, which the cluster turns as the camera sees it, and which cannot be magnified"],
       ["Space", "pick the addressed object up / press again to drop"],
-      ["X / Z", "in a drag: lock movement to that world axis"],
+      ["X / Z", "in a drag: lock movement to that world axis — the drag scope owns them while a carry is live"],
     ],
   },
   {
-    title: "Camera & layouts",
+    title: "Object layouts",
     rows: [
-      ["1", "zoom out — there is no scroll-wheel zoom"],
-      ["2", "zoom in — and no mouse orbit"],
-      ["3 4 5", "layouts: RING · DISTRICTS · THEATRE"],
-      ["v › t/f/s/h", "named views on the command line: top · front · side · home"],
+      ["7 8 9", "layouts: RING · DISTRICTS · THEATRE — they rearrange the citizens; the camera does not move"],
+    ],
+  },
+  {
+    title: "Camera",
+    rows: [
+      ["C", "dolly out — the camera itself pulls back; there is no scroll-wheel zoom"],
+      ["V", "dolly in — and no mouse orbit; pressed over a citizen, the dolly runs toward that citizen"],
+      ["5", "field − — one field size wider (the zoom: the lens changes, the camera stays)"],
+      ["6", "field + — one field size narrower: LONG · MEDIUM LONG · MEDIUM · MEDIUM CLOSE · CLOSE"],
+      ["1 2 3 4", "the named views: PLAN · ELEVATION · SIDE · HOME — the VIEW fieldset's order, the same goView"],
+      ["v › t/f/s/h", "the same views on the command line — loading one levels the platter's camera turns"],
     ],
   },
   {
     title: "Patch, media & clipboard",
     rows: [
-      ["G", "start a patch from the addressed object; G / F / click lands it"],
-      ["X", "strip every cable touching the addressed object"],
+      ["G", "start a patch from the addressed object; G / F / A / click lands it"],
+      ["J", "strip every cable touching the addressed object"],
       ["M", "open / close the media library on the XY wall"],
-      ["C", "copy the addressed thing to the clipboard"],
+      ["H", "copy the addressed thing to the clipboard"],
       ["I", "inspect the addressed thing — it comes to you"],
       ["Alt+0", "summon / dismiss the clipboard tray"],
       ["Alt+1 2 3", "layer visibility: DATA / INSTRUMENTS / SCENERY"],
@@ -253,25 +311,25 @@ const KEY_GROUPS = [
   {
     title: "Modes & the command line",
     rows: [
-      ["Enter", "arm the command line: category › action › argument, ⏎ runs"],
+      ["Enter", "arm the command line: category › action › argument, ⏎ runs — on the line, Enter is the finish (A is a letter there)"],
       ["K", "hide / show the keyboard panel — inside label mode K is the definition's address"],
-      ["Alt+L", "in label mode G is the tangled tree, M the living crystal and E the sunburst cylinder; outside it G patches, M opens the library and E expands an app"],
-      ["C / I", "here I inspects and C copies — KeyPilot's stock I-copy lives on C in this layout"],
+      ["Alt+L", "in label mode the letters are addresses (G the tangled tree, M the living crystal, E the sunburst cylinder, B the drum, N the tree); outside it they are operators"],
+      ["H / I", "here I inspects and H copies — KeyPilot's stock I-copy lives on H in this layout"],
       ["F on a card / tray", "inspects it, like I"],
-      ["knot parts", "with the knot current, hover a part — F zooms into it, D backs out to the knot"],
-      ["tree branches", "with the tree current, hover a depth-1 branch — F zooms to the subtree, D backs out to the tree"],
+      ["knot parts", "with the knot current, hover a part — F flies into it, D (GO BACK II) backs out to the knot"],
+      ["tree branches", "with the tree current, hover a depth-1 branch — F flies to the subtree, D backs out to the tree"],
     ],
   },
   {
     title: "In an open app",
     rows: [
       ["Space", "play / pause — the drag lock waits outside the app"],
-      ["1 / 2", "zoom the window inside the waveform's own frame — the camera stays"],
+      ["C / V", "over the waveform fence, zoom the window inside the app's own frame — the camera stays; over nothing, they do nothing"],
       ["F", "activate the addressed ring token; on the waveform, drill into the hovered stretch"],
       ["Tab", "cycle the stage and the app's ring tokens"],
-      ["D", "back one step in the app's own history (drills, track changes, zoom-token steps)"],
+      ["S / Esc", "CANCEL / GO BACK I — one step back in the app; with its history empty, the step leaves the app"],
+      ["D", "GO BACK II — up to two steps back: two history steps, or a step and out, or out and release"],
       ["E", "expand a centre-stage app to the whole platter"],
-      ["Esc", "leave the app — the big back, home again"],
     ],
   },
 ];
@@ -315,7 +373,11 @@ html, body, #root { height:100%; margin:0; overflow:hidden; background:#0b0e10; 
 .us-move { display:inline-flex; align-items:center; gap:6px; padding:3px 7px; border:1px solid rgba(44,58,65,.9); border-radius:3px; background:rgba(13,18,22,.82);
   font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:500; font-size:12px; letter-spacing:.07em; text-transform:uppercase; color:#8fa3ab; backdrop-filter:blur(6px); }
 .us-move b { color:#ffa726; font-weight:600; }
-.us-guide { left:12px; bottom:118px; width:min(404px, calc(100vw - 24px)); max-height:min(500px, calc(100dvh - 500px)); }
+/* Slice 11 (§8): the guide's bottom is raised to clear the bottom
+   dock WITH the keyboard panel seated in it (the dock is ~350px
+   tall then, against ~118px before) at the desktop widths where
+   the centred panel would otherwise reach the guide's column. */
+.us-guide { left:12px; bottom:360px; width:min(404px, calc(100vw - 24px)); max-height:min(500px, calc(100dvh - 500px)); }
 .us-guide-tabs { flex:none; display:flex; flex-wrap:wrap; gap:5px; margin-bottom:9px; }
 .us-guide-tab { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:600; font-size:12px; letter-spacing:.08em; text-transform:uppercase;
   color:#8fa3ab; background:#0b0e10; border:1px solid #2c3a41; border-radius:3px; padding:2px 8px; cursor:pointer; }
@@ -421,10 +483,18 @@ html, body, #root { height:100%; margin:0; overflow:hidden; background:#0b0e10; 
 .us-cmdhint { flex:1; min-width:0; color:#5f737c; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .us-cmdecho { flex:none; max-width:46%; color:#a9f0dd; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .us-cmdecho.err { color:#ff8a75; }
-.us-keyboard { position:absolute; z-index:27; left:50%; transform:translateX(-50%); bottom:118px; width:min(860px, 96vw);
+/* Slice 11 (§8): the panel no longer floats at a fixed offset —
+   it is rendered INSIDE the bottom dock as its first child, so
+   its bottom edge sits directly on the command-line/status
+   assembly's top edge in every state (chips row shown or not).
+   Centred by the dock's flex column; glass styling unchanged.
+   §10: collapsed, it is its head bar only, still on that edge. */
+.us-keyboard { align-self:center; width:min(860px, 96vw);
   border:1px solid rgba(44,58,65,.9); border-radius:6px; background:rgba(13,18,22,.66); backdrop-filter:blur(10px);
   box-shadow:0 10px 30px rgba(0,0,0,.38); padding:8px 10px 9px; }
 .us-kb-head { display:flex; align-items:center; gap:10px; margin-bottom:7px; }
+.us-keyboard.collapsed .us-kb-head { margin-bottom:0; }
+.us-kb-head-btns { flex:none; display:flex; gap:5px; }
 .us-kb-head h3 { margin:0; font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:600; font-size:14px; letter-spacing:.08em; text-transform:uppercase; color:#e8f3ee; }
 .us-kb-echo { flex:1; min-width:0; text-align:right; font-family:'IBM Plex Mono', ui-monospace, monospace; font-size:11px; color:#ffa726; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .us-kb-grid { display:flex; flex-direction:column; gap:4px; }
@@ -447,7 +517,9 @@ html, body, #root { height:100%; margin:0; overflow:hidden; background:#0b0e10; 
   .us-keyboard { width:min(640px, 96vw); }
 }
 @media (max-width:760px) {
-  .us-keyboard { bottom:112px; width:auto; min-width:210px; }
+  /* Small screens: only the head shows — in-flow in the dock now,
+     where the panel used to float at bottom:112px. */
+  .us-keyboard { width:auto; min-width:210px; }
   .us-kb-grid, .us-kb-combos { display:none; }
   .us-kb-head { margin-bottom:0; }
 }
@@ -461,7 +533,7 @@ html, body, #root { height:100%; margin:0; overflow:hidden; background:#0b0e10; 
 `;
 
 /**
- * The keyboard panel (slice 10): a semitransparent overlay board
+ * The keyboard panel (slice 10): a semitransparent glass board
  * that renders the RESOLVED keymap and owns nothing — the caps
  * are display only, and the board never runs a command (after
  * nibglider's on-screen keyboard, whose panel likewise renders
@@ -469,8 +541,17 @@ html, body, #root { height:100%; margin:0; overflow:hidden; background:#0b0e10; 
  * is its own: resolution marks the last-pressed cap active, and
  * the lift lasts ~300 ms from the recorded press; a tick clears
  * it so no cap stays lit after the moment has passed.
+ *
+ * Slice 11: the panel is seated INSIDE the bottom dock (§8), and
+ * its head carries a Collapse button beside Hide (§10) —
+ * collapsing reduces it to the head bar alone (title, scope tag,
+ * last-key echo and buttons stay live; the cap grid and combos
+ * strip are not rendered), and the bar's bottom edge stays on
+ * the command line's top edge exactly as the full panel's does.
+ * Collapsed is independent of visibility: it persists across
+ * Hide/show, and the panel starts expanded.
  */
-function KeyboardPanel({ kb, lastKey, onHide }) {
+function KeyboardPanel({ kb, lastKey, onHide, collapsed, onToggleCollapse }) {
   const [, setTick] = useState(0);
   useEffect(() => {
     if (!lastKey) return undefined;
@@ -480,41 +561,55 @@ function KeyboardPanel({ kb, lastKey, onHide }) {
   const fresh = Boolean(lastKey) && performance.now() - lastKey.at <= 300;
   const echo = lastKeyEcho(kb, lastKey?.code || null);
   return (
-    <section className="us-keyboard" data-testid="keyboard-panel" aria-label="Keyboard panel">
+    <section className={`us-keyboard${collapsed ? " collapsed" : ""}`} data-testid="keyboard-panel" aria-label="Keyboard panel">
       <div className="us-kb-head">
         <h3>KEYBOARD</h3>
         <span className="us-cmdtag">{kb.scopeName}</span>
         <span className="us-kb-echo">{echo}</span>
-        <button
-          type="button"
-          className="us-panel-toggle"
-          onClick={(e) => { onHide(); e.currentTarget.blur(); }}
-        >
-          Hide
-        </button>
+        <span className="us-kb-head-btns">
+          <button
+            type="button"
+            className="us-panel-toggle"
+            aria-expanded={!collapsed}
+            onClick={(e) => { onToggleCollapse(); e.currentTarget.blur(); }}
+          >
+            {collapsed ? "Expand" : "Collapse"}
+          </button>
+          <button
+            type="button"
+            className="us-panel-toggle"
+            onClick={(e) => { onHide(); e.currentTarget.blur(); }}
+          >
+            Hide
+          </button>
+        </span>
       </div>
-      <div className="us-kb-grid">
-        {kb.rows.map((row, i) => (
-          <div className="us-kb-row" key={i}>
-            {row.map((c) => (
-              <div
-                key={c.code}
-                title={c.binding?.hint || undefined}
-                className={`us-kb-cap${c.binding ? " bound" : ""}${c.binding?.operator ? " op" : ""}${c.active && fresh ? " active" : ""}`}
-                style={{ flexGrow: c.width }}
-              >
-                <span className="us-kb-glyph">{c.glyph}</span>
-                {c.binding ? <span className="us-kb-fn">{c.binding.label}</span> : null}
+      {collapsed ? null : (
+        <>
+          <div className="us-kb-grid">
+            {kb.rows.map((row, i) => (
+              <div className="us-kb-row" key={i}>
+                {row.map((c) => (
+                  <div
+                    key={c.code}
+                    title={c.binding?.hint || undefined}
+                    className={`us-kb-cap${c.binding ? " bound" : ""}${c.binding?.operator ? " op" : ""}${c.active && fresh ? " active" : ""}`}
+                    style={{ flexGrow: c.width }}
+                  >
+                    <span className="us-kb-glyph">{c.glyph}</span>
+                    {c.binding ? <span className="us-kb-fn">{c.binding.label}</span> : null}
+                  </div>
+                ))}
               </div>
             ))}
           </div>
-        ))}
-      </div>
-      <div className="us-kb-combos">
-        {kb.combos.map((cb) => (
-          <span className="us-kb-combo" key={cb.keys}><b>{cb.keys}</b>{cb.label}</span>
-        ))}
-      </div>
+          <div className="us-kb-combos">
+            {kb.combos.map((cb) => (
+              <span className="us-kb-combo" key={cb.keys}><b>{cb.keys}</b>{cb.label}</span>
+            ))}
+          </div>
+        </>
+      )}
     </section>
   );
 }
@@ -527,6 +622,10 @@ export default function SpaceApp() {
   const [cardId, setCardId] = useState(null);
   const [pendingId, setPendingId] = useState(null);
   const [zoomMul, setZoomMul] = useState(1);
+  // The field size (§15): an INDEX into FIELD_SIZES — the focal
+  // zoom is a ladder of named fields, not a dial. It is a lens
+  // setting: named views and the projection switch keep it.
+  const [fieldIndex, setFieldIndex] = useState(FIELD_DEFAULT_INDEX);
   // Modes: label mode (Alt+L) and the armed command line exclude
   // each other; the transitions live in space-state.js.
   const [uiMode, setUiMode] = useState(() => createUiMode());
@@ -540,7 +639,7 @@ export default function SpaceApp() {
   const [clip, setClip] = useState(() => createClipboard());
   const [clipSummoned, setClipSummoned] = useState(false);
   const [inspection, setInspection] = useState(() => createInspection());
-  const [inspectRot, setInspectRot] = useState({ yaw: 0, pitch: 0, roll: 0, scale: 1 });
+  const [inspectRot, setInspectRot] = useState({ yaw: 0, pitch: 0, roll: 0, scale: 1, spin: 0 });
   const [pastes, setPastes] = useState([]);
   // Slice 4: the named view, the drag axis lock, dynamic input.
   const [viewName, setViewName] = useState("home");
@@ -576,10 +675,23 @@ export default function SpaceApp() {
   // The overlay shell: parameters and the guide are stationary
   // panels over the scene, each collapsible on its own head.
   const [paramsOpen, setParamsOpen] = useState(true);
-  const [guideOpen, setGuideOpen] = useState(
-    () => typeof window === "undefined" || window.innerWidth > 1400,
-  );
+  // Slice 11 (§9): the guide starts COLLAPSED at every width —
+  // it stands as its button until the user opens it.
+  const [guideOpen, setGuideOpen] = useState(false);
   const [guideTab, setGuideTab] = useState("brief");
+  // Slice 11: zoom-at-cursor ({ id } of the citizen the camera is
+  // dollied toward, or null), the ring's manual spin offset
+  // (degrees), the platter's accumulated camera-space orientation
+  // (§12: a quaternion as a plain [x, y, z, w] array, identity at
+  // start — §7's platterYaw/platterTilt states were dropped for
+  // it), the annulus hover the view reports, and the keyboard
+  // panel's collapsed state (§10 — independent of the panel's
+  // visibility, starts expanded).
+  const [zoomFocus, setZoomFocus] = useState(null);
+  const [ringSpin, setRingSpin] = useState(0);
+  const [platterQuat, setPlatterQuat] = useState(() => [...IDENTITY_QUAT]);
+  const [ringHover, setRingHover] = useState(false);
+  const [keyboardCollapsed, setKeyboardCollapsed] = useState(false);
   // Slice 10: the keyboard panel's record of physical key
   // activity — the last keydown's code and when it landed. The
   // panel resolves its active cap and its head echo from this;
@@ -647,12 +759,15 @@ export default function SpaceApp() {
 
   // Part/branch focus belongs to its object being current: if the
   // current thing changes away from the focused object, the focus
-  // ends. The D/Esc chain treats both at ONE level (see doBack):
-  // sub-address focus → patch → card → selection.
+  // ends. The back events treat both at ONE level (see
+  // dispatchBack): sub-address focus → patch → card → selection.
+  // A selection change also clears the zoom-at-cursor focus
+  // (slice 11, §4: it is one of its stated clearing events).
   useEffect(() => {
     if (currentId !== "knot") setPartHoverId(null);
     if (currentId !== "tree") setBranchHoverId(null);
     setPartFocus((f) => (f.partId && f.objectId !== currentId ? endPartFocus() : f));
+    setZoomFocus(null);
   }, [currentId]);
 
   /* ----- slice 8: opening apps, and the audio app's own keys ----- */
@@ -679,10 +794,12 @@ export default function SpaceApp() {
   };
 
   const closeAudioApp = () => {
-    // Esc — the big back. Play pauses, the citizens return (in
-    // full mode they were hidden), the camera seat is restored,
-    // and the space is exactly as it was, with the ring's app
-    // item current, where the whole excursion began.
+    // The appClose LEVEL of the back chain (slice 11: reached by
+    // whichever event's pop lands on it — no longer Esc's private
+    // big back). Play pauses, the citizens return (in full mode
+    // they were hidden), the camera seat is restored, and the
+    // space is exactly as it was, with the ring's app item
+    // current, where the whole excursion began.
     setOpenAppState((s) => closeAppTo(s));
     setAudio((a) => ({ ...a, playing: false }));
     setTokenHoverId(null);
@@ -749,19 +866,27 @@ export default function SpaceApp() {
     touch();
   };
 
-  const appBack = () => {
-    // D inside the app walks the APP's history — drills, track
-    // changes, zoom-token steps — and nothing else. An empty
-    // stack is a note, not a fall-through to the space's chain:
-    // app scope owns D while the app holds the stage.
-    const { stack, entry } = popNav(audio.nav);
-    if (!entry) {
-      setEcho({ text: "the app has no further back — Esc leaves the app", error: true });
-      return;
+  // Pop up to `count` of the app's nav levels as ONE batch (a
+  // GO_BACK_II dispatch may owe two): the pops walk the local
+  // stack, then a single setAudio lands the result. Returns how
+  // many levels actually popped.
+  const popAudioNavLevels = (count) => {
+    let nav = audio.nav;
+    let last = null;
+    let popped = 0;
+    while (popped < count) {
+      const r = popNav(nav);
+      if (!r.entry) break;
+      nav = r.stack;
+      last = r.entry;
+      popped += 1;
     }
-    setAudio((a) => ({ ...a, nav: stack, trackId: entry.trackId, window: entry.window }));
-    sharedRef.current.audioPos = entry.window.start;
-    touch();
+    if (last) {
+      setAudio((a) => ({ ...a, nav, trackId: last.trackId, window: last.window }));
+      sharedRef.current.audioPos = last.window.start;
+      touch();
+    }
+    return popped;
   };
 
   const onTokenHover = (id) => {
@@ -769,11 +894,14 @@ export default function SpaceApp() {
     if (id) setAppFocusId(id);
   };
 
-  const completePatch = (from, to) => {
+  const completePatch = (from, to, eventName = null) => {
+    // When FINISH (slice 11) drives the completion, its echoes
+    // name the event — the messaging made visible.
+    const suffix = eventName ? ` — ${eventName}` : "";
     // The ring's apps open; they do not take cables.
     if (ringItemById(from) || ringItemById(to)) {
       setPendingId(null);
-      setEcho({ text: "the ring's apps open — they don't take cables", error: true });
+      setEcho({ text: `the ring's apps open — they don't take cables${suffix}`, error: true });
       return;
     }
     // A patch completed to or from the clipboard tray is a PASTE,
@@ -783,16 +911,23 @@ export default function SpaceApp() {
       const target = from === "clipboard" ? to : from;
       setPendingId(null);
       if (!clip.held) {
-        setEcho({ text: "clipboard is empty — C copies something first", error: true });
+        setEcho({ text: `clipboard is empty — H copies something first${suffix}`, error: true });
         return;
       }
       setPastes((prev) => [...prev.filter((p) => p.targetId !== target), { targetId: target, item: clip.held }]);
-      setEcho({ text: `CLIPBOARD → ${thingName(target)}: ${clip.held.title}`, error: false });
+      setEcho({ text: `CLIPBOARD → ${thingName(target)}: ${clip.held.title}${suffix}`, error: false });
       setCurrentId(target);
       return;
     }
     const res = addCable(space, from, to);
-    if (res.ok) setSpace(res.state);
+    if (res.ok) {
+      setSpace(res.state);
+      if (eventName) {
+        setEcho({ text: `patched ${thingName(from)} ↔ ${thingName(to)}${suffix}`, error: false });
+      }
+    } else if (eventName) {
+      setEcho({ text: `patch refused — ${res.reason}${suffix}`, error: true });
+    }
     setPendingId(null);
     setCurrentId(to);
   };
@@ -867,15 +1002,223 @@ export default function SpaceApp() {
         return;
     }
   };
-  const doBack = () => {
-    // The release chain: a sub-address focus (a knot part, a tree
-    // branch — one level, one state) backs out to its object
-    // first, then a live patch, then the entered card, then the
-    // selection.
-    if (partFocus.partId) { setPartFocus(endPartFocus()); return; }
-    if (pendingId) { setPendingId(null); return; }
-    if (cardId) { setCardId(null); return; }
-    if (currentId) setCurrentId(null);
+  /* ----- slice 11: the event layer, dispatched ----- */
+
+  // The release stack's occupancy, as data for the resolver.
+  const backChain = () => ({
+    dragLocked: Boolean(lockRef.current),
+    inspection: Boolean(inspection.inspectedId),
+    appNav: openAppState.appId ? audio.nav.length : 0,
+    appOpen: Boolean(openAppState.appId),
+    partFocus: Boolean(partFocus.partId),
+    pending: Boolean(pendingId),
+    card: Boolean(cardId),
+    selection: Boolean(currentId),
+  });
+
+  const BACK_LEVEL_ECHO = {
+    drag: "drag cancelled",
+    inspection: "inspection ended",
+    appClose: "app closed",
+    partFocus: "focus released",
+    patch: "patch released",
+    card: "card closed",
+    selection: "selection released",
+  };
+
+  /**
+   * One dispatch for every back event: resolveBackLevels decides
+   * which levels the event pops, and each is applied by the
+   * closer that already existed for it. CANCEL (Esc/S) carries
+   * two pre-steps the chain does not model, in the handlers' old
+   * order: a drag's axis lock releases first (the drag itself is
+   * the chain's first level), then label mode exits — but only
+   * when no drag is live (a locked drag pops as a level first)
+   * and no app or inspection holds the scope. The command line's
+   * walk-back precedes all of this: its machine consumes Esc
+   * while armed, so an armed line never reaches here. Every
+   * dispatch clears the zoom-at-cursor focus (§4) and names the
+   * EVENT in the echo.
+   */
+  const dispatchBack = (event) => {
+    setZoomFocus(null);
+    if (event === EVENTS.CANCEL || event === EVENTS.GO_BACK_I) {
+      if (lockRef.current && sharedRef.current.axisLock) {
+        clearAxisLock();
+        setEcho({ text: `axis lock released — ${event}`, error: false });
+        return;
+      }
+      if (!lockRef.current && !openAppState.appId && !inspection.inspectedId && uiMode.labelMode) {
+        setUiMode((m) => exitLabelMode(m));
+        setEcho({ text: `label mode off — ${event}`, error: false });
+        return;
+      }
+    }
+    const levels = resolveBackLevels(backChain(), event);
+    if (!levels.length) {
+      setEcho({ text: `nothing to release — ${event}`, error: true });
+      return;
+    }
+    const navPops = levels.filter((l) => l === "appNav").length;
+    if (navPops) popAudioNavLevels(navPops);
+    const said = [];
+    if (navPops) said.push(navPops > 1 ? `app steps back ×${navPops}` : "app step back");
+    for (const level of levels) {
+      switch (level) {
+        case "appNav": break; // applied as one batch above
+        case "drag": lockCancel(); said.push(BACK_LEVEL_ECHO.drag); break;
+        case "inspection": endInspectThing(); said.push(BACK_LEVEL_ECHO.inspection); break;
+        case "appClose": closeAudioApp(); said.push(BACK_LEVEL_ECHO.appClose); break;
+        case "partFocus": setPartFocus(endPartFocus()); said.push(BACK_LEVEL_ECHO.partFocus); break;
+        case "patch": setPendingId(null); said.push(BACK_LEVEL_ECHO.patch); break;
+        case "card": setCardId(null); said.push(BACK_LEVEL_ECHO.card); break;
+        case "selection": setCurrentId(null); said.push(BACK_LEVEL_ECHO.selection); break;
+        default: break;
+      }
+    }
+    setEcho({ text: `${said.join(" · ")} — ${event}`, error: false });
+    touch();
+  };
+
+  /**
+   * FINISH (A): complete the operation in flight, scoped — a
+   * live patch lands on the addressed target (no target: the
+   * patch stays live and the echo says so); a live drag lock
+   * drops at the current point (Space's own drop path). FINISH
+   * never closes apps, ends inspections or releases selections.
+   * The armed command line never reaches here: while it is
+   * armed, A is a letter of its arguments (object names contain
+   * "a"), so the line's finish stays Enter — see the guide.
+   */
+  const doFinish = () => {
+    if (pendingId) {
+      const target = addressedId(hoverId, currentId);
+      if (!target || target === pendingId) {
+        setEcho({ text: "FINISH — nothing to finish onto", error: true });
+        return;
+      }
+      completePatch(pendingId, target, EVENTS.FINISH);
+      return;
+    }
+    if (lockRef.current) {
+      const id = lockRef.current.id;
+      lockDrop();
+      setEcho({ text: `dropped ${thingName(id)} — ${EVENTS.FINISH}`, error: false });
+      return;
+    }
+    setEcho({ text: "FINISH — nothing in flight", error: true });
+  };
+
+  // Is the RING the rotate keys' addressee? Its item hovered or
+  // current, a token hovered (app open), or the cursor over the
+  // annulus itself (the view reports that on its own channel).
+  const ringAddressedNow = () =>
+    hoverId === "audio" || currentId === "audio" || ringHover || Boolean(tokenHoverId);
+
+  /**
+   * C/V: the DOLLY (§14 — the camera itself moves; the focal
+   * zoom is 5/6). Over a hovered CITIZEN the dolly runs toward
+   * that citizen (§4): the zoomFocus is set (or cleared, when
+   * the step lands back on 1.0) and the Rig seats the camera on
+   * the citizen's F-seat scaled by zoomMul. With nothing hovered
+   * it is the plain global dolly, and any stale zoom focus goes.
+   */
+  const pressZoom = (dir) => {
+    const hov = hoverId && objectById(hoverId) ? hoverId : null;
+    const next = zoomStep(zoomMul, dir);
+    setZoomMul(next);
+    setZoomFocus(hov && next !== 1 ? { id: hov } : null);
+    touch();
+  };
+
+  /**
+   * 5/6: the focal ZOOM (§15) — one rung along the field-size
+   * ladder. The camera does not move; the lens changes. The
+   * step names the new field through the dynamic-input channel,
+   * and at the ladder's end it says so.
+   */
+  const pressField = (dir) => {
+    const next = fieldStep(fieldIndex, dir);
+    setFieldIndex(next);
+    showDyn(`FIELD · ${FIELD_SIZES[next].name}${next === fieldIndex ? " — end of the ladder" : ""}`);
+    touch();
+  };
+
+  /**
+   * One rotate/magnify key press (the Q/W/E/R/T/Y cluster, B/N
+   * plane-rotate, Z/X magnify), resolved by target. Magnify
+   * keeps the addressed citizen (hover wins) and is DECLINED on
+   * the platter (§12). Rotate resolves through resolveRotateTarget:
+   * citizen (its transform, bounds-centre pivot in the view),
+   * ring (yaw and plane spin the ring's one offset; pitch/roll
+   * do not apply), platter (the cluster premultiplies the
+   * platter's orientation about the CAMERA's axes; plane steps
+   * the rotation parameter, innermost in the composition).
+   */
+  const handleTransformKey = (tk) => {
+    const op = transformOpOf(tk);
+    if (!op) return;
+    if (op === "scale-" || op === "scale+") {
+      const st = resolveScaleTarget({
+        hoverId, currentId, ringAddressed: ringAddressedNow(),
+      });
+      if (st.kind === "citizen") {
+        const ns = applyTransformKey(space, st.id, tk);
+        setSpace(ns);
+        const t = ns.transforms[st.id];
+        if (t) showDyn(`MAGNIFY ${thingName(st.id)} ${t.scale.toFixed(2)}×`);
+      } else if (st.kind === "platter") {
+        // §12+§16: the main platter cannot be magnified.
+        setEcho({ text: "the main platter cannot be magnified — C/V dolly the camera", error: true });
+      }
+      return;
+    }
+    const target = resolveRotateTarget({
+      hoverId, currentId, ringAddressed: ringAddressedNow(),
+    });
+    const sgn = (v) => (v > 0 ? `+${v}` : `${v}`);
+    if (target.kind === "citizen") {
+      const ns = applyTransformKey(space, target.id, tk);
+      setSpace(ns);
+      const t = ns.transforms[target.id];
+      if (t) {
+        const nm = thingName(target.id);
+        if (op.startsWith("yaw")) showDyn(`YAW ${nm} ${sgn(Math.round(t.yaw))}°`);
+        else if (op.startsWith("pitch")) showDyn(`PITCH ${nm} ${sgn(Math.round(t.pitch))}°`);
+        else if (op.startsWith("roll")) showDyn(`ROLL ${nm} ${sgn(Math.round(t.roll))}°`);
+        else if (op.startsWith("spin")) showDyn(`PLANE ${nm} ${sgn(Math.round(t.spin || 0))}°`);
+      }
+      return;
+    }
+    if (target.kind === "ring") {
+      if (op.startsWith("yaw") || op.startsWith("spin")) {
+        const next = stepRingSpin(ringSpin, op);
+        setRingSpin(next);
+        showDyn(`RING SPIN ${sgn(next)}°`);
+      } else {
+        setEcho({ text: "the ring spins — pitch and roll do not apply", error: true });
+      }
+      return;
+    }
+    // The platter fallback (§12): the cluster turns the world
+    // AS THE CAMERA SEES IT — each step premultiplies the
+    // platter's orientation about the camera's own axes, which
+    // the Rig publishes on the shared ref (the channel the drag
+    // point and the playhead already travel). Before the first
+    // frame the world axes stand in. B/N is unchanged: it steps
+    // the rotation parameter, innermost in the composition, so
+    // the disc still spins in its own plane inside these turns.
+    if (op.startsWith("spin")) {
+      const next = stepPlatterSpin(values.rotation, op);
+      setValue("rotation", next);
+      showDyn(`PLATTER PLANE ${sgn(next)}°`);
+      return;
+    }
+    const axes = sharedRef.current.cameraAxes
+      || { up: [0, 1, 0], right: [1, 0, 0], forward: [0, 0, 1] };
+    setPlatterQuat((q) => stepPlatterQuat(q, axes, op));
+    const axisName = op.startsWith("yaw") ? "YAW" : op.startsWith("pitch") ? "PITCH" : "ROLL";
+    showDyn(`PLATTER · CAMERA ${axisName} ${op.endsWith("-") ? "−" : "+"}`);
   };
   const doG = () => {
     // G's precedence is modal, plainly: INSIDE label mode letters
@@ -990,21 +1333,22 @@ export default function SpaceApp() {
         return `selected ${intent.name}`;
       case "yaw":
       case "pitch":
-      case "roll": {
+      case "roll":
+      case "spin": {
         if (!currentId) return { error: "nothing is current — select an object first (o › s)" };
         const axis = intent.type;
         setSpace((s) => applyTransformPatch(s, currentId, {
           [axis]: (s.transforms[currentId]?.[axis] ?? 0) + intent.degrees,
         }));
-        return `${objectById(currentId).name} ${axis} ${intent.degrees > 0 ? "+" : ""}${intent.degrees}°`;
+        return `${objectById(currentId).name} ${axis === "spin" ? "plane" : axis} ${intent.degrees > 0 ? "+" : ""}${intent.degrees}°`;
       }
       case "size": {
         if (!currentId) return { error: "nothing is current — select an object first (o › s)" };
         setSpace((s) => applyTransformPatch(s, currentId, { scale: intent.scale }));
-        return `${objectById(currentId).name} scale → ${intent.scale}× (clamped 0.40–2.50)`;
+        return `${objectById(currentId).name} magnify → ${intent.scale}× (clamped 0.40–2.50)`;
       }
       case "focus": {
-        if (pendingId) return { error: "a patch is live — finish it or Esc out first" };
+        if (pendingId) return { error: "a patch is live — finish it (A) or cancel out (Esc / S)" };
         if (!currentId) return { error: "nothing is current — select an object first (o › s)" };
         setCardId(currentId);
         return `entered ${objectById(currentId).name}`;
@@ -1026,10 +1370,11 @@ export default function SpaceApp() {
       }
       case "layout":
         setSpace((s) => applyLayout(s, intent.layout));
+        setZoomFocus(null); // a layout change clears dolly-at-cursor (§4)
         return `layout ${LAYOUTS[intent.layout].name}`;
       case "zoom":
         setZoomMul((m) => zoomStep(m, intent.dir));
-        return intent.dir > 0 ? "zoom in" : "zoom out";
+        return intent.dir > 0 ? "dolly in" : "dolly out";
       case "view": {
         // Choosing a view cancels any in-flight F camera work
         // (the entered card's seat); HOME also releases, as it
@@ -1037,9 +1382,11 @@ export default function SpaceApp() {
         // the VIEW fieldset's buttons. Inspection moves the
         // thing, not the camera, so it is not camera work and is
         // unreachable here anyway (the line is disarmed then).
+        const hadTurns = platterQuat.some((v, i) => Math.abs(v - IDENTITY_QUAT[i]) > 1e-9);
         goView(intent.view);
-        if (intent.view === "home") return "view HOME — released";
-        return `view ${VIEWS[intent.view].name}`;
+        const reset = hadTurns ? " · platter turns reset" : "";
+        if (intent.view === "home") return `view HOME — released${reset}`;
+        return `view ${VIEWS[intent.view].name}${reset}`;
       }
       case "help":
         return helpText();
@@ -1055,9 +1402,14 @@ export default function SpaceApp() {
   // PARAMETERS panel are two doors to this one transition: the
   // view takes its seat, any entered card closes, and HOME also
   // releases — the selection and a live patch end with it.
+  // Slice 11 (§12): loading a named view also RESETS the
+  // platter's camera-space turns to identity — a named view is
+  // an absolute camera position, and leftover world turns
+  // would fight it.
   const goView = (view) => {
     setViewName(view);
     setCardId(null);
+    setPlatterQuat([...IDENTITY_QUAT]);
     if (view === "home") {
       setPendingId(null);
       setCurrentId(null);
@@ -1083,7 +1435,7 @@ export default function SpaceApp() {
     setEcho((prev) => (prev.error ? { text: "", error: false } : prev));
   };
 
-  /* ----- copy (C), inspect (I), the library (M), the tray (Alt+0) ----- */
+  /* ----- copy (H), inspect (I), the library (M), the tray (Alt+0) ----- */
 
   const copyThing = (id) => {
     const card = isMediaId(id)
@@ -1121,7 +1473,7 @@ export default function SpaceApp() {
     // thing already out (exclusivity) — the view eases it back.
     const { inspection: next } = beginInspect(inspection, id, homeFor(id));
     setInspection(next);
-    setInspectRot({ yaw: 0, pitch: 0, roll: 0, scale: 1 });
+    setInspectRot({ yaw: 0, pitch: 0, roll: 0, scale: 1, spin: 0 });
     setCurrentId(id);
     setCardId(null);
     setPendingId(null);
@@ -1135,15 +1487,18 @@ export default function SpaceApp() {
 
   const endInspectThing = () => {
     setInspection(endInspect(inspection).inspection);
-    setInspectRot({ yaw: 0, pitch: 0, roll: 0, scale: 1 });
+    setInspectRot({ yaw: 0, pitch: 0, roll: 0, scale: 1, spin: 0 });
     touch();
   };
 
   // While inspecting, the transform keys turn the SPECIMEN — a
   // temporary turn held here, never written into the space state,
   // so ending inspection restores the exact home orientation.
+  // Plane-rotate (B/N) flows through here too: the specimen's
+  // spin is held in inspectRot.spin and applied by the view in
+  // the specimen's own plane (see the Rig).
   const stepInspectRot = (key) => {
-    const op = TRANSFORM_KEYS[key];
+    const op = transformOpOf(key);
     if (!op) return;
     const n = { ...inspectRot };
     switch (op) {
@@ -1153,6 +1508,8 @@ export default function SpaceApp() {
       case "pitch+": n.pitch += ANGLE_STEP; break;
       case "roll-": n.roll -= ANGLE_STEP; break;
       case "roll+": n.roll += ANGLE_STEP; break;
+      case "spin-": n.spin = (inspectRot.spin || 0) - ANGLE_STEP; break;
+      case "spin+": n.spin = (inspectRot.spin || 0) + ANGLE_STEP; break;
       case "scale-": n.scale = Math.max(0.5, inspectRot.scale / SCALE_STEP); break;
       case "scale+": n.scale = Math.min(2, inspectRot.scale * SCALE_STEP); break;
       default: return;
@@ -1163,7 +1520,8 @@ export default function SpaceApp() {
     if (op.startsWith("yaw")) showDyn(`YAW ${nm} ${sgn(n.yaw)}°`);
     else if (op.startsWith("pitch")) showDyn(`PITCH ${nm} ${sgn(n.pitch)}°`);
     else if (op.startsWith("roll")) showDyn(`ROLL ${nm} ${sgn(n.roll)}°`);
-    else showDyn(`SCALE ${nm} ${n.scale.toFixed(2)}×`);
+    else if (op.startsWith("spin")) showDyn(`PLANE ${nm} ${sgn(n.spin)}°`);
+    else showDyn(`MAGNIFY ${nm} ${n.scale.toFixed(2)}×`);
   };
 
   useEffect(() => {
@@ -1172,20 +1530,28 @@ export default function SpaceApp() {
       // code, before any branch decides what the key means. The
       // panel highlights from this and nothing else.
       if (e.code) setLastKey({ code: e.code, at: performance.now() });
-      // While inspecting, almost everything suspends: D / Esc send
-      // the specimen home, the transform keys turn it, and the
-      // rest of the scheme waits. (Modes were already suspended
-      // when inspection began.)
+      // While inspecting, almost everything suspends: the back
+      // events send the specimen home through the one dispatch
+      // (CANCEL / GO_BACK_I pop the inspection level alone;
+      // GO_BACK_II pops it and the level beneath), the transform
+      // keys turn it, and the rest of the scheme waits. (Modes
+      // were already suspended when inspection began.)
       if (inspection.inspectedId) {
-        if (e.key === "Escape" || e.key === "d" || e.key === "D") {
+        if (e.key === "Escape") { e.preventDefault(); dispatchBack(EVENTS.CANCEL); return; }
+        if (e.key === "s" || e.key === "S") { e.preventDefault(); dispatchBack(EVENTS.GO_BACK_I); return; }
+        if (e.key === "d" || e.key === "D") { e.preventDefault(); dispatchBack(EVENTS.GO_BACK_II); return; }
+        if (e.key === "a" || e.key === "A") {
+          // FINISH never ends an inspection — and nothing else is
+          // in flight while one runs.
           e.preventDefault();
-          endInspectThing();
+          setEcho({ text: "FINISH — nothing in flight", error: true });
           return;
         }
-        if (TRANSFORM_KEYS[e.key]) {
-          e.preventDefault(); // '/' would otherwise open quick-find
+        const tk = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+        if (TRANSFORM_KEYS[tk]) {
+          e.preventDefault();
           touch();
-          stepInspectRot(e.key);
+          stepInspectRot(tk);
           return;
         }
         return;
@@ -1262,15 +1628,21 @@ export default function SpaceApp() {
       // keys are the app's. The command line (above) and Alt+L
       // still work — the line stays live and label mode still
       // toggles — but the space's manipulation keys suspend:
-      // Space is the transport, not the drag lock; 1/2 zoom the
+      // Space is the transport, not the drag lock; C/V zoom the
       // window inside the app's frame, not the camera; the
-      // transform keys do nothing (the app is not a citizen).
-      // Esc here sits after the command line's walk-back (its
-      // machine consumed Esc above) and before the space's
-      // release chain below: Esc is the big back, D the app's.
+      // transform keys do nothing (the app is not a citizen, and
+      // its ring furniture must hold still).
+      // Slice 11: the back events run through the one dispatch —
+      // in app scope CANCEL / GO_BACK_I pop ONE of the app's
+      // levels (a nav step, or leaving the app when its nav is
+      // empty) and GO_BACK_II up to two. This refines slice 8:
+      // Esc here is no longer automatically the big back; D is.
       if (openAppState.appId) {
         const k = e.key;
-        if (k === "Escape") { e.preventDefault(); closeAudioApp(); return; }
+        if (k === "Escape") { e.preventDefault(); dispatchBack(EVENTS.CANCEL); return; }
+        if (k === "s" || k === "S") { e.preventDefault(); dispatchBack(EVENTS.GO_BACK_I); return; }
+        if (k === "d" || k === "D") { e.preventDefault(); dispatchBack(EVENTS.GO_BACK_II); return; }
+        if (k === "a" || k === "A") { e.preventDefault(); doFinish(); return; }
         if (k === " ") {
           e.preventDefault();
           if (!e.repeat) setAudio((a) => ({ ...a, playing: !a.playing }));
@@ -1282,13 +1654,21 @@ export default function SpaceApp() {
           setAppFocusId(cycleInList(ids, appFocusId, e.shiftKey ? -1 : 1));
           return;
         }
-        if (k === "1" || k === "2") {
+        if (k === "c" || k === "C" || k === "v" || k === "V") {
           e.preventDefault();
+          // Zoom lands under the cursor: over the waveform fence
+          // it is the window zoom; over nothing, there is no
+          // stage zoom to have — an echo instead.
+          if (regionHover == null) {
+            setEcho({ text: "nothing under the cursor accepts zoom here — hover the waveform fence", error: true });
+            return;
+          }
           const t = makeTrack(audio.trackId);
           const w = audio.window;
           const pos = sharedRef.current.audioPos ?? w.start;
           const frac = Math.max(0, Math.min(1, (pos - w.start) / Math.max(0.001, w.end - w.start)));
-          const nw = windowZoom(w, k === "1" ? 1.6 : 1 / 1.6, frac, t.seconds);
+          const out = k === "c" || k === "C";
+          const nw = windowZoom(w, out ? 1.6 : 1 / 1.6, frac, t.seconds);
           setAudio((a) => ({ ...a, window: nw }));
           showDyn(`WINDOW ${nw.start.toFixed(1)}–${nw.end.toFixed(1)}s of ${t.seconds}s`);
           return;
@@ -1300,7 +1680,6 @@ export default function SpaceApp() {
           else if (regionHover != null) drillRegion(regionHover);
           return;
         }
-        if (k === "d" || k === "D") { e.preventDefault(); appBack(); return; }
         if (k === "e" || k === "E") {
           e.preventDefault();
           if (openAppState.mode === "center") {
@@ -1317,23 +1696,27 @@ export default function SpaceApp() {
       }
       if (e.key === "Escape") {
         e.preventDefault();
-        // Esc order: an axis lock releases first, then the drag
-        // cancels (nothing was committed), then label mode, then
-        // the release chain (focus → patch → card → selection). The
-        // command line's Esc never reaches here — its machine
-        // consumed it above.
-        if (lockRef.current && sharedRef.current.axisLock) { clearAxisLock(); touch(); return; }
-        if (lockRef.current) { lockCancel(); return; }
-        if (uiMode.labelMode) { setUiMode((m) => exitLabelMode(m)); return; }
-        doBack();
+        // CANCEL, through the one dispatch: its pre-steps (a
+        // drag's axis lock releases first, then label mode) and
+        // the chain itself (drag → focus → patch → card →
+        // selection) keep the old Esc order whole, inside
+        // dispatchBack. The command line's Esc never reaches
+        // here — its machine consumed it above.
+        dispatchBack(EVENTS.CANCEL);
         return;
       }
       // Drag-locked: the transform keys and patching suspend. X
       // and Z are the axis locks (press again to release); Space
-      // (drop) and Esc (axis, then cancel) act, and both are above.
+      // (drop) and Esc (axis, then cancel) act, and both are
+      // above. The event keys still speak: A finishes (the
+      // drop), S goes back one (the axis pre-step rides along),
+      // D goes back two — the drag, and the level beneath it.
       if (lockRef.current) {
         if (e.key === "x" || e.key === "X") { e.preventDefault(); toggleAxisLock("x"); }
         else if (e.key === "z" || e.key === "Z") { e.preventDefault(); toggleAxisLock("z"); }
+        else if ((e.key === "a" || e.key === "A") && !uiMode.labelMode) { e.preventDefault(); doFinish(); }
+        else if ((e.key === "s" || e.key === "S") && !uiMode.labelMode) { e.preventDefault(); dispatchBack(EVENTS.GO_BACK_I); }
+        else if (e.key === "d" || e.key === "D") { e.preventDefault(); dispatchBack(EVENTS.GO_BACK_II); }
         return;
       }
       if (e.key === "Tab") {
@@ -1350,28 +1733,47 @@ export default function SpaceApp() {
         }
         return;
       }
-      if (e.key === "1") { e.preventDefault(); setZoomMul((m) => zoomStep(m, -1)); return; }
-      if (e.key === "2") { e.preventDefault(); setZoomMul((m) => zoomStep(m, 1)); return; }
+      // C/V dolly (slice 11, named §14): OUTSIDE label mode
+      // only — inside it, C and V are addresses (the tray's, a
+      // card's) and fall through to letter targeting below.
+      if (!uiMode.labelMode && (e.key === "c" || e.key === "C")) { e.preventDefault(); pressZoom(-1); return; }
+      if (!uiMode.labelMode && (e.key === "v" || e.key === "V")) { e.preventDefault(); pressZoom(1); return; }
+      // The number row (§14/§15): digits are not letters, so
+      // they work in label mode too — 1–4 the named views (the
+      // same goView as the buttons), 5/6 the field sizes, 7/8/9
+      // the object layouts. In app scope the app branch above
+      // has already returned: digits stay bare there.
+      if (VIEW_KEYS[e.key]) { e.preventDefault(); goView(VIEW_KEYS[e.key]); return; }
+      if (e.key === "5") { e.preventDefault(); pressField(-1); return; }
+      if (e.key === "6") { e.preventDefault(); pressField(1); return; }
       if (LAYOUT_KEYS[e.key]) {
         e.preventDefault();
         setSpace((s) => applyLayout(s, LAYOUT_KEYS[e.key]));
+        setZoomFocus(null); // a layout change clears dolly-at-cursor (§4)
         return;
       }
       if (e.key === "f" || e.key === "F") { e.preventDefault(); doF(); return; }
       if (e.key === "e" || e.key === "E") {
-        // E expands an app across the whole platter — an operator
-        // OUTSIDE label mode only (resolveOpenAction refuses it
-        // inside, where letters are addresses); with no app
-        // addressed it falls through, and in label mode the letter
-        // targeting below picks E up as the cylinder's address.
-        const open = resolveOpenAction({
-          targetId: addressedId(hoverId, currentId), key: "e", labelMode: uiMode.labelMode,
-        });
-        if (open) { e.preventDefault(); openAudioApp(open.mode); return; }
+        // E's collision, resolved by resolveEKey: on the
+        // app-bearing RING item, E expands the app across the
+        // whole platter (outside label mode only); on a citizen
+        // E is yaw- and falls through to the transform cluster
+        // below; in label mode the letter targeting below picks
+        // E up as the cylinder's address.
+        if (!uiMode.labelMode
+          && resolveEKey({ targetId: addressedId(hoverId, currentId), appOpen: false, appMode: null }) === "expand") {
+          e.preventDefault();
+          openAudioApp("full");
+          return;
+        }
       }
-      if (e.key === "d" || e.key === "D") { e.preventDefault(); doBack(); return; }
+      if (e.key === "d" || e.key === "D") { e.preventDefault(); dispatchBack(EVENTS.GO_BACK_II); return; }
+      if ((e.key === "s" || e.key === "S") && !uiMode.labelMode) { e.preventDefault(); dispatchBack(EVENTS.GO_BACK_I); return; }
+      if ((e.key === "a" || e.key === "A") && !uiMode.labelMode) { e.preventDefault(); doFinish(); return; }
       if (e.key === "g" || e.key === "G") { e.preventDefault(); doG(); return; }
-      if (e.key === "x" || e.key === "X") {
+      if ((e.key === "j" || e.key === "J") && !uiMode.labelMode) {
+        // J strips cables — outside label mode only; inside it,
+        // J is the arch's address and falls through.
         e.preventDefault();
         const id = addressedId(hoverId, currentId);
         if (id) setSpace((s) => removeCablesTouching(s, id));
@@ -1394,34 +1796,29 @@ export default function SpaceApp() {
           return;
         }
       }
-      if (TRANSFORM_KEYS[e.key]) {
-        const id = addressedId(hoverId, currentId);
-        if (id) {
-          e.preventDefault(); // '/' would otherwise open quick-find
-          const ns = applyTransformKey(space, id, e.key);
-          setSpace(ns);
-          // Dynamic input: the footer speaks the live value while
-          // the gesture runs (and for a second after).
-          const t = ns.transforms[id];
-          if (t) {
-            const op = TRANSFORM_KEYS[e.key];
-            const nm = thingName(id);
-            const sgn = (v) => (v > 0 ? `+${v}` : `${v}`);
-            if (op.startsWith("yaw")) showDyn(`YAW ${nm} ${sgn(Math.round(t.yaw))}°`);
-            else if (op.startsWith("pitch")) showDyn(`PITCH ${nm} ${sgn(Math.round(t.pitch))}°`);
-            else if (op.startsWith("roll")) showDyn(`ROLL ${nm} ${sgn(Math.round(t.roll))}°`);
-            else showDyn(`SCALE ${nm} ${t.scale.toFixed(2)}×`);
-          }
+      // The transform cluster (slice 11): the letter keys Q/W
+      // pitch, E/R yaw, T/Y roll, B/N plane, Z/X magnify — OUTSIDE
+      // label mode only. Inside it they are addresses and fall
+      // through to letter targeting. handleTransformKey resolves
+      // the target (citizen / ring / platter) and speaks the live
+      // value as dynamic input while the gesture runs.
+      {
+        const tk = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+        if (!uiMode.labelMode && TRANSFORM_KEYS[tk]) {
+          e.preventDefault();
+          touch();
+          handleTransformKey(tk);
+          return;
         }
-        return;
       }
-      // C copies and I inspects the addressed thing. OUR LAYOUT's
+      // H copies and I inspect the addressed thing. OUR LAYOUT's
       // choice, stated plainly: in KeyPilot's stock layout I copies
-      // an image; here I INSPECTS and copy moved to C. Like G before
-      // them, the operators win when there is work in hand — with
-      // an empty hand they fall through and are letters again
-      // (C is the tray's label, I the horizon panel's).
-      if (e.key === "c" || e.key === "C") {
+      // an image; here I INSPECTS and copy lives on H (slice 11 —
+      // it lived on C until C became dolly out). Like G before
+      // them, the operators are mode-scoped: inside label mode H
+      // is the horizon skyline's address and I the horizon
+      // panel's, and letter targeting below picks them up.
+      if ((e.key === "h" || e.key === "H") && !uiMode.labelMode) {
         const id = addressedId(hoverId, currentId);
         if (id) { e.preventDefault(); copyThing(id); return; }
       }
@@ -1466,7 +1863,8 @@ export default function SpaceApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [space, currentId, hoverId, cardId, pendingId, cmd, uiMode,
     inspection, inspectRot, libraryOpen, clip, clipSummoned, values,
-    openAppState, audio, tokenHoverId, appFocusId, regionHover, viewName]);
+    openAppState, audio, tokenHoverId, appFocusId, regionHover, viewName,
+    partFocus, zoomMul, ringSpin, platterQuat, ringHover, fieldIndex]);
 
   // Dynamic input during a locked drag: the footer follows the
   // drag point (platter units) while the lock holds.
@@ -1506,19 +1904,19 @@ export default function SpaceApp() {
   const addressedName = thingName(addressedId(hoverId, currentId));
   const audioTrack = makeTrack(audio.trackId);
   const nextText = inspection.inspectedId
-    ? `${thingName(inspection.inspectedId)} is at the inspection position — D / Esc sends it home`
+    ? `${thingName(inspection.inspectedId)} is at the inspection position — Esc / S (one level) or D (two) sends it home`
     : dragLock
-      ? `carrying ${thingName(dragLock.id)} — move the cursor, Space drops, Esc cancels`
+      ? `carrying ${thingName(dragLock.id)} — move the cursor, Space or A (FINISH) drops, Esc (CANCEL) cancels`
       : pendingId
-        ? `patch live from ${pending?.name || thingName(pendingId)} — address a second thing, then G / F / click`
+        ? `patch live from ${pending?.name || thingName(pendingId)} — address a second thing, then G / F / A (FINISH) / click lands it`
         : openAppState.appId
-          ? `${audioTrack.name} holds the stage — Space ${audio.playing ? "pauses" : "plays"} · F drills the hovered stretch · D steps back · Esc leaves the app`
+          ? `${audioTrack.name} holds the stage — Space ${audio.playing ? "pauses" : "plays"} · F drills the hovered stretch · D (GO BACK II) up to two steps back · Esc / S one step`
           : partFocus.partId
           ? partFocus.objectId === "tree"
-            ? `${focusBranch?.name || "branch"} focused — D backs out to the tree`
-            : `${focusPart?.name || "part"} focused — D backs out to the knot`
+            ? `${focusBranch?.name || "branch"} focused — D (GO BACK II) backs out to the tree`
+            : `${focusPart?.name || "part"} focused — D (GO BACK II) backs out to the knot`
           : cardId
-            ? `${thingName(cardId)} is open — D flies back to the world seat`
+            ? `${thingName(cardId)} is open — D (GO BACK II) flies back to the world seat`
             : addressedName
               ? `${addressedName} addressed — F opens it`
               : "hover an object, or Tab to one — F opens it";
@@ -1538,7 +1936,7 @@ export default function SpaceApp() {
           `domain — ${m.sourceDomain}`,
           `size — ${m.width} × ${m.height}`,
           `hash — ${m.hash}`,
-          "turn it with - = [ ] ; ' · D / Esc — send it home",
+          "turn it with Q W E R T Y · B N turns it in its own plane · D / Esc — send it home",
         ],
       };
     }
@@ -1553,7 +1951,7 @@ export default function SpaceApp() {
               "G from the tray onto a thing pastes it there",
               "D / Esc — send it home",
             ]
-          : ["holds — nothing yet (the EMPTY plate)", "C on a thing copies it here", "D / Esc — send it home"],
+          : ["holds — nothing yet (the EMPTY plate)", "H on a thing copies it here", "D / Esc — send it home"],
       };
     }
     if (id === "crystal") {
@@ -1591,8 +1989,8 @@ export default function SpaceApp() {
       lines: [
         `kind — object · ${o.group}`,
         o.blurb,
-        `home transform — yaw ${Math.round(space.transforms[id].yaw)}° · pitch ${Math.round(space.transforms[id].pitch)}° · roll ${Math.round(space.transforms[id].roll)}° · scale ${space.transforms[id].scale.toFixed(2)}×`,
-        `inspection turn — yaw ${inspectRot.yaw}° · pitch ${inspectRot.pitch}° · roll ${inspectRot.roll}° · size ×${inspectRot.scale.toFixed(2)}`,
+        `home transform — yaw ${Math.round(space.transforms[id].yaw)}° · pitch ${Math.round(space.transforms[id].pitch)}° · roll ${Math.round(space.transforms[id].roll)}° · plane ${Math.round(space.transforms[id].spin || 0)}° · magnify ${space.transforms[id].scale.toFixed(2)}×`,
+        `inspection turn — yaw ${inspectRot.yaw}° · pitch ${inspectRot.pitch}° · roll ${inspectRot.roll}° · plane ${inspectRot.spin || 0}° · size ×${inspectRot.scale.toFixed(2)}`,
         "D / Esc — send it home, exactly as it was",
       ],
     };
@@ -1603,13 +2001,23 @@ export default function SpaceApp() {
   // The keyboard panel's board, resolved from the sparse keymap
   // for this moment (keyboard.js): scope by the handler's own
   // precedence — an open app first, then the armed line, then
-  // label mode, then the space at rest.
+  // label mode, then the space at rest. The rotate caps name the
+  // resolved target and E's cap its resolved meaning (slice 11).
   const kb = resolveKeyboard({
     scope: openAppState.appId ? "app" : cmd.armed ? "command" : uiMode.labelMode ? "labels" : "space",
     playing: audio.playing,
     pending: Boolean(pendingId),
     dragLocked: Boolean(dragLock),
     appMode: openAppState.mode,
+    rotateTarget: resolveRotateTarget({
+      hoverId, currentId, ringAddressed: ringAddressedNow(),
+    }).kind,
+    eKey: resolveEKey({
+      targetId: addressedId(hoverId, currentId),
+      appOpen: Boolean(openAppState.appId),
+      appMode: openAppState.mode,
+    }),
+    fieldName: FIELD_SIZES[fieldIndex].name,
     cardLabels: libraryOpen
       ? labeledMedia().map(({ item, label }) => ({ label, title: item.title, id: item.id }))
       : [],
@@ -1640,6 +2048,10 @@ export default function SpaceApp() {
             rotation={Number(values.rotation)}
             elevation={Number(values.elevation)}
             zoomMul={zoomMul}
+            zoomFocusId={zoomFocus?.id || null}
+            platterQuat={platterQuat}
+            ringSpinDeg={ringSpin}
+            fieldIndex={fieldIndex}
             turntableOn={Boolean(values.turntable)}
             pulsesOn={Boolean(values.pulses)}
             ambientOn={values.ambientMotion !== false}
@@ -1669,6 +2081,7 @@ export default function SpaceApp() {
             regionHover={regionHover}
             sharedRef={sharedRef}
             onHover={onHover}
+            onRingHover={setRingHover}
             onPartHover={onPartHover}
             onBranchHover={onBranchHover}
             onTokenHover={onTokenHover}
@@ -1707,7 +2120,8 @@ export default function SpaceApp() {
           <div className="us-readout">
             <span className="k">LAYOUT</span>{"   "}{layout.name}{"\n"}
             <span className="k">VIEW</span>{"     "}{VIEWS[viewName].name}{"\n"}
-            <span className="k">ZOOM</span>{"     "}distance ×{zoomMul.toFixed(2)}{"\n"}
+            <span className="k">DOLLY</span>{"    "}distance ×{zoomMul.toFixed(2)}{"\n"}
+            <span className="k">FIELD</span>{"    "}{FIELD_SIZES[fieldIndex].name}{"\n"}
             <span className="k">LAYERS</span>{"   "}DATA {layers.data.visible ? "shown" : "hidden"}{layers.data.locked ? " · locked" : ""}{"\n"}
             <span className="k">LAYERS</span>{"   "}INST {layers.instruments.visible ? "shown" : "hidden"}{layers.instruments.locked ? " · locked" : ""}{"\n"}
             <span className="k">LAYERS</span>{"   "}SCEN {layers.scenery.visible ? "shown" : "hidden"}{layers.scenery.locked ? " · locked" : ""}{"\n"}
@@ -1725,7 +2139,8 @@ export default function SpaceApp() {
                 <span className="k">YAW</span>{"      "}{Math.round(tr.yaw)}°{"  "}
                 <span className="k">PITCH</span> {Math.round(tr.pitch)}°{"  "}
                 <span className="k">ROLL</span> {Math.round(tr.roll)}°{"\n"}
-                <span className="k">SCALE</span>{"    "}{tr.scale.toFixed(2)}×{"\n"}
+                <span className="k">PLANE</span>{"    "}{Math.round(tr.spin || 0)}°{"  "}
+                <span className="k">MAGNIFY</span>{"  "}{tr.scale.toFixed(2)}×{"\n"}
               </>
             ) : null}
             <span className="k">CABLES</span>{"   "}{space.cables.length}{"\n"}
@@ -1809,15 +2224,24 @@ export default function SpaceApp() {
                       miniature citizens, and they are worked the bimodal way, entirely by key —
                       there is no scroll-wheel zoom and no mouse orbit. The object under the
                       cursor is the addressee and <b>F</b> is the click (<b>Tab</b> cycles too);
-                      turn the addressed object with <b>-</b> <b>=</b> <b>[</b> <b>]</b> <b>;</b>{" "}
-                      <b>'</b>, scale it with <b>.</b> <b>/</b>, patch it to another with <b>G</b>,
-                      pick it up with a <b>Space</b> press (press again to drop), and rearrange
-                      the whole space with the layouts on <b>3</b> <b>4</b> <b>5</b>.
+                      turn the addressed object with <b>E</b>/<b>R</b> (yaw), <b>Q</b>/<b>W</b>{" "}
+                      (pitch), <b>T</b>/<b>Y</b> (roll) and <b>B</b>/<b>N</b> (in its own plane),
+                      magnify it with <b>Z</b>/<b>X</b> — every turn pivoting at the centre of
+                      the object's bounds — patch it to another with <b>G</b>, pick it up with a{" "}
+                      <b>Space</b> press (press again to drop), and rearrange the whole space
+                      with the layouts on <b>7</b> <b>8</b> <b>9</b>. <b>C</b> and <b>V</b> dolly
+                      the camera out and in — toward the citizen under the cursor, when there
+                      is one — and <b>5</b> and <b>6</b> change the field: the zoom, the lens
+                      rather than the camera.
                     </p>
                     <p>
-                      Key labels are opt-in: <b>Alt+L</b> shows the letter chips and makes letters
-                      into addresses. The command line at the foot of the scene — <b>Enter</b> arms
-                      it. <b>M</b> opens the MEDIA LIBRARY on the XY wall; <b>C</b> copies the
+                      Completion and retreat are EVENTS, and the readout names them:{" "}
+                      <b>A</b> is FINISH (land the patch, drop the carry), <b>S</b> is GO BACK I
+                      and <b>Esc</b> is CANCEL — each goes back exactly one level — and{" "}
+                      <b>D</b> is GO BACK II, up to two levels in one press. Key labels are
+                      opt-in: <b>Alt+L</b> shows the letter chips and makes letters into
+                      addresses. The command line at the foot of the scene — <b>Enter</b> arms
+                      it. <b>M</b> opens the MEDIA LIBRARY on the XY wall; <b>H</b> copies the
                       addressed thing to the clipboard, <b>I</b> inspects it, and <b>Alt+0</b>
                       summons the clipboard tray.
                     </p>
@@ -1827,15 +2251,20 @@ export default function SpaceApp() {
                       rotation, elevation — with the named seats on buttons beside them:
                       <b> PLAN</b> (top), <b>ELEVATION</b> (front, square-on to the XY wall),
                       <b>SIDE</b> and <b>HOME</b>, the same views the command line speaks as
-                      v › t/f/s/h.
+                      v › t/f/s/h. The number row is the camera and the room: <b>1</b>–<b>4</b>{" "}
+                      call those same views in the fieldset's order, <b>5</b> and <b>6</b> step
+                      the field size, <b>7</b>–<b>9</b> load the object layouts — while
+                      Alt+digits stay the layer and clipboard chords they always were.
                     </p>
                     <p>
                       The platter wears a <b>ring</b> now, and the ring carries the first app:
                       <b>Waveform</b>, for audio. Address it and <b>F</b> opens it onto the centre
                       stage; <b>E</b> opens it across the whole platter. Inside the app the keys
-                      change scope: <b>Space</b> plays, <b>1</b> and <b>2</b> zoom inside the
-                      waveform's own frame, <b>D</b> steps back through the app's history, and
-                      <b>Esc</b> leaves the app altogether.
+                      change scope: <b>Space</b> plays, <b>C</b> and <b>V</b> over the waveform
+                      fence zoom inside its own frame, and the back events walk the app's own
+                      levels — <b>D</b> is now the big step back (two levels: out of a drill
+                      and out of the app), <b>Esc</b> and <b>S</b> the single step (one level,
+                      which leaves the app only when its history is already empty).
                     </p>
                     <p>
                       <b>FIG. 1</b> — The space at rest in the RING layout: twelve miniature frames
@@ -1973,9 +2402,13 @@ export default function SpaceApp() {
                       across the WHOLE PLATTER: the citizens hide, and the app has the full
                       disc. In both, THE RING BELONGS TO WHOEVER HOLDS THE STAGE — the app
                       places its controls, tools, states and portal objects there, addressed
-                      like citizens and worked with F. Esc goes back in a big way: it leaves
-                      the app and returns the space exactly as it was. D goes back only inside
-                      the app: one step of the app's own history at a time.
+                      like citizens and worked with F. The back events walk the app's levels
+                      like any others: Esc and S (CANCEL, GO BACK I) take one step of the
+                      app's own history — and leave the app, returning the space exactly as
+                      it was, only when that history is already empty; D (GO BACK II) takes
+                      up to two steps at once. The ring itself can be turned by hand: address
+                      it — its item, or the annulus under the cursor — and the yaw and plane
+                      keys (E R, B N) spin it; pitch and roll do not apply to a ring.
                     </p>
                     <p>
                       The Waveform app works a track the way the reference describes a waveform:
@@ -1988,27 +2421,49 @@ export default function SpaceApp() {
                       PULSE, a low fundamental and its harmonics under a slow swell, hit by
                       transients; VOICE, formant stacks in gated phrases, with silence between;
                       RAIN, seeded patter with weather in it. Zooming changes the zoom WITHIN
-                      THE FRAME — 1 and 2 widen and narrow the window over the samples, F on a
-                      hovered stretch drills into it — and the camera does not move. D walks
-                      the window back out, one step of history at a time. Space plays; the
+                      THE FRAME — C and V over the fence widen and narrow the window over the
+                      samples, F on a hovered stretch drills into it — and the camera does not
+                      move. D (GO BACK II) walks the window back out, up to two steps of
+                      history at a time; Esc and S take the single step. Space plays; the
                       playhead crosses the fence.
                     </p>
                     <h4>The Operation</h4>
                     <p>
                       The mouse only points. Everything done is done by key, and the scheme is
-                      whole: 1 and 2 move the camera in and out — there is deliberately no
-                      scroll-wheel zoom, because the wheel is not a key-click. An object is
-                      addressed by the cursor's hover or the Tab cycle; its letter joins them
-                      only in label mode (Alt+L), which is off by default — and the command line
-                      addresses everything by name. The addressed object is lit — glow is address,
-                      here as everywhere in this environment — while context stays glass.
+                      whole: C and V dolly the camera out and in — there is deliberately no
+                      scroll-wheel zoom, because the wheel is not a key-click. The dolly
+                      moves the camera; the zoom changes the lens, and they feel different:
+                      5 and 6 step the field through its named sizes — LONG, MEDIUM LONG,
+                      MEDIUM, MEDIUM CLOSE, CLOSE — the camera itself not moving at all;
+                      that is what makes it a zoom and not a dolly. Operations land
+                      under the cursor when something there accepts them: pressed while a
+                      citizen is hovered, the dolly runs toward that citizen instead of the
+                      whole scene, and the rotate keys turn what the cursor addresses. An
+                      object is addressed by the cursor's hover or the Tab cycle; its letter
+                      joins them only in label mode (Alt+L), which is off by default — and the
+                      command line addresses everything by name. The addressed object is lit —
+                      glow is address, here as everywhere in this environment — while context
+                      stays glass.
                     </p>
                     <p>
-                      The punctuation keys are the hands: - and = yaw it on its plot, [ and ]
-                      pitch it toward or away from you, ; and ' roll it, . and / scale it, each
-                      press a small eased step, holding the key a continuous motion. F is the
-                      click: it flies you to a seat before the object and stands its card in the
-                      space. D comes back, one level at a time. F goes to the thing — the camera
+                      The letter keys are the hands: E and R yaw the addressed object, Q and W
+                      pitch it toward or away from you, T and Y roll it, Z and X magnify it —
+                      enlarge it for examination while the rest of the space stays in place —
+                      and B and N rotate it in its own plane, about its own normal, leaving
+                      every other axis untouched. Every turn pivots at the centre of the
+                      object's bounds, so a thing tumbles in place instead of swinging around
+                      its base.
+                      Each press is a small eased step; holding the key is a continuous motion.
+                      The rotate keys resolve a target: a hovered citizen, then the ring
+                      (which only spins), then the current citizen — and with nothing
+                      addressed, the platter itself. On the platter the cluster turns the
+                      whole space as the camera sees it — yaw about the camera's up, pitch
+                      about its right, roll about its view axis — while B and N still spin
+                      the platter in its own plane, inside those turns; the platter cannot be
+                      magnified (C and V dolly the camera instead), and loading a named view
+                      levels its turns again. F is the click: it flies you to a seat before the
+                      object and stands its card in the space. The backs are events: S and Esc
+                      come back one level, D up to two. F goes to the thing — the camera
                       flies, the thing stays home. I brings the thing to you: whatever you
                       address — object, library card, the tray itself — travels to the inspection
                       position before the camera, turns to face you at a legible size, and stands
@@ -2020,39 +2475,48 @@ export default function SpaceApp() {
                     </p>
                     <h4>The Keyboard Panel</h4>
                     <p>
-                      The scheme is a full keyboard layout, not scattered hotkeys, and over the
-                      footer stands its living map: the KEYBOARD PANEL, a glass board resolved
+                      The scheme is a full keyboard layout, not scattered hotkeys, and in the
+                      bottom dock — its lower edge resting on the command line's top edge —
+                      stands its living map: the KEYBOARD PANEL, a glass board resolved
                       afresh for every scope from the same sparse table the scopes themselves
                       use — in most scopes most keys bind nothing and their caps stand dim with
                       the bare glyph, and where a cap names a function, that is what the key
                       does here, now. In label mode the letter caps name their actual targets;
                       in the app they carry the transport; under a drag they shrink to the
-                      four keys the lock leaves alive. What a cap says is what the key does,
+                      four keys the lock leaves alive. The event caps are named by their
+                      events — FINISH, GO BACK I, GO BACK II, CANCEL — and the rotate caps
+                      name the target they would turn. What a cap says is what the key does,
                       because both are read from one database. The panel is glass because it
                       belongs to the picture plane, not the world — the scene ghosts through
-                      it, and the last key you pressed lifts on it for a moment. <b>K</b> hides
-                      it (the PARAMETERS hold the same switch), and its caps do not click yet:
-                      they are a map, not a second set of controls.
+                      it, and the last key you pressed lifts on it for a moment. Its head
+                      carries a Collapse button that folds it down to the bar alone, and{" "}
+                      <b>K</b> hides it (the PARAMETERS hold the same switch); its caps do not
+                      click yet: they are a map, not a second set of controls.
                     </p>
                     <h4>Patching and Layouts</h4>
                     <p>
                       Patching is built in, after the patch-bay demo: with an object addressed, G
-                      grows a live cable from it that follows the cursor; G again, F, or a click
-                      lands it on a second object, and the cable stays — a curved tube between the
-                      two anchors with a pulse of light travelling it, data visibly flowing between
-                      frames. X strips every cable touching the addressed object. Layouts are the
-                      space's arrangements, loaded whole like nibglider's: 3 lays the RING, 4
-                      gathers the DISTRICTS — graphs, monitors and instruments in their quarters —
-                      and 5 sets the THEATRE, the cube centre-stage under a shallow arc of the
-                      rest. Switching eases every object to its new plot over a breath; transforms
-                      and cables persist, and the cables follow their objects as they travel.
+                      grows a live cable from it that follows the cursor; G again, F, A (FINISH),
+                      or a click lands it on a second object, and the cable stays — a curved tube
+                      between the two anchors with a pulse of light travelling it, data visibly
+                      flowing between frames. J strips every cable touching the addressed object.
+                      Layouts are the space's arrangements, loaded whole like nibglider's: 7 lays
+                      the RING, 8 gathers the DISTRICTS — graphs, monitors and instruments in
+                      their quarters — and 9 sets the THEATRE, the cube centre-stage under a
+                      shallow arc of the rest. Switching eases every object to its new plot over a
+                      breath; transforms and cables persist, and the cables follow their objects
+                      as they travel.
                     </p>
                     <p>
-                      Three letters carry double duty, and the mode decides what they mean: G, M
-                      and E are addresses only inside label mode — there G is the tangled tree,
-                      M the living crystal and E the sunburst cylinder. Outside it, letters are
-                      operators: G patches, M opens the media library, and E expands an app
-                      across the whole platter.
+                      The letters carry double duty, and the mode decides what they mean: inside
+                      label mode they are addresses — G the tangled tree, M the living crystal,
+                      E the sunburst cylinder, B the drum, N the tree, J the arch, C the tray.
+                      Outside it, letters are operators: G patches, M opens the media library,
+                      E yaws (and expands an app from the ring), H copies, J strips, C and V
+                      zoom, A finishes, S and D go back. One letter, two lives, and the mode
+                      is always visible — the chips are showing, or they are not. On the armed
+                      command line the letters are characters again, and Enter is the finish
+                      there: A cannot both type and finish, so the line keeps its own key.
                     </p>
                   </div>
                 ) : null}
@@ -2129,15 +2593,19 @@ export default function SpaceApp() {
           ) : null}
         </section>
 
-        {values.keyboardPanel !== false ? (
-          <KeyboardPanel
-            kb={kb}
-            lastKey={lastKey}
-            onHide={() => onParam("keyboardPanel", false)}
-          />
-        ) : null}
-
         <div className="us-bottomdock">
+          {/* Slice 11 (§8): the keyboard panel is the dock's first
+              child — its bottom edge sits directly on the status /
+              command assembly's top edge in every state. */}
+          {values.keyboardPanel !== false ? (
+            <KeyboardPanel
+              kb={kb}
+              lastKey={lastKey}
+              onHide={() => onParam("keyboardPanel", false)}
+              collapsed={keyboardCollapsed}
+              onToggleCollapse={() => setKeyboardCollapsed((v) => !v)}
+            />
+          ) : null}
           <div className="us-statusbar" data-testid="space-status">
             <span className="mode">{mode}</span>
             <span className="context">{nextText}</span>

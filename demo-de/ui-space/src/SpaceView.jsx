@@ -30,6 +30,8 @@ import {
   glowLevel,
   inspectScaleFor,
   viewSeat,
+  FIELD_SIZES,
+  FIELD_DEFAULT_INDEX,
   snapGroundPoint,
   axisLockPoint,
   isAddressable,
@@ -72,7 +74,7 @@ import {
  * components), and ONE useFrame driver (the Rig) eases every
  * displayed value toward the pure state in space-state.js: object
  * positions (layout flights and drags), yaw/pitch/roll/scale, the
- * parametric camera (home seat from the parameters and the 1/2 zoom,
+ * parametric camera (home seat from the parameters and the C/V dolly,
  * or a close seat before the entered object), the turntable rest,
  * and the glow. A sibling rAF loop projects the DOM overlay — key
  * chips, compass, name tag, the entered object's card — from the
@@ -111,6 +113,48 @@ export const ANCHOR_H = {
   mesa: 16, drum: 24, tray: 10, cube: 36, tangle: 26,
   horizon3d: 16, horizonflat: 28, arch: 32, definition: 18, knot: 26, crystal: 32,
   tree: 30,
+};
+
+/**
+ * Slice 11 (§5): the ROTATION PIVOT of each citizen — the centre
+ * of its local 3D bounds, as built. The citizen's rotation group
+ * sits at (0, CENTRE_Y, 0) with the content offset by −CENTRE_Y
+ * inside it, so yaw/pitch/roll turn the object about its bounds
+ * centre in all three axes, not about its ground origin. Each
+ * value is the midpoint of the miniature's built height range:
+ */
+export const CENTRE_Y = {
+  mesa: 6, // sunburst wedges stack 0..12
+  drum: 11.5, // drum wall and wedges 0..22.9, rim torus at 22.2
+  tray: 4, // tray floor and cuboids 0..8.2
+  cube: 16, // the shell is centred at 16, 32.5 across
+  tangle: 12, // base plate plus seven level sheets to ~23.8
+  horizon3d: 8, // base at 1.6, towers to ~15.6
+  horizonflat: 14.5, // the panel stands ~1..29 (group at y 15, panel 28 tall)
+  arch: 17, // the sheet cylinder is centred at 17, 31 tall
+  definition: 9.5, // base plate plus nodes/wires to ~19
+  knot: 12.5, // KNOT_CY — the tube rides ±~8 about it
+  crystal: 14.5, // pedestal 0..4; the solid ±12.1 about CRYSTAL_CY 17 → bounds 0..29
+  tree: 14.7, // segments 0..27.2 in the sway group at 2.2, soil 0..2.2 → bounds 0..29.4
+};
+
+/**
+ * Slice 11 (§11): each citizen's PLANE AXIS — the normal of the
+ * plane the miniature actually lies in, as built, about which
+ * B/N plane-rotate turns it (in its local frame, inside the
+ * tumble). Most citizens are XZ-plane shapes (normal = local Y):
+ * discs, trays, towers, the knot (its torus axis maps to Y), the
+ * arch (a cylinder segment about the Y axis — its circle is XZ),
+ * the tangle (horizontal level sheets on an XZ base), the crystal
+ * (equator in XZ) and the tree (XZ footprint, growing +Y). Two
+ * stand in XY (normal = local Z): the flat horizon panel, and
+ * the definition — its node slabs face +Z, thin in z, spread in
+ * x and y like the canvas they miniaturise.
+ */
+export const PLANE_AXIS = {
+  mesa: "y", drum: "y", tray: "y", cube: "y", tangle: "y",
+  horizon3d: "y", horizonflat: "z", arch: "y", definition: "z",
+  knot: "y", crystal: "y", tree: "y",
 };
 
 const DEG = Math.PI / 180;
@@ -1690,6 +1734,7 @@ const MINIATURES = {
 function SpaceObject({ def, ctx, lib }) {
   const outer = useRef(null);
   const inner = useRef(null);
+  const spin = useRef(null);
   const ring = useRef(null);
 
   const mats = useMemo(() => {
@@ -1717,6 +1762,7 @@ function SpaceObject({ def, ctx, lib }) {
     const frame = ctx.frame;
     frame.outerRefs.set(def.id, outer.current);
     frame.innerRefs.set(def.id, inner.current);
+    frame.spinRefs.set(def.id, spin.current);
     frame.ringRefs.set(def.id, ring.current);
     frame.matsMap.set(def.id, mats.list);
     if (inner.current) inner.current.rotation.order = "YXZ";
@@ -1725,13 +1771,14 @@ function SpaceObject({ def, ctx, lib }) {
     if (!frame.disp.has(def.id)) {
       frame.disp.set(def.id, {
         x: p.x, z: p.z, lift: 0,
-        yaw: 0, pitch: 0, roll: 0,
+        yaw: 0, pitch: 0, roll: 0, spin: 0,
         scale: st.space.transforms[def.id]?.scale ?? 1, glow: 0,
       });
     }
     return () => {
       frame.outerRefs.delete(def.id);
       frame.innerRefs.delete(def.id);
+      frame.spinRefs.delete(def.id);
       frame.ringRefs.delete(def.id);
       frame.matsMap.delete(def.id);
     };
@@ -1761,8 +1808,22 @@ function SpaceObject({ def, ctx, lib }) {
         <ringGeometry args={[21.6, 23.4, 40]} />
         <meshBasicMaterial color={0xffa726} transparent opacity={0.95} side={THREE.DoubleSide} />
       </mesh>
-      <group ref={inner}>
-        <Mini lib={lib} matFor={mats.matFor} ctx={ctx} />
+      {/* Slice 11 (§5 + §11): the rotation group sits at the
+          bounds centre (0, CENTRE_Y, 0) and the content is offset
+          by −CENTRE_Y inside it, so the tumble (the Rig drives
+          this group's YXZ rotation and scale) pivots at the
+          bounds centre in all three axes. Inside it, the SPIN
+          group carries B/N plane-rotate in the object's LOCAL
+          frame — its rotation multiplies inside the tumble, so
+          the geometry turns about its own plane normal (PLANE_
+          AXIS) before the tumble orients it. The Rig never sets
+          this group's position, so the declarative pivot stands. */}
+      <group ref={inner} position={[0, CENTRE_Y[def.id] || 0, 0]}>
+        <group ref={spin}>
+          <group position={[0, -(CENTRE_Y[def.id] || 0), 0]}>
+            <Mini lib={lib} matFor={mats.matFor} ctx={ctx} />
+          </group>
+        </group>
       </group>
     </group>
   );
@@ -2245,7 +2306,17 @@ function PlatterRing({ ctx }) {
         || performance.now() - (st.shared.lastTouch || 0) <= 3000;
       if (!still) frame.ringAngle += dt * 1.5 * DEG;
     }
-    g.rotation.y = frame.ringAngle;
+    // Slice 11 (§7): the user's manual spin offset (E/R yaw and
+    // B/N plane-rotate on the ring drive ONE offset state) rides
+    // on the SAME group rotation this machinery drives: the base
+    // angle keeps its rules — the rest spin, and easing to whole
+    // turns while an app is open — and the offset is added on
+    // top, so it persists while an app is open (the ring eases
+    // to whole turns UNDER the offset). While the ring is
+    // addressed, the `still` rule above has already paused the
+    // rest spin, so the offset is the only motion; the rest spin
+    // resumes once the ring is released.
+    g.rotation.y = frame.ringAngle + (st.ringSpinDeg || 0) * DEG;
     // Home token glow: the citizens' two tiers, on its own slab.
     const homeT = appOpen ? 0 : glowLevel({
       current: st.currentId === "audio",
@@ -2288,8 +2359,17 @@ function PlatterRing({ ctx }) {
   return (
     <group ref={group}>
       {/* The annulus itself: glass, per the translucency law — a
-          place things stand, not a thing. */}
-      <mesh position={[0, 1.2, 0]} rotation-x={-Math.PI / 2} material={mats.band}>
+          place things stand, not a thing. The cursor over the
+          annulus itself addresses the RING for the rotate keys
+          (slice 11, §7): the band reports its own hover on a
+          separate channel from the item's. */}
+      <mesh
+        position={[0, 1.2, 0]}
+        rotation-x={-Math.PI / 2}
+        material={mats.band}
+        onPointerOver={(e) => { e.stopPropagation(); st().onTouch(); if (st().onRingHover) st().onRingHover(true); }}
+        onPointerOut={() => { if (st().onRingHover) st().onRingHover(false); }}
+      >
         <ringGeometry args={[209, 235, 96]} />
       </mesh>
       <mesh position={[0, 1.25, 0]} rotation-x={-Math.PI / 2}>
@@ -2611,16 +2691,23 @@ function WaveformStage({ ctx }) {
  * documented inspection scale for the kind of thing.
  */
 const _inspectV = new THREE.Vector3();
+const _qPlatter = new THREE.Quaternion();
+const _qSpin = new THREE.Quaternion();
+const _zVec = new THREE.Vector3();
+const _Y_AXIS = new THREE.Vector3(0, 1, 0);
 function inspectTargetFor(st, frame, camera, kind) {
   const wg = frame.worldGroup;
   _inspectV.set(0, 36, 0);
   const lp = wg ? wg.worldToLocal(_inspectV.clone()) : _inspectV;
   const worldYaw = Math.atan2(camera.position.x, camera.position.z) / DEG;
-  const localYaw = worldYaw - (wg ? wg.rotation.y / DEG : 0);
+  // The world group's facing under the composed rotation (slice
+  // 11): the Rig publishes its outermost yaw on the frame.
+  const localYaw = worldYaw - (frame.worldYaw || 0) / DEG;
   const rot = st.inspectRot || { yaw: 0, pitch: 0, roll: 0, scale: 1 };
   return {
     x: lp.x, y: lp.y, z: lp.z,
     yaw: localYaw + rot.yaw, pitch: rot.pitch, roll: rot.roll,
+    spin: rot.spin || 0,
     scale: inspectScaleFor(kind) * rot.scale,
   };
 }
@@ -2643,12 +2730,21 @@ function Rig({ ctx, cameras }) {
     const A = anim.current;
 
     const aspect = state.size.width / Math.max(1, state.size.height);
+    // The field size (§15): the focal zoom. In perspective it
+    // drives the fov; in isometric it scales the frustum by the
+    // rung's inverse-direction factor — the same ladder, the
+    // same gesture, honestly named. A lens setting: it applies
+    // every frame regardless of seats, and named views do not
+    // reset it.
+    const field = FIELD_SIZES[st.fieldIndex ?? FIELD_DEFAULT_INDEX] || FIELD_SIZES[FIELD_DEFAULT_INDEX];
     cameras.persp.aspect = aspect;
+    cameras.persp.fov = field.fov;
     cameras.persp.updateProjectionMatrix();
-    cameras.ortho.left = -cameras.orthoHalf * aspect;
-    cameras.ortho.right = cameras.orthoHalf * aspect;
-    cameras.ortho.top = cameras.orthoHalf;
-    cameras.ortho.bottom = -cameras.orthoHalf;
+    const orthoHalf = cameras.orthoHalf * field.iso;
+    cameras.ortho.left = -orthoHalf * aspect;
+    cameras.ortho.right = orthoHalf * aspect;
+    cameras.ortho.top = orthoHalf;
+    cameras.ortho.bottom = -orthoHalf;
     cameras.ortho.updateProjectionMatrix();
 
     // The cursor's ground point, in world-group local coordinates —
@@ -2686,7 +2782,30 @@ function Rig({ ctx, cameras }) {
       || (st.partFocus && st.partFocus.partId) || (st.openApp && st.openApp.appId));
     if (wg) {
       frame.turntabling = Boolean(st.turntableOn && idle && !modeActive);
-      if (frame.turntabling) wg.rotation.y += dt * 2 * DEG;
+      if (frame.turntabling) frame.turntableAngle += dt * 2 * DEG;
+      // The world group's rotation, composed (slice 11, §11+§12),
+      // outermost to innermost:
+      //   platterQuat — the cluster's CAMERA-SPACE turns (§12):
+      //     the App accumulates one quaternion, each step
+      //     premultiplied about the camera's own axes;
+      //   the rotation PARAMETER plus the turntable's yaw — the
+      //     disc's own spin, innermost, so B/N (which steps the
+      //     parameter) still spins the platter cleanly in its
+      //     own plane inside the camera-space turns.
+      // Before slice 11 the parameter orbited the CAMERA instead
+      // and the group carried only the turntable's yaw; now the
+      // parameter is the disc's spin, applied here, and the
+      // camera seats below no longer add it (no double turn).
+      // §7's platterYaw/platterTilt states were dropped for the
+      // quaternion — this composition replaces them whole.
+      _qPlatter.fromArray(st.platterQuat || [0, 0, 0, 1]);
+      _qSpin.setFromAxisAngle(_Y_AXIS, (st.rotation || 0) * DEG + frame.turntableAngle);
+      wg.quaternion.copy(_qPlatter).multiply(_qSpin);
+      // The world frame's effective yaw, for the inspection
+      // facing correction (inspectTargetFor): the composed
+      // quaternion's +Z axis, projected on the ground plane.
+      _zVec.set(0, 0, 1).applyQuaternion(wg.quaternion);
+      frame.worldYaw = Math.atan2(_zVec.x, _zVec.z);
     }
 
     // Objects: ease every displayed value toward the state.
@@ -2705,6 +2824,9 @@ function Rig({ ctx, cameras }) {
       let tLift = dragging ? 7 : 0;
       let tYaw = tr.yaw, tPitch = tr.pitch, tRoll = tr.roll;
       let tScale = tr.scale * layoutScale;
+      // Plane-rotate (B/N): the transform's spin, plus the
+      // inspection turn's spin while this citizen is the specimen.
+      let tSpin = tr.spin || 0;
       if (st.inspectedId === def.id) {
         // INSPECT: the thing itself travels to the inspection
         // position and faces the viewer; its home targets resume
@@ -2712,6 +2834,7 @@ function Rig({ ctx, cameras }) {
         const t = inspectTargetFor(st, frame, camera, "object");
         tX = t.x; tZ = t.z; tLift = t.y;
         tYaw = t.yaw; tPitch = t.pitch; tRoll = t.roll; tScale = t.scale;
+        tSpin += (st.inspectRot && st.inspectRot.spin) || 0;
       }
       d.x = damp(d.x, tX, 5.5, dt);
       d.z = damp(d.z, tZ, 5.5, dt);
@@ -2719,10 +2842,18 @@ function Rig({ ctx, cameras }) {
       d.yaw = damp(d.yaw, tYaw, 10, dt);
       d.pitch = damp(d.pitch, tPitch, 10, dt);
       d.roll = damp(d.roll, tRoll, 10, dt);
+      d.spin = damp(d.spin || 0, tSpin, 10, dt);
       d.scale = damp(d.scale, tScale, 8, dt);
       outer.position.set(d.x, d.lift, d.z);
       inner.rotation.set(d.pitch * DEG, d.yaw * DEG, d.roll * DEG);
       inner.scale.setScalar(Math.max(0.05, d.scale));
+      // The spin group turns about the citizen's plane axis, in
+      // its local frame, inside the tumble above.
+      const spinG = frame.spinRefs.get(def.id);
+      if (spinG) {
+        if (PLANE_AXIS[def.id] === "z") spinG.rotation.set(0, 0, d.spin * DEG);
+        else spinG.rotation.set(0, d.spin * DEG, 0);
+      }
 
       // Glow is address, two tiers (space-state.js): hovered is a
       // highlight only (0.30, teal ring); selected/entered is the
@@ -2812,6 +2943,13 @@ function Rig({ ctx, cameras }) {
       let t;
       if (st.inspectedId === id) {
         t = inspectTargetFor(st, frame, camera, id === "clipboard" ? "tray" : "card");
+        // Inspection plane-rotate (B/N) flows here too: a card
+        // stands in XY, so its in-plane turn is the inner group's
+        // z (innermost under YXZ); the tray lies in XZ, so its
+        // in-plane turn is its yaw.
+        if (t.spin) {
+          t = id === "clipboard" ? { ...t, yaw: t.yaw + t.spin } : { ...t, roll: t.roll + t.spin };
+        }
       } else if (shared.drag && shared.drag.id === id) {
         t = { x: shared.drag.point.x, y: 3, z: shared.drag.point.z, yaw: 0, pitch: 0, roll: 0, scale: d.scale };
       } else if (id === "clipboard") {
@@ -2868,6 +3006,26 @@ function Rig({ ctx, cameras }) {
     const branchW = st.partFocus && st.partFocus.partId && st.partFocus.objectId === "tree"
       ? frame.branchWorld.get(st.partFocus.partId) : null;
     const cardBase = st.cardId ? frame.baseWorld.get(st.cardId) : null;
+    // The entered-card seat and the ZOOM-AT-CURSOR seat are the
+    // same seat (slice 11, §4): out from the citizen's base along
+    // its radial, raised, looking at its anchor height. The
+    // card's offsets are fixed (its zoom lives in the ortho
+    // factor alone); the zoom seat scales its offsets by zoomMul
+    // — the F-seat, dollied — without opening the card.
+    const citizenSeat = (id, base, scaleOffsets) => {
+      const d = frame.disp.get(id);
+      const sc = d ? d.scale : 1;
+      const m = scaleOffsets ? st.zoomMul : 1;
+      const radial = new THREE.Vector3(base.x, 0, base.z);
+      if (radial.lengthSq() < 1) radial.set(0, 0, 1);
+      radial.normalize();
+      return {
+        seat: base.clone()
+          .addScaledVector(radial, (42 + 30 * sc) * m)
+          .add(new THREE.Vector3(0, (25 + 9 * sc) * m, 0)),
+        look: base.clone().add(new THREE.Vector3(0, ANCHOR_H[id] * 0.55 * sc, 0)),
+      };
+    };
     if (st.partFocus && st.partFocus.partId && branchW) {
       // Branch focus: seat off the subtree's bounding sphere —
       // centre + outward (from the tree's own base) by the sphere
@@ -2898,21 +3056,25 @@ function Rig({ ctx, cameras }) {
       const centre = frame.worldGroup
         ? frame.worldGroup.localToWorld(new THREE.Vector3(0, 10, 0))
         : new THREE.Vector3(0, 10, 0);
-      const az = Math.PI / 4 + (st.rotation ?? 0) * DEG;
+      // The seat's azimuth is fixed: the rotation parameter spins
+      // the WORLD now (see the composition above), not the camera.
+      const az = Math.PI / 4;
       const dir = new THREE.Vector3(Math.sin(az), 0, Math.cos(az));
       seat = centre.clone().addScaledVector(dir, 168).add(new THREE.Vector3(0, 108, 0));
       look = centre.clone();
       if (camera === cameras.ortho) { camera.zoom = 1.3 / st.zoomMul; camera.updateProjectionMatrix(); }
     } else if (st.cardId && cardBase) {
-      const d = frame.disp.get(st.cardId);
-      const sc = d ? d.scale : 1;
-      const radial = new THREE.Vector3(cardBase.x, 0, cardBase.z);
-      if (radial.lengthSq() < 1) radial.set(0, 0, 1);
-      radial.normalize();
-      seat = cardBase.clone()
-        .addScaledVector(radial, 42 + 30 * sc)
-        .add(new THREE.Vector3(0, 25 + 9 * sc, 0));
-      look = cardBase.clone().add(new THREE.Vector3(0, ANCHOR_H[st.cardId] * 0.55 * sc, 0));
+      const cs = citizenSeat(st.cardId, cardBase, false);
+      seat = cs.seat;
+      look = cs.look;
+      if (camera === cameras.ortho) { camera.zoom = 1.35 / st.zoomMul; camera.updateProjectionMatrix(); }
+    } else if (st.zoomFocusId && frame.baseWorld.get(st.zoomFocusId)) {
+      // ZOOM-AT-CURSOR: C/V pressed while a citizen was hovered —
+      // the camera dollies toward THAT citizen (its card-seat,
+      // offsets scaled by zoomMul) without opening its card.
+      const zs = citizenSeat(st.zoomFocusId, frame.baseWorld.get(st.zoomFocusId), true);
+      seat = zs.seat;
+      look = zs.look;
       if (camera === cameras.ortho) { camera.zoom = 1.35 / st.zoomMul; camera.updateProjectionMatrix(); }
     } else if (st.viewName && st.viewName !== "home" && viewSeat(st.viewName, st.zoomMul)
       && !(st.openApp && st.openApp.appId)) {
@@ -2922,20 +3084,23 @@ function Rig({ ctx, cameras }) {
       look = new THREE.Vector3(...vs.look);
       if (camera === cameras.ortho) { camera.zoom = 1 / st.zoomMul; camera.updateProjectionMatrix(); }
     } else {
-      const rot = (st.rotation ?? 0) * DEG;
+      // The home seat's azimuth is fixed (persp from the front,
+      // ortho at π/4): the rotation parameter spins the WORLD
+      // (innermost in the composition above), not the camera —
+      // before slice 11 it orbited the camera from here instead.
       const tilt = (st.elevation ?? 0) * DEG;
       if (camera === cameras.persp) {
         const radius = 520 * st.zoomMul;
         const elev = Math.max(0.08, Math.min(1.3, Math.atan2(190, 486) + tilt));
         seat = new THREE.Vector3(
-          Math.sin(rot) * Math.cos(elev) * radius,
+          0,
           Math.sin(elev) * radius,
-          Math.cos(rot) * Math.cos(elev) * radius,
+          Math.cos(elev) * radius,
         );
       } else {
         const radius = 1000;
         const elev = Math.max(0.08, Math.min(1.3, Math.atan2(574, 790) + tilt));
-        const az = Math.PI / 4 + rot;
+        const az = Math.PI / 4;
         seat = new THREE.Vector3(
           Math.sin(az) * Math.cos(elev) * radius,
           Math.sin(elev) * radius,
@@ -2963,6 +3128,18 @@ function Rig({ ctx, cameras }) {
     );
     camera.lookAt(A.look);
     camera.updateMatrixWorld();
+    // Slice 11 (§12): publish the camera's own axes on the
+    // shared ref — the channel the drag point and the audio
+    // playhead already travel — so the App's platter steps turn
+    // about the axes this camera actually has. No second camera
+    // is invented: these are read from this frame's camera,
+    // after its final lookAt.
+    const ce = camera.matrixWorld.elements;
+    st.shared.cameraAxes = {
+      right: [ce[0], ce[1], ce[2]],
+      up: [ce[4], ce[5], ce[6]],
+      forward: [-ce[8], -ce[9], -ce[10]],
+    };
   });
 
   return null;
@@ -2974,12 +3151,14 @@ export default function SpaceView(props) {
   const {
     space, currentId, hoverId, cardId, pendingId,
     projection, rotation, elevation, zoomMul,
+    zoomFocusId, platterQuat, ringSpinDeg, fieldIndex,
     turntableOn, pulsesOn, ambientOn, labelsOn, sharedRef,
     libraryOpen, clipHeld, clipSummoned, inspectedId, inspectRot, pastes, inspectPanel,
     partFocus, partHoverId, branchHoverId,
     viewName, snapOn, strata, layers,
     openApp, audio, tokenHoverId, appFocusId, regionHover,
     onHover, onPartHover, onBranchHover, onObjectClick, onSelect, onTouch,
+    onRingHover,
     onTokenHover, onTokenActivate, onRegionHover, onRegionActivate, onAudioEnd,
   } = props;
 
@@ -2987,6 +3166,7 @@ export default function SpaceView(props) {
   stateRef.current = {
     space, currentId, hoverId, cardId, pendingId,
     projection, rotation, elevation, zoomMul,
+    zoomFocusId, platterQuat, ringSpinDeg, fieldIndex,
     turntableOn, pulsesOn, ambientOn, labelsOn,
     libraryOpen, clipSummoned, inspectedId, inspectRot,
     partFocus, partHoverId, branchHoverId,
@@ -2994,6 +3174,7 @@ export default function SpaceView(props) {
     openApp, audio, tokenHoverId, appFocusId, regionHover,
     shared: sharedRef.current,
     onHover, onPartHover, onBranchHover, onObjectClick, onSelect, onTouch,
+    onRingHover,
     onTokenHover, onTokenActivate, onRegionHover, onRegionActivate, onAudioEnd,
   };
 
@@ -3001,7 +3182,8 @@ export default function SpaceView(props) {
   if (!frameRef.current) {
     frameRef.current = {
       disp: new Map(), outerRefs: new Map(), innerRefs: new Map(),
-      ringRefs: new Map(), matsMap: new Map(),
+      spinRefs: new Map(), ringRefs: new Map(), matsMap: new Map(),
+      turntableAngle: 0, worldYaw: 0,
       anchorWorld: new Map(), baseWorld: new Map(), partWorld: new Map(),
       branchWorld: new Map(), branchLocal: null, treeGroupRef: null,
       camera: null, worldGroup: null, turntabling: false, knotSpinRef: null,
@@ -3462,8 +3644,8 @@ export default function SpaceView(props) {
               <b>{cardObj.name}</b><br />
               {cardObj.blurb}<br />
               <span>
-                yaw {Math.round(cardTr.yaw)}° · pitch {Math.round(cardTr.pitch)}° · roll {Math.round(cardTr.roll)}° · scale {cardTr.scale.toFixed(2)}×
-                <br />D — fly back to the world seat
+                yaw {Math.round(cardTr.yaw)}° · pitch {Math.round(cardTr.pitch)}° · roll {Math.round(cardTr.roll)}° · plane {Math.round(cardTr.spin || 0)}° · magnify {cardTr.scale.toFixed(2)}×
+                <br />D (GO BACK II) — fly back to the world seat
               </span>
               {cardObj.id === "crystal" ? (
                 <span ref={cardFacesRef} style={{ display: "block", whiteSpace: "pre-line", marginTop: 4 }} />

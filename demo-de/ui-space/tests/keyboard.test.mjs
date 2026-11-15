@@ -9,6 +9,7 @@ import {
 } from "../src/keyboard.js";
 import {
   TRANSFORM_KEYS,
+  transformOpOf,
   LAYOUT_KEYS,
   LAYOUTS,
   labeledObjects,
@@ -19,11 +20,12 @@ import {
 const capOf = (resolved, code) => resolved.caps.find((c) => c.code === code);
 const labelOf = (resolved, code) => capOf(resolved, code)?.binding?.label ?? null;
 
-/** e.key punctuation → code, mirroring the module's derivation map. */
-const CHAR_TO_CODE = {
-  "-": "Minus", "=": "Equal", "[": "BracketLeft", "]": "BracketRight",
-  ";": "Semicolon", "'": "Quote", ".": "Period", "/": "Slash",
-};
+/** e.key → KeyboardEvent.code, mirroring the module's derivation. */
+const codeForChar = (ch) =>
+  /^[a-z]$/.test(ch) ? `Key${ch.toUpperCase()}` : {
+    "-": "Minus", "=": "Equal", "[": "BracketLeft", "]": "BracketRight",
+    ";": "Semicolon", "'": "Quote", ".": "Period", "/": "Slash",
+  }[ch];
 
 test("the grid covers every code the scheme needs", () => {
   const codes = new Set(KEYBOARD_ROWS.flat().map((c) => c.code));
@@ -34,7 +36,7 @@ test("the grid covers every code the scheme needs", () => {
     assert.ok(codes.has(`Digit${d}`), `missing Digit${d}`);
   }
   for (const ch of Object.keys(TRANSFORM_KEYS)) {
-    assert.ok(codes.has(CHAR_TO_CODE[ch]), `missing code for transform key ${ch}`);
+    assert.ok(codes.has(codeForChar(ch)), `missing code for transform key ${ch}`);
   }
   for (const code of ["Space", "Tab", "Escape", "Enter"]) {
     assert.ok(codes.has(code), `missing ${code}`);
@@ -47,43 +49,117 @@ test("the grid covers every code the scheme needs", () => {
   }
 });
 
-test("the database is sparse: in space scope fewer than half the caps are bound", () => {
+test("the database is sparse: a binding exists only where a scope binds the key", () => {
+  // The command scope binds fewer than half the caps.
+  const cmd = resolveKeyboard({ scope: "command" });
+  const cmdBound = cmd.caps.filter((c) => c.binding).length;
+  assert.ok(cmdBound < cmd.caps.length / 2, `${cmdBound} of ${cmd.caps.length} bound`);
+  // In space scope the slice-11 letter cluster binds many caps —
+  // but the unbound remainder still stands bare: ordinary letters
+  // with no operator, digit 0, and the punctuation row.
   const kb = resolveKeyboard({ scope: "space" });
-  const bound = kb.caps.filter((c) => c.binding).length;
-  assert.ok(bound < kb.caps.length / 2, `${bound} of ${kb.caps.length} bound`);
-  // And the unbound majority really does include ordinary letters:
-  assert.equal(labelOf(kb, "KeyQ"), null);
-  assert.equal(labelOf(kb, "KeyA"), null);
-  assert.equal(labelOf(kb, "Digit7"), null);
+  assert.equal(labelOf(kb, "KeyU"), null);
+  assert.equal(labelOf(kb, "KeyP"), null);
+  assert.equal(labelOf(kb, "KeyO"), null);
+  assert.equal(labelOf(kb, "Digit0"), null);
+  assert.equal(labelOf(kb, "Minus"), null);
+  assert.equal(labelOf(kb, "Equal"), null);
+  assert.equal(labelOf(kb, "BracketLeft"), null);
+  assert.equal(labelOf(kb, "Semicolon"), null);
+  assert.equal(labelOf(kb, "Period"), null);
+  assert.equal(labelOf(kb, "Slash"), null);
 });
 
 test("the transform and layout caps are derived from the real tables", () => {
   const kb = resolveKeyboard({ scope: "space" });
-  for (const [ch, opName] of Object.entries(TRANSFORM_KEYS)) {
-    const expected = `${opName.slice(0, -1).toUpperCase()} ${opName.slice(-1) === "+" ? "+" : "-"}`;
-    assert.equal(labelOf(kb, CHAR_TO_CODE[ch]), expected, `transform cap for ${ch}`);
+  for (const ch of Object.keys(TRANSFORM_KEYS)) {
+    const opName = transformOpOf(ch);
+    const axis = opName.slice(0, -1);
+    const sign = opName.slice(-1) === "+" ? "+" : "-";
+    // §16: the scale axis reads as the operation's name, MAGNIFY.
+    const expected = axis === "spin" ? `ROTATE PLANE ${sign}`
+      : axis === "scale" ? `MAGNIFY ${sign}`
+      : `${axis.toUpperCase()} ${sign}`;
+    assert.equal(labelOf(kb, codeForChar(ch)), expected, `transform cap for ${ch}`);
   }
   for (const [digit, name] of Object.entries(LAYOUT_KEYS)) {
-    assert.equal(labelOf(kb, `Digit${digit}`), LAYOUTS[name].name);
+    assert.equal(labelOf(kb, `Digit${digit}`), `OBJECT LAYOUT · ${LAYOUTS[name].name}`);
   }
-  assert.equal(labelOf(kb, "Digit3"), "RING");
-  assert.equal(labelOf(kb, "Digit4"), "DISTRICTS");
-  assert.equal(labelOf(kb, "Digit5"), "THEATRE");
+  // §13+§14: the layout caps present as OBJECT layouts on 7/8/9,
+  // never as camera keys.
+  assert.equal(labelOf(kb, "Digit7"), "OBJECT LAYOUT · RING");
+  assert.equal(labelOf(kb, "Digit8"), "OBJECT LAYOUT · DISTRICTS");
+  assert.equal(labelOf(kb, "Digit9"), "OBJECT LAYOUT · THEATRE");
 });
 
 test("space scope: the operators read as the handler works them", () => {
   const kb = resolveKeyboard({ scope: "space" });
   assert.equal(labelOf(kb, "KeyF"), "OPEN");
-  assert.equal(labelOf(kb, "KeyD"), "BACK");
   assert.equal(labelOf(kb, "KeyG"), "PATCH");
   assert.equal(labelOf(kb, "KeyM"), "LIBRARY");
-  assert.equal(labelOf(kb, "KeyC"), "COPY");
   assert.equal(labelOf(kb, "KeyI"), "INSPECT");
-  assert.equal(labelOf(kb, "KeyX"), "STRIP CABLES");
-  assert.equal(labelOf(kb, "Escape"), "RELEASE");
+  assert.equal(labelOf(kb, "KeyK"), "KEYBOARD");
   assert.equal(labelOf(kb, "Enter"), "COMMAND LINE");
-  assert.equal(labelOf(kb, "Digit1"), "ZOOM OUT");
-  assert.equal(labelOf(kb, "Digit2"), "ZOOM IN");
+  // Slice 11: the dolly on C/V (§14's name for it), copy on H,
+  // strip on J.
+  assert.equal(labelOf(kb, "KeyC"), "DOLLY OUT");
+  assert.equal(labelOf(kb, "KeyV"), "DOLLY IN");
+  assert.equal(labelOf(kb, "KeyH"), "COPY");
+  assert.equal(labelOf(kb, "KeyJ"), "STRIP CABLES");
+  // §16: Z/X carry the MAGNIFY name.
+  assert.equal(labelOf(kb, "KeyZ"), "MAGNIFY -");
+  assert.equal(labelOf(kb, "KeyX"), "MAGNIFY +");
+  // Slice 11: the event caps are named by their events.
+  assert.equal(labelOf(kb, "KeyA"), "FINISH");
+  assert.equal(labelOf(kb, "KeyS"), "GO BACK I");
+  assert.equal(labelOf(kb, "KeyD"), "GO BACK II");
+  assert.equal(labelOf(kb, "Escape"), "CANCEL");
+  // Slice 11 (§11): plane-rotate on B/N.
+  assert.equal(labelOf(kb, "KeyB"), "ROTATE PLANE -");
+  assert.equal(labelOf(kb, "KeyN"), "ROTATE PLANE +");
+});
+
+test("space scope: E's cap and the rotate caps follow the resolved target", () => {
+  // Nothing addressed: the platter fallback — the cluster reads
+  // in camera terms (§12), B/N in plane terms, scale declined.
+  const rest = resolveKeyboard({ scope: "space", rotateTarget: "platter" });
+  assert.equal(labelOf(rest, "KeyE"), "ROTATE PLATTER · CAMERA");
+  assert.equal(labelOf(rest, "KeyR"), "ROTATE PLATTER · CAMERA");
+  assert.equal(labelOf(rest, "KeyQ"), "ROTATE PLATTER · CAMERA");
+  assert.equal(labelOf(rest, "KeyB"), "PLANE · PLATTER");
+  assert.equal(labelOf(rest, "KeyZ"), "NO MAGNIFY · PLATTER");
+  assert.equal(labelOf(rest, "KeyX"), "NO MAGNIFY · PLATTER");
+  // A citizen addressed: plain axis labels, E is YAW -.
+  const citizen = resolveKeyboard({ scope: "space", rotateTarget: "citizen", eKey: "yaw-" });
+  assert.equal(labelOf(citizen, "KeyE"), "YAW -");
+  assert.equal(labelOf(citizen, "KeyQ"), "PITCH -");
+  assert.equal(labelOf(citizen, "KeyB"), "ROTATE PLANE -");
+  // The ring addressed: yaw and plane spin it; pitch/roll say so.
+  const ring = resolveKeyboard({ scope: "space", rotateTarget: "ring" });
+  assert.equal(labelOf(ring, "KeyR"), "SPIN RING");
+  assert.equal(labelOf(ring, "KeyB"), "PLANE · RING");
+  assert.equal(labelOf(ring, "KeyQ"), "SPIN ONLY");
+  // The ring ITEM addressed: E would expand, and its cap says so.
+  const item = resolveKeyboard({ scope: "space", rotateTarget: "ring", eKey: "expand" });
+  assert.equal(labelOf(item, "KeyE"), "FULL PLATTER");
+});
+
+test("the number row (§14/§15): views, field sizes, object layouts", () => {
+  const kb = resolveKeyboard({ scope: "space", fieldName: "MEDIUM CLOSE" });
+  // 1–4: the named views in the VIEW fieldset's order.
+  assert.equal(labelOf(kb, "Digit1"), "PLAN");
+  assert.equal(labelOf(kb, "Digit2"), "ELEVATION");
+  assert.equal(labelOf(kb, "Digit3"), "SIDE");
+  assert.equal(labelOf(kb, "Digit4"), "HOME");
+  // 5/6: the focal zoom — FIELD − / +, current field in the hint.
+  assert.equal(labelOf(kb, "Digit5"), "FIELD -");
+  assert.equal(labelOf(kb, "Digit6"), "FIELD +");
+  assert.ok(capOf(kb, "Digit5").binding.hint.includes("MEDIUM CLOSE"));
+  assert.ok(capOf(kb, "Digit6").binding.hint.includes("MEDIUM CLOSE"));
+  // 7–9: the object layouts. 0 stays bare.
+  assert.equal(labelOf(kb, "Digit7"), "OBJECT LAYOUT · RING");
+  assert.equal(labelOf(kb, "Digit9"), "OBJECT LAYOUT · THEATRE");
+  assert.equal(labelOf(kb, "Digit0"), null);
 });
 
 test("dynamic labels: G with a patch live, Space under the drag lock", () => {
@@ -100,6 +176,7 @@ test("dynamic labels: G with a patch live, Space under the drag lock", () => {
   assert.equal(labelOf(locked, "KeyF"), null);
   assert.equal(labelOf(locked, "Digit1"), null);
   assert.equal(labelOf(locked, "KeyM"), null);
+  assert.equal(labelOf(locked, "KeyC"), null);
 });
 
 test("K resolves in space scope to the keyboard toggle binding", () => {
@@ -128,18 +205,37 @@ test("label scope: letters name their actual targets", () => {
   assert.equal(labelOf(kb, "KeyP"), null);
 });
 
-test("label scope: D, F and X stay operators, not addresses", () => {
+test("label scope: the slice-11 operator letters are addresses here", () => {
   const kb = resolveKeyboard({ scope: "labels" });
-  assert.equal(labelOf(kb, "KeyD"), "BACK");
+  // B is the drum, N the tree, J the arch, C the tray, A the mesa,
+  // H the horizon skyline — operators outside label mode only.
+  assert.equal(labelOf(kb, "KeyB"), objectById("drum").name.toUpperCase());
+  assert.equal(labelOf(kb, "KeyN"), objectById("tree").name.toUpperCase());
+  assert.equal(labelOf(kb, "KeyJ"), objectById("arch").name.toUpperCase());
+  assert.equal(labelOf(kb, "KeyC"), objectById("tray").name.toUpperCase());
+  assert.equal(labelOf(kb, "KeyA"), objectById("mesa").name.toUpperCase());
+  assert.equal(labelOf(kb, "KeyH"), objectById("horizon3d").name.toUpperCase());
+  // X is no longer an operator at all: with no card holding it, bare.
+  assert.equal(labelOf(kb, "KeyX"), null);
+  // Digits are not addresses: the number row keeps its camera /
+  // room meanings in label mode too (§14), and 0 stays bare.
+  assert.equal(labelOf(kb, "Digit1"), "PLAN");
+  assert.equal(labelOf(kb, "Digit5"), "FIELD -");
+  assert.equal(labelOf(kb, "Digit7"), "OBJECT LAYOUT · RING");
+  assert.equal(labelOf(kb, "Digit0"), null);
+});
+
+test("label scope: D and F stay operators, not addresses", () => {
+  const kb = resolveKeyboard({ scope: "labels" });
+  assert.equal(labelOf(kb, "KeyD"), "GO BACK II");
   assert.equal(capOf(kb, "KeyD").binding.operator, true);
   assert.equal(labelOf(kb, "KeyF"), "OPEN");
   assert.equal(capOf(kb, "KeyF").binding.operator, true);
-  assert.equal(labelOf(kb, "KeyX"), "STRIP CABLES");
   // No citizen or card can ever hold those letters as a target:
-  for (const code of ["KeyD", "KeyF", "KeyX"]) {
+  for (const code of ["KeyD", "KeyF"]) {
     assert.equal(capOf(kb, code).binding.target, undefined);
   }
-  assert.equal(labelOf(kb, "Escape"), "EXIT LABELS");
+  assert.equal(labelOf(kb, "Escape"), "CANCEL");
 });
 
 test("command scope: the line's frame — categories derived, walk-back, run", () => {
@@ -161,10 +257,18 @@ test("app scope: the Waveform app's keys, and its dynamic transport", () => {
   const paused = resolveKeyboard({ scope: "app", playing: false, appMode: "center" });
   assert.equal(paused.scopeName, "WAVEFORM APP");
   assert.equal(labelOf(paused, "Space"), "PLAY");
-  assert.equal(labelOf(paused, "KeyD"), "APP BACK");
-  assert.equal(labelOf(paused, "Escape"), "LEAVE APP");
-  assert.equal(labelOf(paused, "Digit1"), "WINDOW OUT");
-  assert.equal(labelOf(paused, "Digit2"), "WINDOW IN");
+  // Slice 11: the event caps, and window zoom on C/V.
+  assert.equal(labelOf(paused, "KeyA"), "FINISH");
+  assert.equal(labelOf(paused, "KeyS"), "GO BACK I");
+  assert.equal(labelOf(paused, "KeyD"), "GO BACK II");
+  assert.equal(labelOf(paused, "Escape"), "CANCEL");
+  assert.equal(labelOf(paused, "KeyC"), "WINDOW OUT");
+  assert.equal(labelOf(paused, "KeyV"), "WINDOW IN");
+  // §14: in app scope digits stay bare — the camera is parked.
+  assert.equal(labelOf(paused, "Digit1"), null);
+  assert.equal(labelOf(paused, "Digit2"), null);
+  assert.equal(labelOf(paused, "Digit5"), null);
+  assert.equal(labelOf(paused, "Digit7"), null);
   assert.equal(labelOf(paused, "KeyE"), "FULL PLATTER");
   // The space's manipulation keys suspend inside the app.
   assert.equal(labelOf(paused, "KeyG"), null);
@@ -202,7 +306,8 @@ test("active marks exactly ctx.lastKey's cap; the echo reads the resolution", ()
   assert.equal(actives.length, 1);
   assert.equal(actives[0].code, "KeyF");
   assert.equal(lastKeyEcho(kb, "KeyF"), "F — OPEN");
-  assert.equal(lastKeyEcho(kb, "KeyQ"), "Q —");
+  assert.equal(lastKeyEcho(kb, "KeyA"), "A — FINISH");
+  assert.equal(lastKeyEcho(kb, "KeyU"), "U —");
   assert.equal(lastKeyEcho(kb, null), "");
   const none = resolveKeyboard({ scope: "space" });
   assert.equal(none.caps.some((c) => c.active), false);

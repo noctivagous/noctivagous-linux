@@ -10,16 +10,26 @@
  * SpaceApp holds one of these states in React state; SpaceView
  * renders it and eases the displayed values toward it. The scheme:
  *
- *   1 zoom out · 2 zoom in · 3/4/5 layouts · Tab cycle · F enter ·
- *   D back · Esc release a level · - = yaw · [ ] pitch · ; ' roll ·
- *   . / scale · G patch · X strip cables · Space press toggles the
+ *   C dolly out · V dolly in · 1/2/3/4 named views · 5/6 field
+ *   sizes (the focal zoom) · 7/8/9 object layouts · Tab cycle ·
+ *   F enter · Q/W pitch · E/R yaw · T/Y roll · Z/X magnify ·
+ *   G patch · J strip cables · H copy · Space press toggles the
  *   drag lock (press to pick up, press again to drop, Esc cancels).
  *
  *   Slice 8 adds APPS and the RING (see the section at the foot of
  *   this file): a thing that bears an app opens with F onto the
- *   centre stage, or with E across the whole platter; while an app
- *   holds the stage, Esc leaves it (the big back) and D steps back
- *   inside the app's own history.
+ *   centre stage, or with E across the whole platter.
+ *
+ *   Slice 11 adds EVENT MESSAGING (see the events section below):
+ *   the backs and the finish are named events — A is FINISH,
+ *   S is GO_BACK_I, D is GO_BACK_II, Esc is CANCEL — and one pure
+ *   resolver (resolveBackLevels) decides which levels of the
+ *   release stack each back event pops. Inside an app the same
+ *   events walk the app's own levels: CANCEL / GO_BACK_I pop ONE
+ *   level (one app-nav step, or leaving the app when its nav is
+ *   empty), GO_BACK_II up to two — so D is now the big step back
+ *   and Esc/S the single step, a refinement of slice 8's rule
+ *   that Esc in the app was automatically the big back.
  *
  *   Addressing is the key-click model: the object under the cursor
  *   is the addressee and F is the click. KEY LABELS ARE OPT-IN:
@@ -95,15 +105,48 @@ export const SCALE_STEP = 1.08; // ratio per key press
 export const SCALE_MIN = 0.4;
 export const SCALE_MAX = 2.5;
 
-/** e.key → transform op. Punctuation is matched on e.key, never code. */
+/**
+ * e.key → transform op (slice 11: the rotate/magnify cluster
+ * moved onto the letter keys — Q/W pitch, E/R yaw, T/Y roll,
+ * Z/X magnify, and B/N ROTATE PLANE, a fourth rotation kind:
+ * rotation about the shape's own plane normal, in its own
+ * plane, leaving every other axis untouched. The first-listed
+ * key of each pair is the negative step). The punctuation keys
+ * are UNBOUND in the space scope now. Letters are matched on
+ * e.key, lower-cased by the App; these operators live OUTSIDE
+ * label mode only — inside it, letters are addresses (B is the
+ * drum, N the tree). The typed transforms on the command line
+ * (o › y/t/r/z/p) are a different input path.
+ *
+ * Most entries name their op directly ("yaw-"); the plane pair
+ * carries the { axis, dir } form — transformOpOf normalises both
+ * shapes to the "axis±" string the appliers switch on.
+ *
+ * §16 — the two truths of Z/X: the OPERATION is MAGNIFY (it
+ * enlarges one thing for examination while the rest of the
+ * space stays in place — every user-facing name says so), and
+ * the FACTOR it steps is a scale: the transform record's
+ * `scale` field, SCALE_STEP / SCALE_MIN / SCALE_MAX, and the
+ * "scale±" axis id below keep the geometric name inside the
+ * code, deliberately.
+ */
 export const TRANSFORM_KEYS = {
-  "-": "yaw-", "=": "yaw+",
-  "[": "pitch-", "]": "pitch+",
-  ";": "roll-", "'": "roll+",
-  ".": "scale-", "/": "scale+",
+  q: "pitch-", w: "pitch+",
+  e: "yaw-", r: "yaw+",
+  t: "roll-", y: "roll+",
+  z: "scale-", x: "scale+",
+  b: { axis: "spin", dir: -1 },
+  n: { axis: "spin", dir: 1 },
 };
 
-export const defaultTransform = () => ({ yaw: 0, pitch: 0, roll: 0, scale: 1 });
+/** Normalise a TRANSFORM_KEYS entry to its "axis±" op name. */
+export function transformOpOf(key) {
+  const v = TRANSFORM_KEYS[key];
+  if (!v) return null;
+  return typeof v === "string" ? v : `${v.axis}${v.dir < 0 ? "-" : "+"}`;
+}
+
+export const defaultTransform = () => ({ yaw: 0, pitch: 0, roll: 0, scale: 1, spin: 0 });
 
 const clampScale = (s) => Math.max(SCALE_MIN, Math.min(SCALE_MAX, s));
 
@@ -119,6 +162,8 @@ export function applyTransformOp(state, id, op) {
     case "pitch+": next.pitch += ANGLE_STEP; break;
     case "roll-": next.roll -= ANGLE_STEP; break;
     case "roll+": next.roll += ANGLE_STEP; break;
+    case "spin-": next.spin = (cur.spin || 0) - ANGLE_STEP; break;
+    case "spin+": next.spin = (cur.spin || 0) + ANGLE_STEP; break;
     case "scale-": next.scale = clampScale(cur.scale / SCALE_STEP); break;
     case "scale+": next.scale = clampScale(cur.scale * SCALE_STEP); break;
     default: return state;
@@ -128,7 +173,7 @@ export function applyTransformOp(state, id, op) {
 
 /** Apply the transform bound to an e.key value; unknown keys pass through. */
 export function applyTransformKey(state, id, key) {
-  const op = TRANSFORM_KEYS[key];
+  const op = transformOpOf(key);
   if (!op || !id) return state;
   return applyTransformOp(state, id, op);
 }
@@ -145,6 +190,208 @@ export function applyTransformPatch(state, id, patch) {
   const next = { ...cur, ...patch };
   next.scale = clampScale(next.scale);
   return { ...state, transforms: { ...state.transforms, [id]: next } };
+}
+
+/* ---------------- events: the messaging vocabulary (slice 11) ---------------- */
+
+/**
+ * EVENT MESSAGING: the space's verbs of completion and retreat
+ * are named events, carried as data. A is FINISH (complete the
+ * operation in flight), S is GO_BACK_I and Esc is CANCEL (both
+ * pop exactly ONE level of the release stack), D is GO_BACK_II
+ * (pop up to TWO levels). The readout echo names the event when
+ * it fires, and the keyboard panel labels these caps by their
+ * event names — the messaging is visible, not just internal.
+ */
+export const EVENTS = {
+  FINISH: "FINISH",
+  GO_BACK_I: "GO_BACK_I",
+  GO_BACK_II: "GO_BACK_II",
+  CANCEL: "CANCEL",
+};
+
+/**
+ * The release stack, as an ordered list of level names, from the
+ * occupancy `chain` describes. The order is the existing
+ * doBack/doEsc truth of the handlers, extended so the app scope's
+ * levels sit in it:
+ *
+ *   drag → inspection → appNav (each nav entry its own level) →
+ *   appClose → partFocus → patch → card → selection
+ *
+ * The command line's walk-back is handled BEFORE this layer (its
+ * machine consumes Esc while armed) and is not part of the chain;
+ * so are CANCEL's two pre-steps in the App — clearing a drag's
+ * axis lock, and exiting label mode — which release sub-states
+ * the chain does not model.
+ */
+export function backChainLevels(chain = {}) {
+  const levels = [];
+  if (chain.dragLocked) levels.push("drag");
+  if (chain.inspection) levels.push("inspection");
+  const nav = Math.max(0, Math.floor(chain.appNav || 0));
+  for (let i = 0; i < nav; i++) levels.push("appNav");
+  if (chain.appOpen) levels.push("appClose");
+  if (chain.partFocus) levels.push("partFocus");
+  if (chain.pending) levels.push("patch");
+  if (chain.card) levels.push("card");
+  if (chain.selection) levels.push("selection");
+  return levels;
+}
+
+/**
+ * Which levels an event pops, in chain order. CANCEL and
+ * GO_BACK_I pop exactly ONE level; GO_BACK_II pops up to TWO
+ * (stopping at the chain's end). FINISH is not a back event —
+ * it completes the operation in flight instead — so the
+ * resolver produces no levels for it, and an unknown event
+ * produces none either.
+ */
+export function resolveBackLevels(chain, event) {
+  const count = event === EVENTS.GO_BACK_II ? 2
+    : event === EVENTS.CANCEL || event === EVENTS.GO_BACK_I ? 1
+    : 0;
+  if (!count) return [];
+  return backChainLevels(chain).slice(0, count);
+}
+
+/**
+ * E's collision, resolved contextually (slice 11): E is both
+ * yaw- (the rotate cluster's first yaw key) and the app
+ * expander slice 8 gave it. The ruling: E on an ADDRESSED
+ * CITIZEN is yaw-; E when the addressed thing is the app-bearing
+ * RING item, or while the app is open in CENTRE mode, is EXPAND
+ * TO FULL (in app scope the transforms are suspended, so there
+ * is no conflict inside the app; in centre mode the app's own
+ * scope owns the key and E expands). While the app is FULL, E
+ * does nothing (null). R is yaw+ unconditionally.
+ */
+export function resolveEKey({ targetId = null, appOpen = false, appMode = null } = {}) {
+  if (appOpen) return appMode === "center" ? "expand" : null;
+  if (targetId && appBearerOf(targetId)) return "expand";
+  if (targetId && OBJECT_IDS.includes(targetId)) return "yaw-";
+  return null;
+}
+
+/**
+ * The rotate keys' TARGET (slice 11, §7), in priority order:
+ * (1) a hovered citizen; (2) the RING, when it is addressed —
+ * its item hovered or current, or the cursor over the annulus
+ * itself (the caller folds those into `ringAddressed`);
+ * (3) the current citizen; (4) the fallback: THE MAIN PLATTER.
+ * Scale and zoom keys do not resolve through here — they keep
+ * the addressed citizen, as they always have.
+ */
+export function resolveRotateTarget({ hoverId = null, currentId = null, ringAddressed = false } = {}) {
+  if (hoverId && OBJECT_IDS.includes(hoverId)) return { kind: "citizen", id: hoverId };
+  if (ringAddressed) return { kind: "ring" };
+  if (currentId && OBJECT_IDS.includes(currentId)) return { kind: "citizen", id: currentId };
+  return { kind: "platter" };
+}
+
+/**
+ * Platter PLANE-ROTATE (the fallback target's B/N): steps the
+ * EXISTING "rotation" parameter value via setValue — that
+ * parameter is the disc's own spin, so the panel and the keys
+ * always agree (the goView precedent) — ANGLE_STEP-sized,
+ * clamped to the parameter's −180..180 range. The Rig applies
+ * it INNERMOST in the world composition, so the disc spins in
+ * its own plane even after camera-space turns (§12).
+ */
+export function stepPlatterSpin(rotation, op) {
+  const cur = Number(rotation) || 0;
+  if (op === "spin-") return Math.max(-180, cur - ANGLE_STEP);
+  if (op === "spin+") return Math.min(180, cur + ANGLE_STEP);
+  return cur;
+}
+
+/* ---------------- the platter's camera-space orientation (§12) ---------------- */
+
+/**
+ * When the rotate target is THE PLATTER, the cluster turns the
+ * world AS THE CAMERA SEES IT: each step PREMULTIPLIES the
+ * platter's accumulated orientation by a rotation about the
+ * camera's own axes — yaw about the camera's up, pitch about
+ * its right, roll about its view axis. The orientation is one
+ * quaternion, held by the App as a plain [x, y, z, w] array
+ * (identity at start) and stepped by these dependency-free
+ * helpers; the view only supplies the camera's axes (through
+ * the shared ref the Rig already publishes) and applies the
+ * result. Loading a named view resets it to identity — a named
+ * view is an absolute camera position, and leftover world
+ * turns would fight it.
+ */
+export const IDENTITY_QUAT = [0, 0, 0, 1];
+
+/** A quaternion ([x,y,z,w]) for `deg` about `axis` (need not be unit). */
+export function quatAxisAngle(axis, deg) {
+  const len = Math.hypot(axis[0], axis[1], axis[2]) || 1;
+  const half = (deg * Math.PI) / 360;
+  const s = Math.sin(half) / len;
+  return [axis[0] * s, axis[1] * s, axis[2] * s, Math.cos(half)];
+}
+
+/** Hamilton product a ⊗ b (the rotation b, then a, in world terms). */
+export function quatMultiply(a, b) {
+  const [ax, ay, az, aw] = a;
+  const [bx, by, bz, bw] = b;
+  return [
+    aw * bx + ax * bw + ay * bz - az * by,
+    aw * by - ax * bz + ay * bw + az * bx,
+    aw * bz + ax * by - ay * bx + az * bw,
+    aw * bw - ax * bx - ay * by - az * bz,
+  ];
+}
+
+const PLATTER_AXIS_FOR_OP = { yaw: "up", pitch: "right", roll: "forward" };
+
+/**
+ * One cluster step of the platter's orientation: premultiply
+ * `quat` by ANGLE_STEP about the camera axis the op names
+ * (axes = { up, right, forward }, world-space unit vectors the
+ * Rig reports). Spin/scale ops are not the quaternion's
+ * business and return it unchanged.
+ */
+export function stepPlatterQuat(quat, axes, op) {
+  const cur = quat && quat.length === 4 ? quat : IDENTITY_QUAT;
+  if (!axes || !op) return [...cur];
+  const axisName = PLATTER_AXIS_FOR_OP[op.slice(0, -1)];
+  const axis = axisName ? axes[axisName] : null;
+  if (!axis) return [...cur];
+  const dir = op.endsWith("-") ? -1 : 1;
+  return quatMultiply(quatAxisAngle(axis, dir * ANGLE_STEP), cur);
+}
+
+/**
+ * The SCALE keys' target, decided purely: the addressed citizen
+ * when the addressee is one (hover wins, as always — scale is
+ * not part of the rotate resolution); "platter" when the
+ * rotate resolution falls back to the platter — where scale is
+ * DECLINED (the main platter does not scale; C/V dolly the
+ * camera); otherwise "none" (the ring addressed: scale simply
+ * has no purchase there, as it never has).
+ */
+export function resolveScaleTarget({ hoverId = null, currentId = null, ringAddressed = false } = {}) {
+  const id = addressedId(hoverId, currentId);
+  if (id && OBJECT_IDS.includes(id)) return { kind: "citizen", id };
+  const t = resolveRotateTarget({ hoverId, currentId, ringAddressed });
+  return t.kind === "platter" ? { kind: "platter" } : { kind: "none" };
+}
+
+/**
+ * The ring's manual spin offset (degrees): E/R yaw steps it by
+ * ANGLE_STEP while the ring is the rotate target, and B/N
+ * plane-rotate drives the SAME offset (the ring's plane is its
+ * own plane; both pairs turn it). The view adds the offset to
+ * the same group rotation the ring's rest machinery drives
+ * (see PlatterRing in SpaceView.jsx for the reconciliation).
+ * Pitch/roll do not apply to the ring — the ring only spins.
+ */
+export function stepRingSpin(offsetDeg, op) {
+  const cur = Number(offsetDeg) || 0;
+  if (op === "yaw-" || op === "spin-") return cur - ANGLE_STEP;
+  if (op === "yaw+" || op === "spin+") return cur + ANGLE_STEP;
+  return cur;
 }
 
 /* ---------------- selection ---------------- */
@@ -255,7 +502,7 @@ export function addCable(state, a, b) {
   return { state: { ...state, cables: [...state.cables, pair] }, ok: true, reason: null };
 }
 
-/** X: strip every cable touching the object. */
+/** J: strip every cable touching the object. */
 export function removeCablesTouching(state, id) {
   if (!id) return state;
   const cables = state.cables.filter(([a, b]) => a !== id && b !== id);
@@ -330,7 +577,13 @@ export const LAYOUTS = {
   },
 };
 
-export const LAYOUT_KEYS = { "3": "ring", "4": "districts", "5": "theatre" };
+/**
+ * The layout keys (slice 11, §13+§14): OBJECT keys — they
+ * rearrange the citizens on the platter; the camera does not
+ * move. They live at 7/8/9 since the number row became the
+ * camera's (§14): 1–4 are the named views, 5/6 the field sizes.
+ */
+export const LAYOUT_KEYS = { "7": "ring", "8": "districts", "9": "theatre" };
 
 /** Switch arrangement: positions change, transforms and cables persist. */
 export function applyLayout(state, name) {
@@ -351,19 +604,55 @@ export function setObjectPosition(state, id, x, z) {
   return { ...state, positions: { ...state.positions, [id]: { x: p.x, z: p.z } } };
 }
 
-/* ---------------- zoom ---------------- */
+/* ---------------- the dolly (C/V) and the focal zoom (5/6) ---------------- */
 
 export const ZOOM_MIN = 0.5;
 export const ZOOM_MAX = 2.0;
 export const ZOOM_STEP = 1.15;
 
 /**
- * One zoom step of the camera distance multiplier. dir +1 zooms IN
- * (key 2, distance shrinks), dir -1 zooms OUT (key 1). Clamped.
+ * One DOLLY step of the camera distance multiplier (C/V — the
+ * camera itself moves; §14 separated this from the focal zoom
+ * and named it honestly). dir +1 dollies IN (key V, distance
+ * shrinks), dir -1 dollies OUT (key C). Clamped. (The function's
+ * name predates the film-terms scheme; it is internal.)
  */
 export function zoomStep(mul, dir) {
   const next = dir > 0 ? mul / ZOOM_STEP : mul * ZOOM_STEP;
   return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, next));
+}
+
+/**
+ * FIELD SIZES (§15): the focal zoom is a LADDER, not a dial —
+ * five named rungs from cinematography, widest to narrowest.
+ * Each rung carries its perspective field of view and its
+ * isometric frustum factor (relative scale, widest largest;
+ * the factors are tan(fov/2) ratios against MEDIUM, so the two
+ * projections step through the same fields). 5 steps one rung
+ * wider, 6 one rung narrower. The camera does not move — that
+ * is what makes it a zoom and not a dolly.
+ */
+export const FIELD_SIZES = [
+  { name: "LONG", fov: 70, iso: 1.61 },
+  { name: "MEDIUM LONG", fov: 58, iso: 1.27 },
+  { name: "MEDIUM", fov: 47, iso: 1.0 },
+  { name: "MEDIUM CLOSE", fov: 37, iso: 0.77 },
+  { name: "CLOSE", fov: 28, iso: 0.57 },
+];
+
+/**
+ * The App's field state starts at the rung nearest the Rig's
+ * standing default fov (40°), so the space opens framed as it
+ * always has until 5/6 are touched.
+ */
+export const FIELD_DEFAULT_INDEX =
+  FIELD_SIZES.reduce((best, f, i) =>
+    Math.abs(f.fov - 40) < Math.abs(FIELD_SIZES[best].fov - 40) ? i : best, 0);
+
+/** One field step: dir -1 wider (key 5), dir +1 narrower (key 6), clamped at the ladder's ends. */
+export function fieldStep(index, dir) {
+  const cur = Math.max(0, Math.min(FIELD_SIZES.length - 1, Math.floor(index) || 0));
+  return Math.max(0, Math.min(FIELD_SIZES.length - 1, cur + (dir > 0 ? 1 : -1)));
 }
 
 /* ---------------- UI modes: labels, command line, drag lock ---------------- */
@@ -459,12 +748,21 @@ export function glowLevel(flags) {
 /* ---------------- named plane views (command line: v › t/f/s/h) ---------------- */
 
 /**
+ * The view keys (§14): digits 1–4 call the same goView() as the
+ * VIEW fieldset buttons and the command line, in the fieldset's
+ * order — 1 PLAN, 2 ELEVATION, 3 SIDE, 4 HOME. Space-scope
+ * only: in app scope digits stay bare (the camera is parked
+ * while an app holds the stage).
+ */
+export const VIEW_KEYS = { "1": "top", "2": "front", "3": "side", "4": "home" };
+
+/**
  * Named views are pure camera moves — a seat and a look target,
  * nothing else changes. TOP is above, looking down at the XZ
  * ground plane (a hair of z offset keeps the camera's up vector
  * stable); FRONT is square-on to the XY wall; SIDE is square-on
  * to the YZ plane; HOME is the parametric seat the parameters
- * describe (no fixed seat — the Rig computes it). The 1/2 zoom
+ * describe (no fixed seat — the Rig computes it). The C/V dolly
  * scales a named seat toward its look target.
  */
 export const VIEWS = {
@@ -771,10 +1069,13 @@ export const isAppOpen = (state, appId) =>
  * E is an operator OUTSIDE label mode only: inside label mode the
  * letters are pure addresses and E is the sunburst cylinder's, so
  * resolveOpenAction refuses E there and the App's letter
- * targeting picks the letter up instead. This is the G/M
- * mode-scoping rule, extended to a third letter: G patches
- * outside / addresses inside, M opens the library outside /
- * addresses inside, E expands outside / addresses inside.
+ * targeting picks the letter up instead. Since slice 11, whether
+ * an E press MEANS expand at all is decided one level up by
+ * resolveEKey (E on a citizen is yaw- now); this resolver still
+ * answers the opening question for the presses that reach it.
+ * The mode-scoping family: G patches outside / addresses inside,
+ * M opens the library outside / addresses inside, E expands
+ * outside / addresses inside.
  */
 export function resolveOpenAction({ targetId = null, key = null, labelMode = false } = {}) {
   if (!targetId || !key) return null;

@@ -30,12 +30,31 @@
  * only while the library is open). The rest is curated below,
  * key for key against SpaceApp's keydown handler: if a shown
  * binding is not honoured there, the bug is in this table.
+ *
+ * Slice 11: the rotate/scale cluster lives on letter keys now
+ * (derived like the punctuation was), the event caps are named
+ * by their EVENTS (A FINISH, S GO BACK I, D GO BACK II, Esc
+ * CANCEL), the DOLLY sits on C/V (§14: the dolly moves the
+ * camera; the ZOOM is the focal pair), copy on H, strip cables
+ * on J, and the punctuation caps stand bare. The number row is
+ * the camera and the room (§14/§15): 1–4 the named views (the
+ * fieldset's order), 5/6 the field sizes, 7/8/9 the object
+ * layouts. The rotate
+ * caps' labels are DYNAMIC by the resolved target (ctx.rotate
+ * Target, from resolveRotateTarget in space-state.js): on the
+ * ring the yaw caps read SPIN RING, on the platter ROTATE
+ * PLATTER, and the plane pair (B/N) names its target too. E's
+ * cap is dynamic the other way (ctx.eKey, from resolveEKey):
+ * FULL PLATTER when E would expand, YAW - when it would turn.
  */
 
 import {
   TRANSFORM_KEYS,
+  transformOpOf,
   LAYOUT_KEYS,
   LAYOUTS,
+  VIEW_KEYS,
+  VIEWS,
   labeledObjects,
   labeledRingItems,
 } from "./space-state.js";
@@ -91,7 +110,7 @@ export const KEYBOARD_CAP_COUNT = KEYBOARD_ROWS.reduce((n, row) => n + row.lengt
 
 /* ---------------- derived bindings ---------------- */
 
-/** e.key punctuation → KeyboardEvent.code, for the derived caps. */
+/** e.key → KeyboardEvent.code, for the derived caps. */
 const CHAR_TO_CODE = {
   "-": "Minus", "=": "Equal",
   "[": "BracketLeft", "]": "BracketRight",
@@ -99,29 +118,88 @@ const CHAR_TO_CODE = {
   ".": "Period", "/": "Slash", ",": "Comma",
 };
 
+const codeForChar = (ch) =>
+  /^[a-z]$/.test(ch) ? `Key${ch.toUpperCase()}` : CHAR_TO_CODE[ch] || null;
+
 const bind = (label, extra = {}) => ({ label, ...extra });
 const op = (label, extra = {}) => ({ label, operator: true, ...extra });
 
-/** The transform caps, derived from TRANSFORM_KEYS: "yaw-" → "YAW -". */
-function transformBindings() {
+/**
+ * The transform caps, derived from TRANSFORM_KEYS: "yaw-" →
+ * "YAW -", the plane pair → "ROTATE PLANE -" / "+". The rotate
+ * caps (not magnify) rename themselves for the resolved target:
+ * the ring only spins, the platter yaws as ROTATE PLATTER and
+ * tilts, and plane-rotate names ring and platter outright.
+ */
+function transformBindings(ctx = {}) {
   const out = {};
-  for (const [ch, opName] of Object.entries(TRANSFORM_KEYS)) {
-    const code = CHAR_TO_CODE[ch];
+  const target = ctx.rotateTarget || "citizen";
+  for (const ch of Object.keys(TRANSFORM_KEYS)) {
+    const code = codeForChar(ch);
     if (!code) continue;
-    const name = opName.slice(0, -1).toUpperCase();
+    const opName = transformOpOf(ch);
+    if (!opName) continue;
+    const axis = opName.slice(0, -1);
     const sign = opName.slice(-1) === "+" ? "+" : "-";
-    out[code] = bind(`${name} ${sign}`);
+    // §16: the Z/X operation is MAGNIFY — the caps name the
+    // operation, not the geometric factor it steps.
+    let label = axis === "spin" ? `ROTATE PLANE ${sign}`
+      : axis === "scale" ? `MAGNIFY ${sign}`
+      : `${axis.toUpperCase()} ${sign}`;
+    if (target === "ring") {
+      if (axis === "yaw" || axis === "spin") label = axis === "spin" ? "PLANE · RING" : "SPIN RING";
+      else if (axis === "pitch" || axis === "roll") label = "SPIN ONLY";
+    } else if (target === "platter") {
+      // §12: on the platter the cluster turns the world in
+      // CAMERA terms, B/N still turns it in its plane, and the
+      // magnify keys are declined — the caps say all three.
+      if (axis === "spin") label = "PLANE · PLATTER";
+      else if (axis === "scale") label = "NO MAGNIFY · PLATTER";
+      else label = "ROTATE PLATTER · CAMERA";
+    }
+    out[code] = bind(label);
   }
   return out;
 }
 
-/** The layout caps on 3 / 4 / 5, derived from LAYOUT_KEYS + LAYOUTS. */
+/**
+ * The layout caps on 7 / 8 / 9, derived from LAYOUT_KEYS +
+ * LAYOUTS. §13: the layouts are OBJECT keys — they rearrange
+ * the citizens on the platter; the camera does not move — and
+ * the caps say so.
+ */
 function layoutBindings() {
   const out = {};
   for (const [digit, name] of Object.entries(LAYOUT_KEYS)) {
-    out[`Digit${digit}`] = bind(LAYOUTS[name].name);
+    out[`Digit${digit}`] = bind(`OBJECT LAYOUT · ${LAYOUTS[name].name}`);
   }
   return out;
+}
+
+/* The view digits (§14): the fieldset's names, the fieldset's order. */
+const VIEW_CAP_NAMES = { top: "PLAN", front: "ELEVATION", side: "SIDE", home: "HOME" };
+function viewBindings() {
+  const out = {};
+  for (const [digit, view] of Object.entries(VIEW_KEYS)) {
+    out[`Digit${digit}`] = bind(VIEW_CAP_NAMES[view], {
+      hint: `the ${VIEWS[view].name} named view — the VIEW fieldset's order, the same goView as the buttons`,
+    });
+  }
+  return out;
+}
+
+/**
+ * The field digits (§15): the focal zoom, a ladder of named
+ * field sizes. The caps name the gesture; the CURRENT field
+ * size rides in the hint (ctx.fieldName, from the App), since
+ * the panel head's echo is the last-key line, not a state line.
+ */
+function fieldBindings(ctx) {
+  const now = ctx.fieldName ? `field now: ${ctx.fieldName} — ` : "";
+  return {
+    Digit5: bind("FIELD -", { hint: `${now}one field size wider: the focal zoom — the lens changes, the camera stays` }),
+    Digit6: bind("FIELD +", { hint: `${now}one field size narrower: the focal zoom — the lens changes, the camera stays` }),
+  };
 }
 
 /**
@@ -144,42 +222,51 @@ function dragBindings() {
 function spaceBindings(ctx) {
   if (ctx.dragLocked) return dragBindings();
   return {
-    Escape: op("RELEASE"),
-    Digit1: bind("ZOOM OUT"),
-    Digit2: bind("ZOOM IN"),
+    ...transformBindings(ctx),
+    // E's second life: when resolveEKey says this press expands
+    // an app, the cap names that instead of YAW -.
+    ...(ctx.eKey === "expand" ? { KeyE: op("FULL PLATTER") } : {}),
+    Escape: op("CANCEL"),
     ...layoutBindings(),
+    ...viewBindings(),
+    ...fieldBindings(ctx),
     Tab: op("CYCLE"),
+    KeyA: op("FINISH"),
+    KeyS: op("GO BACK I"),
+    KeyD: op("GO BACK II"),
     KeyF: op(ctx.pending ? "COMPLETE PATCH" : "OPEN"),
-    KeyD: op("BACK"),
     KeyG: op(ctx.pending ? "COMPLETE PATCH" : "PATCH"),
     KeyM: bind("LIBRARY"),
-    KeyC: bind("COPY"),
+    KeyH: bind("COPY"),
     KeyI: bind("INSPECT"),
-    KeyX: bind("STRIP CABLES"),
+    KeyJ: bind("STRIP CABLES"),
+    KeyC: bind("DOLLY OUT"),
+    KeyV: bind("DOLLY IN"),
     KeyK: bind("KEYBOARD", { hint: "hide or show this panel" }),
     Space: op("DRAG LOCK"),
     Enter: op("COMMAND LINE"),
-    ...transformBindings(),
   };
 }
 
 function labelBindings(ctx) {
   if (ctx.dragLocked) return dragBindings();
   const out = {
-    Escape: op("EXIT LABELS"),
-    Digit1: bind("ZOOM OUT"),
-    Digit2: bind("ZOOM IN"),
+    Escape: op("CANCEL", { hint: "exit label mode — or release one level" }),
     ...layoutBindings(),
+    ...viewBindings(),
+    ...fieldBindings(ctx),
     Tab: op("CYCLE"),
     Space: op("DRAG LOCK"),
     Enter: op("COMMAND LINE"),
-    ...transformBindings(),
   };
   // Letters are addresses here: they resolve from the labeled
   // sets themselves, so a cap names its actual target — the
   // citizens in reading order, the ring's items continuing the
   // sequence, and the library's cards (ctx.cardLabels, present
-  // only while the library is open) continuing it further.
+  // only while the library is open) continuing it further. The
+  // slice-11 operator letters (A, C, E, H, J, S, V, B, N…) are
+  // addresses in this scope, exactly as the handler works them:
+  // B is the drum, N the tree, J the arch, C the tray.
   for (const { object, label } of labeledObjects()) {
     out[`Key${label}`] = bind(object.name.toUpperCase(), { target: object.id });
   }
@@ -189,13 +276,12 @@ function labelBindings(ctx) {
   for (const cardLabel of ctx.cardLabels || []) {
     out[`Key${cardLabel.label}`] = bind(cardLabel.title.toUpperCase(), { target: cardLabel.id });
   }
-  // Three letters stay OPERATORS even in label mode, because the
-  // handler takes them before letter targeting ever runs: D backs
-  // out, F opens (or completes a live patch), X strips cables.
-  // They are applied last so the rule stands in the data.
-  out.KeyD = op("BACK");
+  // Two letters stay OPERATORS even in label mode, because the
+  // handler takes them before letter targeting ever runs and the
+  // label alphabet excludes them: D is GO BACK II, F opens (or
+  // completes a live patch). Applied last so the rule stands.
+  out.KeyD = op("GO BACK II");
   out.KeyF = op(ctx.pending ? "COMPLETE PATCH" : "OPEN");
-  out.KeyX = bind("STRIP CABLES");
   return out;
 }
 
@@ -218,13 +304,15 @@ function commandBindings() {
 
 function appBindings(ctx) {
   return {
-    Escape: op("LEAVE APP"),
+    Escape: op("CANCEL"),
     Space: op(ctx.playing ? "PAUSE" : "PLAY"),
-    Digit1: bind("WINDOW OUT"),
-    Digit2: bind("WINDOW IN"),
+    KeyC: bind("WINDOW OUT"),
+    KeyV: bind("WINDOW IN"),
     Tab: op("CYCLE TOKENS"),
     KeyF: op("ACTIVATE", { hint: "the addressed ring token — or drill the hovered stretch of the waveform" }),
-    KeyD: op("APP BACK"),
+    KeyA: op("FINISH"),
+    KeyS: op("GO BACK I"),
+    KeyD: op("GO BACK II"),
     // E expands a centre-stage app; already full, it does nothing
     // and the cap goes bare — ctx.appMode carries the fact.
     ...(ctx.appMode === "center" ? { KeyE: op("FULL PLATTER") } : {}),
@@ -271,6 +359,9 @@ const SCOPE_TABLES = {
 /**
  * Resolve the board for one moment of the space.
  * ctx = { scope, playing, pending, dragLocked, appMode,
+ *         rotateTarget: "citizen" | "ring" | "platter",
+ *         eKey: "yaw-" | "expand" | null,
+ *         fieldName: the current field size's name (§15),
  *         cardLabels: [{ label, title, id }], lastKey }
  * Returns { scope, scopeName, rows, caps, combos } where each cap
  * is { code, glyph, width, binding|null, active } — binding a

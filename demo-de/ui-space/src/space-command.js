@@ -40,7 +40,7 @@ export const ARG_COLOR = "#ffa726";
 
 /**
  * The command table. arg: "object" (a name, unique prefix),
- * "number" (degrees / a scale factor), or null (argless — the
+ * "number" (degrees / a magnification factor), or null (argless — the
  * action runs on its letter). `run` names the intent each completed
  * composition resolves to.
  */
@@ -53,7 +53,8 @@ export const CMD_CATEGORIES = {
       y: { key: "y", name: "yaw", arg: "number", run: "yaw", hint: "degrees to yaw the current object (may be negative) · ⏎ runs" },
       t: { key: "t", name: "pitch", arg: "number", run: "pitch", hint: "degrees to pitch the current object (may be negative) · ⏎ runs" },
       r: { key: "r", name: "roll", arg: "number", run: "roll", hint: "degrees to roll the current object (may be negative) · ⏎ runs" },
-      z: { key: "z", name: "size", arg: "number", run: "size", hint: "scale factor for the current object, e.g. 1.5 · ⏎ runs" },
+      p: { key: "p", name: "plane", arg: "number", run: "spin", hint: "degrees to rotate the current object in its own plane (may be negative) · ⏎ runs" },
+      z: { key: "z", name: "size", arg: "number", run: "size", hint: "magnification factor for the current object, e.g. 1.5 · ⏎ runs" },
       f: { key: "f", name: "focus", arg: null, run: "focus", hint: "enter the current object — runs now" },
       x: { key: "x", name: "strip", arg: null, run: "strip", hint: "strip the current object's cables — runs now" },
     },
@@ -77,14 +78,14 @@ export const CMD_CATEGORIES = {
   },
   v: {
     key: "v", name: "view", color: CAT_COLORS.view,
-    hint: "the camera — named plane views and zoom, runs on the letter",
+    hint: "the camera — named plane views and the dolly, runs on the letter",
     actions: {
       t: { key: "t", name: "top", arg: null, run: "view", view: "top", hint: "TOP — above, looking down at XZ — runs now" },
       f: { key: "f", name: "front", arg: null, run: "view", view: "front", hint: "FRONT — square-on to the XY wall — runs now" },
       s: { key: "s", name: "side", arg: null, run: "view", view: "side", hint: "SIDE — square-on to the YZ plane — runs now" },
       h: { key: "h", name: "home", arg: null, run: "view", view: "home", hint: "HOME — the parametric seat, and release — runs now" },
-      i: { key: "i", name: "zoom in", arg: null, run: "zoom", dir: 1, hint: "zoom in (the 2 key) — runs now" },
-      o: { key: "o", name: "zoom out", arg: null, run: "zoom", dir: -1, hint: "zoom out (the 1 key) — runs now" },
+      i: { key: "i", name: "dolly in", arg: null, run: "zoom", dir: 1, hint: "dolly in (the V key) — runs now" },
+      o: { key: "o", name: "dolly out", arg: null, run: "zoom", dir: -1, hint: "dolly out (the C key) — runs now" },
     },
   },
   s: {
@@ -278,7 +279,8 @@ export function resolveCommand(state, ctx = {}) {
     }
     case "yaw":
     case "pitch":
-    case "roll": {
+    case "roll":
+    case "spin": {
       const n = parseNumberArg(state.arg);
       if (!n.ok) return n;
       return { ok: true, intent: { ...base, type: act.run, degrees: n.value } };
@@ -286,7 +288,7 @@ export function resolveCommand(state, ctx = {}) {
     case "size": {
       const n = parseNumberArg(state.arg);
       if (!n.ok) return n;
-      if (!(n.value > 0)) return { ok: false, error: "a scale factor must be positive" };
+      if (!(n.value > 0)) return { ok: false, error: "a magnification factor must be positive" };
       return { ok: true, intent: { ...base, type: "size", scale: n.value } };
     }
     default:
