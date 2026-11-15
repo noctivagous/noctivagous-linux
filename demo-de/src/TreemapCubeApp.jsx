@@ -108,31 +108,58 @@ export default function TreemapCubeApp() {
   const [openLeaf, setOpenLeaf] = useState(null);
   const bufferRef = useRef("");
   const bufferTimer = useRef(null);
+  // The key handler is registered ONCE and reads these mirrors, so
+  // a keystroke can never meet a stale closure: every write below
+  // updates the mirror synchronously, before the state commit, and
+  // the render pass re-syncs them for the paths that set state
+  // directly (chips, readout buttons).
+  const focusRef = useRef(root);
+  const targetRef = useRef(null);
+  const openLeafRef = useRef(null);
+  focusRef.current = focus;
+  targetRef.current = target;
+  openLeafRef.current = openLeaf;
 
   const descend = (node) => {
+    focusRef.current = node;
+    targetRef.current = null;
+    openLeafRef.current = null;
     setFocus(node);
     setTarget(null);
     setOpenLeaf(null);
   };
   const goBack = () => {
-    if (openLeaf) { setOpenLeaf(null); return; }
-    if (focus.parent) {
-      setFocus(focus.parent);
+    if (openLeafRef.current) {
+      openLeafRef.current = null;
+      setOpenLeaf(null);
+      return;
+    }
+    const f = focusRef.current;
+    if (f.parent) {
+      focusRef.current = f.parent;
+      targetRef.current = null;
+      setFocus(f.parent);
       setTarget(null);
     }
   };
   const clickTarget = () => {
-    if (!target) return;
-    if (target.children.length === 0) {
-      setOpenLeaf((cur) => (cur === target ? null : target));
+    const t = targetRef.current;
+    if (!t) return;
+    if (t.children.length === 0) {
+      const next = openLeafRef.current === t ? null : t;
+      openLeafRef.current = next;
+      setOpenLeaf(next);
     } else {
-      descend(target);
+      descend(t);
     }
   };
   const onNodeClick = (node) => {
     if (node.children.length === 0) {
+      const next = openLeafRef.current === node ? null : node;
+      targetRef.current = node;
+      openLeafRef.current = next;
       setTarget(node);
-      setOpenLeaf((cur) => (cur === node ? null : node));
+      setOpenLeaf(next);
     } else {
       descend(node);
     }
@@ -152,17 +179,31 @@ export default function TreemapCubeApp() {
       const textLike = tag === "textarea" || Boolean(el?.isContentEditable) ||
         (tag === "input" && ["text", "search", "password", "email", "url", "number"].includes(type));
       if (textLike || e.metaKey || e.ctrlKey || e.altKey) return;
+      // Leaving by any operator abandons a half-typed label: the
+      // 800 ms timer may only ever fire for a buffer the user is
+      // still typing, never after Escape, F or D (the Pattern B
+      // leaveBuffer discipline, applied here too).
+      const disarmBuffer = () => {
+        clearTimeout(bufferTimer.current);
+        bufferRef.current = "";
+      };
       if (e.key === "Escape") {
-        if (openLeaf) setOpenLeaf(null);
-        else setTarget(null);
+        disarmBuffer();
+        if (openLeafRef.current) {
+          openLeafRef.current = null;
+          setOpenLeaf(null);
+        } else {
+          targetRef.current = null;
+          setTarget(null);
+        }
         return;
       }
-      if (e.key === "f" || e.key === "F") { e.preventDefault(); clickTarget(); return; }
-      if (e.key === "d" || e.key === "D") { e.preventDefault(); goBack(); return; }
+      if (e.key === "f" || e.key === "F") { e.preventDefault(); disarmBuffer(); clickTarget(); return; }
+      if (e.key === "d" || e.key === "D") { e.preventDefault(); disarmBuffer(); goBack(); return; }
       if (!/^[a-zA-Z]$/.test(e.key)) return;
       const letter = e.key.toUpperCase();
       if (!LABEL_ALPHABET.includes(letter)) return;
-      const labels = cubeAddresses(focus);
+      const labels = cubeAddresses(focusRef.current);
       const attempt = (buf) => ({
         exact: labels.find((l) => l.label === buf),
         longer: labels.some((l) => l.label.length > buf.length && l.label.startsWith(buf)),
@@ -176,6 +217,7 @@ export default function TreemapCubeApp() {
       clearTimeout(bufferTimer.current);
       if (exact || longer) e.preventDefault(); // keep a focused select from jumping
       if (exact && !longer) {
+        targetRef.current = exact.node;
         setTarget(exact.node);
         bufferRef.current = "";
         return;
@@ -185,7 +227,10 @@ export default function TreemapCubeApp() {
         const pending = exact ? exact.node : null;
         bufferTimer.current = setTimeout(() => {
           bufferRef.current = "";
-          if (pending) setTarget(pending);
+          if (pending) {
+            targetRef.current = pending;
+            setTarget(pending);
+          }
         }, 800);
         return;
       }
@@ -193,8 +238,10 @@ export default function TreemapCubeApp() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    // Registered once: the handler reads the refs above, never the
+    // render-scope state, so its closure cannot go stale.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focus, target, openLeaf]);
+  }, []);
 
   const crumbs = treemapAncestors(focus);
   const houses = root.children.map((house) => ({

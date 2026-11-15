@@ -128,8 +128,31 @@ export default function SunburstCylinderApp() {
   const [buffer, setBuffer] = useState("");
   const bufferTimer = useRef(null);
   const nonce = useRef(0);
+  // The key handler is registered ONCE and reads these mirrors, so
+  // a keystroke can never meet a stale closure: every write below
+  // updates the mirror synchronously, before the state commit, and
+  // the render pass re-syncs them for the paths that set state
+  // directly (wedge clicks, chips). bufferToken arms the 800 ms
+  // buffer timer: a timer may only ever fire for the buffer that
+  // armed it, so every exit path bumps the token as it clears.
+  const bufferRef = useRef("");
+  const bufferTokenRef = useRef(0);
+  const targetRef = useRef(null);
+  const openRef = useRef(null);
+  const focusNodeRef = useRef(root);
+  const centreNodeRef = useRef(root);
+  const nodeByKeyRef = useRef(new Map());
+  bufferRef.current = buffer;
+  targetRef.current = target;
+  openRef.current = open;
+  focusNodeRef.current = focusNode;
+  centreNodeRef.current = centreNode;
 
   const requestZoom = (node) => {
+    focusNodeRef.current = node;
+    centreNodeRef.current = node.parent ?? root;
+    targetRef.current = null;
+    openRef.current = null;
     setFocusNode(node);
     setCentreNode(node.parent ?? root);
     setTarget(null);
@@ -144,15 +167,20 @@ export default function SunburstCylinderApp() {
     if (node.children.length) {
       requestZoom(node);
     } else {
+      const next = openRef.current === node ? null : node;
+      targetRef.current = node;
+      openRef.current = next;
       setTarget(node);
-      setOpen((cur) => (cur === node ? null : node));
+      setOpen(next);
     }
   };
 
   // THE WAY BACK (the D key): put the portion back first, then climb.
   const goBack = () => {
-    if (open) setOpen(null);
-    else if (focusNode !== root) requestZoom(centreNode);
+    if (openRef.current) {
+      openRef.current = null;
+      setOpen(null);
+    } else if (focusNodeRef.current !== root) requestZoom(centreNodeRef.current);
   };
 
   // Keys belong to the slices the current zoom leaves labelled, in
@@ -168,6 +196,7 @@ export default function SunburstCylinderApp() {
     () => new Map(keyTargets.map((t) => [t.key, t.node])),
     [keyTargets],
   );
+  nodeByKeyRef.current = nodeByKey;
 
   useEffect(() => {
     const onKey = (e) => {
@@ -181,11 +210,24 @@ export default function SunburstCylinderApp() {
       const textLike = tag === "textarea" || Boolean(el?.isContentEditable) ||
         (tag === "input" && ["text", "search", "password", "email", "url", "number"].includes(type));
       if (textLike || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === "Escape") {
+      // Leaving the buffer, on any path, disarms its timer: bump
+      // the token and clear, so a window armed by an earlier
+      // keystroke can never fire into a newer state.
+      const leaveBuffer = () => {
+        bufferTokenRef.current += 1;
+        clearTimeout(bufferTimer.current);
+        bufferRef.current = "";
         setBuffer("");
-        if (open) setOpen(null);
-        else if (target) setTarget(null);
-        else if (focusNode !== root) requestZoom(centreNode);
+      };
+      if (e.key === "Escape") {
+        leaveBuffer();
+        if (openRef.current) {
+          openRef.current = null;
+          setOpen(null);
+        } else if (targetRef.current) {
+          targetRef.current = null;
+          setTarget(null);
+        } else if (focusNodeRef.current !== root) requestZoom(centreNodeRef.current);
         return;
       }
       if (/^[a-zA-Z]$/.test(e.key)) {
@@ -194,12 +236,13 @@ export default function SunburstCylinderApp() {
         // ever a label letter (see LABEL_ALPHABET), so the two
         // operators can be unconditional.
         if (letter === "F") {
-          setBuffer("");
-          if (target) clickNode(target);
+          leaveBuffer();
+          const t = targetRef.current;
+          if (t) clickNode(t);
           return;
         }
         if (letter === "D") {
-          setBuffer("");
+          leaveBuffer();
           goBack();
           return;
         }
@@ -208,29 +251,40 @@ export default function SunburstCylinderApp() {
         // that is also the start of a longer label waits out the
         // buffer window: a second letter completes the longer label,
         // the window lapsing targets the exact one.
-        const next = buffer + letter;
-        const exact = nodeByKey.get(next);
-        const isPrefix = [...nodeByKey.keys()].some((k) => k.length > next.length && k.startsWith(next));
+        const byKey = nodeByKeyRef.current;
+        const next = bufferRef.current + letter;
+        const exact = byKey.get(next);
+        const isPrefix = [...byKey.keys()].some((k) => k.length > next.length && k.startsWith(next));
         if (exact || isPrefix) e.preventDefault(); // keep a focused select from jumping
         if (exact && !isPrefix) {
+          leaveBuffer();
+          targetRef.current = exact;
           setTarget(exact);
-          setBuffer("");
         } else if (exact || isPrefix) {
+          bufferRef.current = next;
           setBuffer(next);
           clearTimeout(bufferTimer.current);
+          const token = ++bufferTokenRef.current;
           bufferTimer.current = setTimeout(() => {
-            if (exact) setTarget(exact);
+            if (bufferTokenRef.current !== token) return; // a newer keystroke owns the buffer
+            if (exact) {
+              targetRef.current = exact;
+              setTarget(exact);
+            }
+            bufferRef.current = "";
             setBuffer("");
           }, 800);
         } else {
-          setBuffer("");
+          leaveBuffer();
         }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    // Registered once: the handler reads the refs above, never the
+    // render-scope state, so its closure cannot go stale.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [buffer, nodeByKey, target, open, focusNode, centreNode, root]);
+  }, []);
 
   const pathOf = (node) => sunburstAncestors(node).map((n) => n.name).join(" / ");
   const indexPathOf = (node) => {

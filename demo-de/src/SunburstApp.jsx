@@ -104,8 +104,25 @@ export default function SunburstApp() {
   const [buffer, setBuffer] = useState("");
   const bufferTimer = useRef(null);
   const nonce = useRef(0);
+  // The key handler is registered ONCE and reads these mirrors, so
+  // a keystroke can never meet a stale closure: every write below
+  // updates the mirror synchronously, before the state commit, and
+  // the render pass re-syncs them for the paths that set state
+  // directly (slice clicks). bufferToken arms the 800 ms buffer
+  // timer: a timer may only ever fire for the buffer that armed
+  // it, so every exit path bumps the token as it clears.
+  const bufferRef = useRef("");
+  const bufferTokenRef = useRef(0);
+  const focusNodeRef = useRef(root);
+  const centreNodeRef = useRef(root);
+  const nodeByKeyRef = useRef(new Map());
+  bufferRef.current = buffer;
+  focusNodeRef.current = focusNode;
+  centreNodeRef.current = centreNode;
 
   const requestZoom = (node) => {
+    focusNodeRef.current = node;
+    centreNodeRef.current = node.parent ?? root;
     setFocusNode(node);
     setCentreNode(node.parent ?? root);
     setSelected(null);
@@ -126,38 +143,57 @@ export default function SunburstApp() {
     () => new Map(keyTargets.map((t) => [t.key, t.node])),
     [keyTargets],
   );
+  nodeByKeyRef.current = nodeByKey;
 
   useEffect(() => {
     const onKey = (e) => {
       const tag = (e.target?.tagName || "").toLowerCase();
       if (tag === "input" || tag === "select" || tag === "textarea" || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === "Escape") {
+      // Leaving the buffer, on any path, disarms its timer: bump
+      // the token and clear, so a window armed by an earlier
+      // keystroke can never fire into a newer state.
+      const leaveBuffer = () => {
+        bufferTokenRef.current += 1;
+        clearTimeout(bufferTimer.current);
+        bufferRef.current = "";
         setBuffer("");
-        if (focusNode !== root) requestZoom(centreNode);
+      };
+      if (e.key === "Escape") {
+        leaveBuffer();
+        if (focusNodeRef.current !== root) requestZoom(centreNodeRef.current);
         else setSelected(null);
         return;
       }
       if (/^[a-zA-Z]$/.test(e.key)) {
-        const next = (buffer + e.key.toUpperCase()).slice(-2);
-        const exact = nodeByKey.get(next);
-        const isPrefix = [...nodeByKey.keys()].some((k) => k.startsWith(next));
+        const byKey = nodeByKeyRef.current;
+        const next = (bufferRef.current + e.key.toUpperCase()).slice(-2);
+        const exact = byKey.get(next);
+        const isPrefix = [...byKey.keys()].some((k) => k.startsWith(next));
         if (exact && (!isPrefix || next.length === 2)) {
           if (exact.children.length) requestZoom(exact);
           else setSelected(exact);
-          setBuffer("");
+          leaveBuffer();
         } else if (isPrefix) {
+          bufferRef.current = next;
           setBuffer(next);
           clearTimeout(bufferTimer.current);
-          bufferTimer.current = setTimeout(() => setBuffer(""), 800);
+          const token = ++bufferTokenRef.current;
+          bufferTimer.current = setTimeout(() => {
+            if (bufferTokenRef.current !== token) return; // a newer keystroke owns the buffer
+            bufferRef.current = "";
+            setBuffer("");
+          }, 800);
         } else {
-          setBuffer("");
+          leaveBuffer();
         }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    // Registered once: the handler reads the refs above, never the
+    // render-scope state, so its closure cannot go stale.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [buffer, nodeByKey, focusNode, centreNode, root]);
+  }, []);
 
   const pathOf = (node) => sunburstAncestors(node).map((n) => n.name).join(" / ");
   const indexPathOf = (node) => {

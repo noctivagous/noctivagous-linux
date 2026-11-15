@@ -92,6 +92,15 @@ export default function TangledApp() {
   const [selectedId, setSelectedId] = useState(null);
   const [buffer, setBuffer] = useState("");
   const bufferTimer = useRef(null);
+  // The key handler is registered ONCE and reads these mirrors, so
+  // a keystroke can never meet a stale closure: every write below
+  // updates the mirror synchronously, before the state commit.
+  // bufferToken arms the 800 ms buffer timer: a timer may only
+  // ever fire for the buffer that armed it.
+  const bufferRef = useRef("");
+  const bufferTokenRef = useRef(0);
+  const idByLabelRef = useRef(new Map());
+  bufferRef.current = buffer;
 
   const { labelOf, idByLabel, childrenOf } = useMemo(() => {
     const sorted = [...layout.nodes].sort((a, b) => a.level - b.level || a.y - b.y);
@@ -106,6 +115,7 @@ export default function TangledApp() {
     for (const n of layout.nodes) for (const p of n.parents) childrenOf.get(p.id).push(n.id);
     return { labelOf, idByLabel, childrenOf };
   }, [layout]);
+  idByLabelRef.current = idByLabel;
 
   const levelTree = useMemo(() => groupToTree(layout.nodes, (n) => [n.level]), [layout]);
 
@@ -113,29 +123,52 @@ export default function TangledApp() {
     const onKey = (e) => {
       const tag = (e.target?.tagName || "").toLowerCase();
       if (tag === "input" || tag === "select" || tag === "textarea" || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === "Escape") { setSelectedId(null); setBuffer(""); return; }
+      if (e.key === "Escape") {
+        // Escape leaves the buffer too: disarm its timer, so the
+        // window armed by an earlier keystroke cannot fire later.
+        bufferTokenRef.current += 1;
+        clearTimeout(bufferTimer.current);
+        bufferRef.current = "";
+        setSelectedId(null);
+        setBuffer("");
+        return;
+      }
       if (/^[a-zA-Z]$/.test(e.key)) {
-        const next = (buffer + e.key.toUpperCase()).slice(-2);
-        const exact = idByLabel.get(next);
-        const isPrefix = [...idByLabel.keys()].some((k) => k.startsWith(next));
-        if (exact && !([...idByLabel.keys()].some((k) => k.length > next.length && k.startsWith(next)))) {
+        const byLabel = idByLabelRef.current;
+        const letter = e.key.toUpperCase();
+        const next = (bufferRef.current + letter).slice(-2);
+        const exact = byLabel.get(next);
+        const isPrefix = [...byLabel.keys()].some((k) => k.startsWith(next));
+        if (exact && !([...byLabel.keys()].some((k) => k.length > next.length && k.startsWith(next)))) {
           setSelectedId(exact);
+          bufferRef.current = "";
           setBuffer("");
         } else if (isPrefix || exact) {
+          bufferRef.current = next;
           setBuffer(next);
-        } else if (idByLabel.get(e.key.toUpperCase())) {
-          setSelectedId(idByLabel.get(e.key.toUpperCase()));
+        } else if (byLabel.get(letter)) {
+          setSelectedId(byLabel.get(letter));
+          bufferRef.current = "";
           setBuffer("");
         } else {
+          bufferRef.current = "";
           setBuffer("");
         }
         clearTimeout(bufferTimer.current);
-        bufferTimer.current = setTimeout(() => setBuffer(""), 800);
+        const token = ++bufferTokenRef.current;
+        bufferTimer.current = setTimeout(() => {
+          if (bufferTokenRef.current !== token) return; // a newer keystroke owns the buffer
+          bufferRef.current = "";
+          setBuffer("");
+        }, 800);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [buffer, idByLabel]);
+    // Registered once: the handler reads the refs above, never the
+    // render-scope state, so its closure cannot go stale.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const sel = selectedId ? layout.nodesIndex[selectedId] : null;
   let readout;
