@@ -36,7 +36,9 @@ import {
   snapGroundPoint,
   axisLockPoint,
   isAddressable,
+  displayRootOf,
 } from "./space-state.js";
+import { subnodeById, subnodeRootOf, flareDataOf } from "./subnodes.js";
 import {
   makeTrack,
   peaksForWindow,
@@ -297,6 +299,46 @@ function sectorGeometry(x0, x1, y0, y1, ring, base, height, gapA = 0.008, gapR =
   return geo;
 }
 
+/**
+ * Slice 12 — a sunburst layout node's provider id: its name path
+ * from the hierarchy's root, joined with "/" — the same id
+ * subnodes.js computes from the raw data, so the View's picking
+ * and the App's provider name one node. For a descended rebuild
+ * the walk stops at the LOCAL root; the caller prefixes the
+ * display root's true id.
+ */
+function flarePathId(node) {
+  const names = [];
+  let n = node;
+  while (n) {
+    names.push(n.data ? n.data.name : n.name);
+    n = n.parent;
+  }
+  return names.reverse().join("/");
+}
+
+/**
+ * Slice 12 — a sunburst wedge set built from an arbitrary root:
+ * the descent rebuild. Same builders, same geometry, same colour
+ * rule (the scale is taken over the given root's children, as
+ * the standalone pages re-root) — only the root differs. Wedges
+ * carry LOCAL path ids; the caller prefixes the display root's
+ * true id to recover provider ids.
+ */
+function buildWedgeSet(rootData, kind) {
+  const root = buildSunburst(rootData);
+  const colour = sunburstColourScale(root.children.map((c) => c.name));
+  const out = [];
+  for (const n of sunburstDescendants(root)) {
+    if (n.depth < 1 || n.depth > 2) continue;
+    const geo = kind === "mesa"
+      ? sectorGeometry(n.x0, n.x1, n.y0, n.y1, 8.5, 0, n.depth === 1 ? 12 : 6.5)
+      : sectorGeometry(n.x0, n.x1, n.y0, n.y1, 8.5, 0, 20);
+    if (geo) out.push({ geo, color: colour(n), node: n, id: flarePathId(n) });
+  }
+  return out;
+}
+
 let _lib = null;
 function geoLib() {
   if (_lib) return _lib;
@@ -308,10 +350,14 @@ function geoLib() {
   const drumBlocks = [];
   for (const n of sbNodes) {
     const color = sbColour(n);
+    // Slice 12: each wedge carries its layout node and its
+    // provider id (the name path from the true root — the same
+    // id subnodes.js computes), so picking, highlight and the
+    // App's info all name the same node.
     const mesaGeo = sectorGeometry(n.x0, n.x1, n.y0, n.y1, RING, 0, n.depth === 1 ? 12 : 6.5);
-    if (mesaGeo) mesaWedges.push({ geo: mesaGeo, color });
+    if (mesaGeo) mesaWedges.push({ geo: mesaGeo, color, node: n, id: flarePathId(n) });
     const drumGeo = sectorGeometry(n.x0, n.x1, n.y0, n.y1, RING, 0, 20);
-    if (drumGeo) drumBlocks.push({ geo: drumGeo, color });
+    if (drumGeo) drumBlocks.push({ geo: drumGeo, color, node: n, id: flarePathId(n) });
   }
 
   const tmRoot = buildTreemap(FLARE);
@@ -332,6 +378,7 @@ function geoLib() {
     level.forEach((node, i) => {
       const spread = n <= 1 ? 0 : Math.min(6.4, 44 / (n - 1));
       tanglePos.set(node.id, {
+        id: node.id,
         x: (i - (n - 1) / 2) * spread,
         y: 2.5 + li * 3.4,
         z: (li - 3) * 5.6,
@@ -456,7 +503,108 @@ function ambientAmp(ampRef, ctx, dt) {
   return ampRef.current;
 }
 
-function MiniMesa({ lib, matFor, ctx }) {
+/**
+ * Slice 12 — the sunbursts' wedges, shared by the mesa and the
+ * drum (one hierarchy, two forms; the geometry differs, the
+ * sub-node machinery is one). At rest the set is the library's;
+ * under DESCENT it is rebuilt from the display root's subtree
+ * (buildWedgeSet), with provider ids recovered by prefixing the
+ * display root's true id. Wedges are per-node meshes, so picking
+ * is direct: hover reports the node id while the citizen is
+ * current, and the highlight is the knot/tree colour-factor
+ * treatment on owned materials — hovered or focused brightens,
+ * siblings dim. Each wedge's anchor (mid-angle, mid-radius, its
+ * top) is published in the citizen's local frame for the Rig's
+ * seats and the in-space info card.
+ */
+function SunburstWedges({ kind, lib, matFor, ctx, descentRootId }) {
+  const wedges = useMemo(() => {
+    if (!descentRootId) return kind === "mesa" ? lib.mesaWedges : lib.drumBlocks;
+    const data = flareDataOf(descentRootId);
+    if (!data) return kind === "mesa" ? lib.mesaWedges : lib.drumBlocks;
+    return buildWedgeSet(data, kind).map((w) => ({
+      ...w,
+      id: descentRootId + w.id.slice(w.id.indexOf("/")),
+    }));
+  }, [lib, kind, descentRootId]);
+  const owned = useMemo(() => {
+    const map = new Map();
+    for (const w of wedges) {
+      if (map.has(w.id)) continue;
+      map.set(w.id, {
+        mat: kind === "mesa"
+          ? matFor(w.color, { opacity: 0.86, glowScale: 0.7, keepDepth: true })
+          : matFor(w.color, { rough: 0.5 }),
+        base: new THREE.Color(w.color),
+      });
+    }
+    return map;
+  }, [wedges, kind, matFor]);
+  // A descended set owns its geometries and materials; the
+  // library's are shared and stay. Replaced owned sets dispose.
+  useEffect(() => {
+    if (!descentRootId) return undefined;
+    return () => {
+      for (const w of wedges) w.geo.dispose();
+      for (const e of owned.values()) e.mat.dispose();
+    };
+  }, [wedges, owned, descentRootId]);
+  const groupRef = useRef(null);
+  useEffect(() => {
+    const frame = ctx.frame;
+    frame.subGroupRefs.set(kind, groupRef.current);
+    const anchors = new Map();
+    for (const w of wedges) {
+      const n = w.node;
+      const a = (n.x0 + n.x1) / 2;
+      const r = ((n.y0 + n.y1) / 2) * 8.5;
+      const top = kind === "mesa" ? (n.depth === 1 ? 12 : 6.5) : 21.6;
+      anchors.set(w.id, {
+        centre: new THREE.Vector3(Math.cos(a) * r, top, Math.sin(a) * r),
+        radius: Math.max(3, n.y1 * 8.5 * 0.45),
+      });
+    }
+    frame.subLocal.set(kind, anchors);
+    return () => {
+      frame.subGroupRefs.delete(kind);
+      if (frame.subLocal.get(kind) === anchors) frame.subLocal.delete(kind);
+    };
+  }, [ctx, kind, wedges]);
+  const lastHi = useRef(undefined);
+  useFrame(() => {
+    const st = ctx.stateRef.current;
+    const hov = st.currentId === kind && st.subHover && st.subHover.objectId === kind
+      ? st.subHover.nodeId : null;
+    const foc = st.partFocus && st.partFocus.objectId === kind ? st.partFocus.partId : null;
+    const hi = foc || hov || null;
+    if (hi === lastHi.current) return;
+    lastHi.current = hi;
+    for (const [id, e] of owned) {
+      const f = !hi ? 1 : id === hi ? 1.9 : 0.55;
+      e.mat.color.copy(e.base).multiplyScalar(f);
+    }
+  });
+  const st = () => ctx.stateRef.current;
+  const report = (id) => {
+    if (st().currentId !== kind || !st().onSubHover) return;
+    st().onSubHover(kind, id);
+  };
+  const clear = () => { if (st().onSubHover) st().onSubHover(kind, null); };
+  return (
+    <group ref={groupRef}>
+      {wedges.map((w) => (
+        <mesh key={w.id} geometry={w.geo}
+          position={kind === "drum" ? [0, 1.6, 0] : undefined}
+          material={owned.get(w.id).mat}
+          onPointerOver={() => report(w.id)}
+          onPointerMove={() => report(w.id)}
+          onPointerOut={clear} />
+      ))}
+    </group>
+  );
+}
+
+function MiniMesa({ lib, matFor, ctx, descentRootId }) {
   const sweep = useRef(null);
   const amp = useRef(1);
   useFrame((_, dt) => {
@@ -472,9 +620,7 @@ function MiniMesa({ lib, matFor, ctx }) {
         <cylinderGeometry args={[7.6, 8.4, 6, 40]} />
         <primitive object={matFor(0x8a97a0, { rough: 0.5 })} attach="material" />
       </mesh>
-      {lib.mesaWedges.map((w, i) => (
-        <mesh key={i} geometry={w.geo} material={matFor(w.color, { opacity: 0.86, glowScale: 0.7, keepDepth: true })} />
-      ))}
+      <SunburstWedges kind="mesa" lib={lib} matFor={matFor} ctx={ctx} descentRootId={descentRootId} />
       {/* A light sweep travels the rings — the disc itself never turns. */}
       <group ref={sweep}>
         <mesh position={[0, 12.7, 0]} rotation-x={-Math.PI / 2}>
@@ -487,7 +633,7 @@ function MiniMesa({ lib, matFor, ctx }) {
   );
 }
 
-function MiniDrum({ lib, matFor, ctx }) {
+function MiniDrum({ lib, matFor, ctx, descentRootId }) {
   const band = useRef(null);
   const amp = useRef(1);
   useFrame((_, dt) => {
@@ -507,9 +653,7 @@ function MiniDrum({ lib, matFor, ctx }) {
         <cylinderGeometry args={[8.1, 8.6, 20, 40]} />
         <primitive object={matFor(0x39434b, { rough: 0.7 })} attach="material" />
       </mesh>
-      {lib.drumBlocks.map((b, i) => (
-        <mesh key={i} geometry={b.geo} position={[0, 1.6, 0]} material={matFor(b.color, { rough: 0.5 })} />
-      ))}
+      <SunburstWedges kind="drum" lib={lib} matFor={matFor} ctx={ctx} descentRootId={descentRootId} />
       {/* A light band circles inside the glass, past the blocks. */}
       <group ref={band}>
         <mesh position={[9.4, 11.4, 0]} rotation-y={Math.PI / 2}>
@@ -540,6 +684,8 @@ function MiniTray({ lib, matFor, ctx }) {
   // Breathing: a handful of cuboids ease up and down in a slow
   // cycle, each on its own phase — the tray stays a tray.
   const cuboidRefs = useRef([]);
+  const plateRefs = useRef([]);
+  const groupRef = useRef(null);
   const amp = useRef(1);
   const chosen = useMemo(() => {
     const idx = [];
@@ -547,6 +693,48 @@ function MiniTray({ lib, matFor, ctx }) {
     for (let i = 0; i < lib.trayCuboids.length && idx.length < 6; i += step) idx.push(i);
     return idx;
   }, [lib]);
+  // Slice 12: plates and cuboids are sub-nodes. Their materials
+  // are owned (the knot's pattern) so the highlight can rewrite
+  // colours; each mesh reports its provider id on hover while
+  // the tray is current, and anchors are published for the Rig.
+  const owned = useMemo(() => {
+    const plates = lib.trayPlates.map(({ node, color }) => ({
+      id: flarePathId(node),
+      mat: matFor(new THREE.Color(color).multiplyScalar(0.4).getHex(), { rough: 0.9 }),
+      base: new THREE.Color(color).multiplyScalar(0.4),
+    }));
+    const cuboids = lib.trayCuboids.map(({ node, color }) => ({
+      id: flarePathId(node),
+      mat: matFor(color, { rough: 0.5 }),
+      base: new THREE.Color(color),
+    }));
+    return { plates, cuboids, all: [...plates, ...cuboids] };
+  }, [lib, matFor]);
+  useEffect(() => {
+    const frame = ctx.frame;
+    frame.subGroupRefs.set("tray", groupRef.current);
+    const anchors = new Map();
+    lib.trayPlates.forEach(({ node }, i) => {
+      const r = rect(node);
+      anchors.set(owned.plates[i].id, {
+        centre: new THREE.Vector3(r.cx, 2.4, r.cz),
+        radius: Math.max(3, Math.max(r.w, r.d) * 0.35),
+      });
+    });
+    lib.trayCuboids.forEach(({ node }, i) => {
+      const r = rect(node);
+      anchors.set(owned.cuboids[i].id, {
+        centre: new THREE.Vector3(r.cx, 8.6, r.cz),
+        radius: Math.max(2.5, Math.max(r.w, r.d) * 0.35),
+      });
+    });
+    frame.subLocal.set("tray", anchors);
+    return () => {
+      frame.subGroupRefs.delete("tray");
+      if (frame.subLocal.get("tray") === anchors) frame.subLocal.delete("tray");
+    };
+  }, [ctx, lib, owned]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lastHi = useRef(undefined);
   useFrame((state, dt) => {
     const a = ambientAmp(amp, ctx, dt);
     const t = state.clock.elapsedTime;
@@ -557,27 +745,52 @@ function MiniTray({ lib, matFor, ctx }) {
       m.scale.y = sy;
       m.position.y = 2.2 + sy / 2;
     });
+    const st = ctx.stateRef.current;
+    const hov = st.currentId === "tray" && st.subHover && st.subHover.objectId === "tray"
+      ? st.subHover.nodeId : null;
+    const foc = st.partFocus && st.partFocus.objectId === "tray" ? st.partFocus.partId : null;
+    const hi = foc || hov || null;
+    if (hi !== lastHi.current) {
+      lastHi.current = hi;
+      for (const e of owned.all) {
+        const f = !hi ? 1 : e.id === hi ? 1.9 : 0.55;
+        e.mat.color.copy(e.base).multiplyScalar(f);
+      }
+    }
   });
+  const st = () => ctx.stateRef.current;
+  const report = (id) => {
+    if (st().currentId !== "tray" || !st().onSubHover) return;
+    st().onSubHover("tray", id);
+  };
+  const clear = () => { if (st().onSubHover) st().onSubHover("tray", null); };
   return (
-    <group>
+    <group ref={groupRef}>
       {/* The tray itself is glass; the cuboids stand solid in it. */}
       <mesh position={[0, 0.7, 0]} geometry={lib.unitBox} scale={[W + 5, 1.4, H + 5]}
         material={matFor(0x9fd8e8, { opacity: 0.28, glowScale: 0.3 })} />
-      {lib.trayPlates.map(({ node, color }, i) => {
+      {lib.trayPlates.map(({ node }, i) => {
         const r = rect(node);
         return (
           <mesh key={`p${i}`} geometry={lib.unitBox} position={[r.cx, 1.7, r.cz]}
+            ref={(el) => { plateRefs.current[i] = el; }}
             scale={[Math.max(0.4, r.w - 0.7), 1, Math.max(0.4, r.d - 0.7)]}
-            material={matFor(new THREE.Color(color).multiplyScalar(0.4).getHex(), { rough: 0.9 })} />
+            material={owned.plates[i].mat}
+            onPointerOver={() => report(owned.plates[i].id)}
+            onPointerMove={() => report(owned.plates[i].id)}
+            onPointerOut={clear} />
         );
       })}
-      {lib.trayCuboids.map(({ node, color }, i) => {
+      {lib.trayCuboids.map(({ node }, i) => {
         const r = rect(node);
         return (
           <mesh key={`c${i}`} geometry={lib.unitBox} position={[r.cx, 2.2 + 3, r.cz]}
             ref={(el) => { cuboidRefs.current[i] = el; }}
             scale={[Math.max(0.4, r.w - 1.4), 6, Math.max(0.4, r.d - 1.4)]}
-            material={matFor(color, { rough: 0.5 })} />
+            material={owned.cuboids[i].mat}
+            onPointerOver={() => report(owned.cuboids[i].id)}
+            onPointerMove={() => report(owned.cuboids[i].id)}
+            onPointerOut={clear} />
         );
       })}
     </group>
@@ -683,8 +896,52 @@ function MiniTangle({ lib, matFor, ctx }) {
     m.instanceMatrix.needsUpdate = true;
     if (m.instanceColor) m.instanceColor.needsUpdate = true;
   }, [lib]);
+  // Slice 12: the figures are sub-nodes. The instanced mesh picks
+  // by instanceId (the tree's precedent); the highlight rewrites
+  // instance colours with the tree's factors; anchors are the
+  // figures' own positions, published for the Rig and the card.
+  const groupRef = useRef(null);
+  useEffect(() => {
+    const frame = ctx.frame;
+    frame.subGroupRefs.set("tangle", groupRef.current);
+    const anchors = new Map();
+    for (const p of lib.tangleNodes) {
+      anchors.set(p.id, { centre: new THREE.Vector3(p.x, p.y, p.z), radius: 2 });
+    }
+    frame.subLocal.set("tangle", anchors);
+    return () => {
+      frame.subGroupRefs.delete("tangle");
+      if (frame.subLocal.get("tangle") === anchors) frame.subLocal.delete("tangle");
+    };
+  }, [ctx, lib]);
+  const lastHi = useRef(undefined);
+  useFrame(() => {
+    const st = ctx.stateRef.current;
+    const hov = st.currentId === "tangle" && st.subHover && st.subHover.objectId === "tangle"
+      ? st.subHover.nodeId : null;
+    const foc = st.partFocus && st.partFocus.objectId === "tangle" ? st.partFocus.partId : null;
+    const hi = foc || hov || null;
+    if (hi === lastHi.current) return;
+    lastHi.current = hi;
+    const m = ref.current;
+    if (!m) return;
+    const C = new THREE.Color();
+    lib.tangleNodes.forEach((p, i) => {
+      const f = !hi ? 1 : p.id === hi ? 2.1 : 0.55;
+      m.setColorAt(i, C.set(TANGLE_PALETTE[p.level % TANGLE_PALETTE.length]).multiplyScalar(f));
+    });
+    if (m.instanceColor) m.instanceColor.needsUpdate = true;
+  });
+  const st = () => ctx.stateRef.current;
+  const reportInst = (e) => {
+    if (st().currentId !== "tangle" || !st().onSubHover) return;
+    if (e.instanceId == null) return;
+    const p = lib.tangleNodes[e.instanceId];
+    if (p) st().onSubHover("tangle", p.id);
+  };
+  const clearInst = () => { if (st().onSubHover) st().onSubHover("tangle", null); };
   return (
-    <group>
+    <group ref={groupRef}>
       <mesh position={[0, 0.8, 0]} geometry={lib.unitBox} scale={[52, 1.6, 46]}
         material={matFor(0x1a2227, { rough: 0.9 })} />
       {/* Level sheets are glass; the figures stand solid on them. */}
@@ -696,7 +953,8 @@ function MiniTangle({ lib, matFor, ctx }) {
         <lineBasicMaterial color={0x6f8894} transparent opacity={0.75} />
       </lineSegments>
       <points geometry={flow.geo} material={flow.mat} />
-      <instancedMesh ref={ref} args={[undefined, undefined, lib.tangleNodes.length]} key={lib.tangleNodes.length}>
+      <instancedMesh ref={ref} args={[undefined, undefined, lib.tangleNodes.length]} key={lib.tangleNodes.length}
+        onPointerOver={reportInst} onPointerMove={reportInst} onPointerOut={clearInst}>
         <boxGeometry args={[1.8, 1.8, 1.8]} />
         <primitive object={matFor(0xffffff, { rough: 0.5 })} attach="material" />
       </instancedMesh>
@@ -1732,7 +1990,7 @@ const MINIATURES = {
 
 /* ---------- one citizen of the space ---------- */
 
-function SpaceObject({ def, ctx, lib }) {
+function SpaceObject({ def, ctx, lib, descentRootId }) {
   const outer = useRef(null);
   const inner = useRef(null);
   const spin = useRef(null);
@@ -1822,7 +2080,7 @@ function SpaceObject({ def, ctx, lib }) {
       <group ref={inner} position={[0, CENTRE_Y[def.id] || 0, 0]}>
         <group ref={spin}>
           <group position={[0, -(CENTRE_Y[def.id] || 0), 0]}>
-            <Mini lib={lib} matFor={mats.matFor} ctx={ctx} />
+            <Mini lib={lib} matFor={mats.matFor} ctx={ctx} descentRootId={descentRootId} />
           </group>
         </group>
       </group>
@@ -2933,6 +3191,33 @@ function Rig({ ctx, cameras }) {
       }
     }
 
+    // Slice 12: sub-node world anchors for the tray, the tangle
+    // and the sunbursts — the branch precedent: each citizen's
+    // registered local anchors turned into world by its node
+    // group's live matrix (through display transform, pivot and
+    // spin). Only the citizens that can need them this frame —
+    // the current one and the focus holder — are transformed.
+    frame.subWorld.clear();
+    {
+      const wanted = new Set();
+      if (st.currentId) wanted.add(st.currentId);
+      if (st.partFocus && st.partFocus.objectId) wanted.add(st.partFocus.objectId);
+      for (const oid of wanted) {
+        const g = frame.subGroupRefs.get(oid);
+        const local = frame.subLocal.get(oid);
+        if (!g || !local || !frame.disp.has(oid)) continue;
+        g.updateWorldMatrix(true, false);
+        const sc = new THREE.Vector3();
+        g.getWorldScale(sc);
+        for (const [nid, a] of local) {
+          frame.subWorld.set(`${oid}:${nid}`, {
+            centre: g.localToWorld(a.centre.clone()),
+            radius: a.radius * Math.abs(sc.x),
+          });
+        }
+      }
+    }
+
     // The wall cards and the clipboard tray: same easing discipline,
     // different homes — a wall slot inside/outside the cabinet, the
     // tray's front-edge stand or its parked place below the platter.
@@ -3006,6 +3291,8 @@ function Rig({ ctx, cameras }) {
       ? frame.partWorld.get(st.partFocus.partId) : null;
     const branchW = st.partFocus && st.partFocus.partId && st.partFocus.objectId === "tree"
       ? frame.branchWorld.get(st.partFocus.partId) : null;
+    const subW = st.partFocus && st.partFocus.partId
+      ? frame.subWorld.get(`${st.partFocus.objectId}:${st.partFocus.partId}`) || null : null;
     const cardBase = st.cardId ? frame.baseWorld.get(st.cardId) : null;
     // The entered-card seat and the DOLLY seat are the same seat
     // (slice 11, §4): out from the citizen's base along its
@@ -3043,6 +3330,19 @@ function Rig({ ctx, cameras }) {
       seat = branchW.centre.clone().addScaledVector(dir, branchW.radius + 40)
         .add(new THREE.Vector3(0, 12, 0));
       look = branchW.centre.clone();
+      if (camera === cameras.ortho) { camera.zoom = 1.5 / st.zoomMul; camera.updateProjectionMatrix(); }
+    } else if (st.partFocus && st.partFocus.partId && subW) {
+      // Sub-node focus (slice 12): the branch seat's shape — off
+      // the node's world anchor, outward from the citizen's own
+      // base by the node's radius and a reading margin.
+      const base = frame.baseWorld.get(st.partFocus.objectId) || new THREE.Vector3();
+      const dir = subW.centre.clone().sub(base);
+      dir.y = 0;
+      if (dir.lengthSq() < 1) dir.set(0, 0, 1);
+      dir.normalize();
+      seat = subW.centre.clone().addScaledVector(dir, subW.radius + 34)
+        .add(new THREE.Vector3(0, 10, 0));
+      look = subW.centre.clone();
       if (camera === cameras.ortho) { camera.zoom = 1.5 / st.zoomMul; camera.updateProjectionMatrix(); }
     } else if (st.partFocus && st.partFocus.partId && partW) {
       const centre = frame.partWorld.get("__centre") || partW;
@@ -3161,10 +3461,10 @@ export default function SpaceView(props) {
     zoomFocusId, platterQuat, ringSpinDeg, fieldIndex,
     turntableOn, pulsesOn, ambientOn, labelsOn, sharedRef,
     libraryOpen, clipHeld, clipSummoned, inspectedId, inspectRot, pastes, inspectPanel,
-    partFocus, partHoverId, branchHoverId,
+    partFocus, partHoverId, branchHoverId, subHover, descents,
     viewName, snapOn, strata, layers,
     openApp, audio, tokenHoverId, appFocusId, regionHover,
-    onHover, onPartHover, onBranchHover, onObjectClick, onSelect, onTouch,
+    onHover, onPartHover, onBranchHover, onSubHover, onObjectClick, onSelect, onTouch,
     onRingHover,
     onTokenHover, onTokenActivate, onRegionHover, onRegionActivate, onAudioEnd,
   } = props;
@@ -3176,11 +3476,11 @@ export default function SpaceView(props) {
     zoomFocusId, platterQuat, ringSpinDeg, fieldIndex,
     turntableOn, pulsesOn, ambientOn, labelsOn,
     libraryOpen, clipSummoned, inspectedId, inspectRot,
-    partFocus, partHoverId, branchHoverId,
+    partFocus, partHoverId, branchHoverId, subHover, descents,
     viewName, snapOn, strata, layers,
     openApp, audio, tokenHoverId, appFocusId, regionHover,
     shared: sharedRef.current,
-    onHover, onPartHover, onBranchHover, onObjectClick, onSelect, onTouch,
+    onHover, onPartHover, onBranchHover, onSubHover, onObjectClick, onSelect, onTouch,
     onRingHover,
     onTokenHover, onTokenActivate, onRegionHover, onRegionActivate, onAudioEnd,
   };
@@ -3193,6 +3493,7 @@ export default function SpaceView(props) {
       turntableAngle: 0, worldYaw: 0,
       anchorWorld: new Map(), baseWorld: new Map(), partWorld: new Map(),
       branchWorld: new Map(), branchLocal: null, treeGroupRef: null,
+      subLocal: new Map(), subWorld: new Map(), subGroupRefs: new Map(),
       camera: null, worldGroup: null, turntabling: false, knotSpinRef: null,
       crystalCores: [], crystalFaces: null,
       ringAngle: 0, ringItemRefs: new Map(), tokenRefs: new Map(),
@@ -3237,6 +3538,7 @@ export default function SpaceView(props) {
   const nameRef = useRef(null);
   const partRef = useRef(null);
   const branchRef = useRef(null);
+  const subRef = useRef(null);
   const branchChipRefs = useRef([]);
   const faceChipRefs = useRef([]);
   const cardFacesRef = useRef(null);
@@ -3393,6 +3695,44 @@ export default function SpaceView(props) {
             branchEl.style.transform = `translate(-50%, -170%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
           }
         } else branchEl.style.display = "none";
+      }
+      const subEl = subRef.current;
+      if (subEl) {
+        // Slice 12: the sub-node info card — it stands in the
+        // space at the sub-node itself, on its world anchor
+        // (through the citizen's display transform, pivot and
+        // spin): name, value, share and depth on hover; a focused
+        // node's card adds its path from the true root. Shares
+        // read against the citizen's standing display root — a
+        // sunburst under descent speaks of its descended root,
+        // and says so.
+        const focSub = st.partFocus && st.partFocus.partId
+          && st.partFocus.objectId !== "knot" && st.partFocus.objectId !== "tree"
+          ? st.partFocus : null;
+        const hovSub = !focSub && st.subHover && st.currentId && st.subHover.objectId === st.currentId
+          ? st.subHover : null;
+        const oid = focSub ? focSub.objectId : hovSub ? hovSub.objectId : null;
+        const nid = focSub ? focSub.partId : hovSub ? hovSub.nodeId : null;
+        const sw = oid && nid ? frame.subWorld.get(`${oid}:${nid}`) : null;
+        const rootId = oid && st.descents ? displayRootOf(st.descents[oid], oid) : null;
+        const node = oid && nid ? subnodeById(oid, nid, rootId) : null;
+        if (oid && nid && sw && node) {
+          const whole = subnodeRootOf(oid, rootId);
+          const lines = [
+            node.name,
+            `value ${node.value} · ${(node.share * 100).toFixed(1)}% of ${whole ? whole.name : "the whole"} · depth ${node.depth}`,
+          ];
+          if (focSub) lines.push(node.path.join(" › "));
+          if (rootId) lines.push("shares are of the display root — descended");
+          const txt = lines.join("\n");
+          if (subEl.textContent !== txt) subEl.textContent = txt;
+          const [sx, sy, front] = project(sw.centre);
+          if (!front) subEl.style.display = "none";
+          else {
+            subEl.style.display = "";
+            subEl.style.transform = `translate(-50%, -135%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
+          }
+        } else subEl.style.display = "none";
       }
       // Label mode: the depth-1 branches name themselves at their
       // forks (DOM chips, like the crystal's face values).
@@ -3556,7 +3896,8 @@ export default function SpaceView(props) {
           {strata?.data && !(openApp && openApp.appId && openApp.mode === "full") ? (
             <>
               {OBJECTS.map((def) => (
-                <SpaceObject key={def.id} def={def} ctx={ctx} lib={lib} />
+                <SpaceObject key={def.id} def={def} ctx={ctx} lib={lib}
+                  descentRootId={descents ? displayRootOf(descents[def.id], def.id) : null} />
               ))}
               {space.cables.map(([a, b], i) => (
                 <Cable key={`${a}|${b}`} a={a} b={b} offset={(i * 0.37) % 1} ctx={ctx} />
@@ -3635,6 +3976,7 @@ export default function SpaceView(props) {
         <div ref={regionChipRef} className="us-chip" style={{ display: "none", pointerEvents: "none" }} />
         <div ref={partRef} className="us-chip" style={{ display: "none", pointerEvents: "none" }} />
         <div ref={branchRef} className="us-chip" style={{ display: "none", pointerEvents: "none" }} />
+        <div ref={subRef} className="us-info" style={{ display: "none", pointerEvents: "none", whiteSpace: "pre-line" }} />
         {lib.dataTree.branches.map((b, i) => (
           <div key={b.id}
             ref={(el) => { branchChipRefs.current[i] = el; }}
@@ -3661,6 +4003,13 @@ export default function SpaceView(props) {
                 <span style={{ display: "block", marginTop: 4 }}>
                   total value {lib.dataTree.totalValue} · {lib.dataTree.leafCount} leaves · depth {lib.dataTree.maxDepth}<br />
                   grown from the flare hierarchy by L-system rules
+                </span>
+              ) : null}
+              {(cardObj.id === "mesa" || cardObj.id === "drum") && descents
+                && displayRootOf(descents[cardObj.id], cardObj.id) ? (
+                <span style={{ display: "block", marginTop: 4 }}>
+                  descended — rooted at {subnodeById(cardObj.id, displayRootOf(descents[cardObj.id], cardObj.id))?.path.join(" › ")}<br />
+                  values and shares are of this root · the backs climb out
                 </span>
               ) : null}
             </>

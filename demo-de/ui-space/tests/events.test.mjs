@@ -129,6 +129,26 @@ test("GO_BACK_II pops up to two levels, stopping at the chain's end", () => {
   assert.deepEqual(resolveBackLevels({}, EVENTS.GO_BACK_II), []);
 });
 
+/* ---------------- descent in the chain (slice 12) ---------------- */
+
+test("descent sits at the partFocus tier: focus first, then one level per descended root", () => {
+  const chain = { partFocus: true, descent: 2, pending: true, card: true, selection: true };
+  assert.deepEqual(backChainLevels(chain), [
+    "partFocus", "descent", "descent", "patch", "card", "selection",
+  ]);
+  // CANCEL climbs exactly one root; GO_BACK_II releases the focus, then climbs one.
+  assert.deepEqual(resolveBackLevels(chain, EVENTS.CANCEL), ["partFocus"]);
+  assert.deepEqual(resolveBackLevels(chain, EVENTS.GO_BACK_II), ["partFocus", "descent"]);
+  // With no focus held, the backs climb: one, or two at once.
+  const descended = { descent: 2, card: true, selection: true };
+  assert.deepEqual(resolveBackLevels(descended, EVENTS.CANCEL), ["descent"]);
+  assert.deepEqual(resolveBackLevels(descended, EVENTS.GO_BACK_I), ["descent"]);
+  assert.deepEqual(resolveBackLevels(descended, EVENTS.GO_BACK_II), ["descent", "descent"]);
+  // At the true root the descent level is absent.
+  assert.deepEqual(resolveBackLevels({ descent: 0, selection: true }, EVENTS.CANCEL), ["selection"]);
+  assert.deepEqual(backChainLevels({ descent: 1 }), ["descent"]);
+});
+
 test("app chains: nav entries first, then close, then the space's levels", () => {
   const app = { appNav: 2, appOpen: true, selection: true };
   assert.deepEqual(resolveBackLevels(app, EVENTS.CANCEL), ["appNav"]);

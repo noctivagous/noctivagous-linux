@@ -23,6 +23,11 @@ import {
   beginInspect,
   endInspect,
   createPartFocus,
+  createDescent,
+  descend,
+  climbDescent,
+  displayRootOf,
+  descentDepth,
   beginPartFocus,
   endPartFocus,
   ANGLE_STEP,
@@ -102,6 +107,7 @@ import {
   partShare,
 } from "./knots.js";
 import { buildDataTree, dataBranchById } from "./lsystems.js";
+import { isSubnodeObject, subnodeById, subnodeRootOf } from "./subnodes.js";
 import { FLARE } from "../../src/sunburst-data.js";
 
 // Slice 7: the data tree's own bookkeeping for panels and readout —
@@ -264,7 +270,7 @@ const KEY_GROUPS = [
       ["S", "GO BACK I — back exactly one level, the same as Esc"],
       ["D", "GO BACK II — back up to two levels in one press: focus + card, or out of the app and off it"],
       ["Esc", "CANCEL — release one level; cancels a drag before it drops"],
-      ["the stack", "drag → inspection → app steps → app close → part / branch focus → patch → card → selection"],
+      ["the stack", "drag → inspection → app steps → app close → part / branch / node focus → sunburst descent → patch → card → selection"],
     ],
   },
   {
@@ -319,6 +325,10 @@ const KEY_GROUPS = [
       ["F on a card / tray", "inspects it, like I"],
       ["knot parts", "with the knot current, hover a part — F flies into it, D (GO BACK II) backs out to the knot"],
       ["tree branches", "with the tree current, hover a depth-1 branch — F flies to the subtree, D backs out to the tree"],
+      ["treemap nodes", "with the tray current, hover a plate or a cuboid — it lights, its card stands in the space, and F flies into the node"],
+      ["tangled figures", "with the tangled tree current, hover a figure — its card names the figure and its line; F flies into it"],
+      ["sunburst wedges", "with the mesa or the drum current, hover a wedge to read it — F on a leaf wedge flies into it; F on a branch wedge descends"],
+      ["sunburst descent", "F on a branch wedge re-roots the sunburst at that wedge — values and shares are of the new root, and the readout shows the path from flare. The backs climb out, one root per level, until the true root stands again. Descent is a display state only: rotation, plane spin and MAGNIFY are exactly as you left them, on the way down and on the way back up"],
     ],
   },
   {
@@ -654,6 +664,12 @@ export default function SpaceApp() {
   // branch focus reuses the partFocus state above ({objectId:
   // "tree", partId: the depth-1 node's id}).
   const [branchHoverId, setBranchHoverId] = useState(null);
+  // Slice 12 — sub-nodes (tray, tangle, mesa, drum): the hovered
+  // sub-node of the current citizen, and each sunburst's descent
+  // (one pure descent value per sunburst; a descent in one never
+  // disturbs the other, and neither touches a transform).
+  const [subHover, setSubHover] = useState(null); // { objectId, nodeId } | null
+  const [descents, setDescents] = useState(() => ({ mesa: createDescent(), drum: createDescent() }));
   // Slice 8: the open app (pure state in space-state.js), the
   // audio app's own state — track, window, transport, and its nav
   // history, which D walks back — and the app's addressing: the
@@ -758,6 +774,16 @@ export default function SpaceApp() {
     setBranchHoverId(currentId === "tree" ? branchId : null);
   };
 
+  // A sub-node (slice 12) is hovered only while its citizen is
+  // current — the tray's cuboids, the tangle's figures and the
+  // sunbursts' wedges are sub-addresses of their citizen, like
+  // the knot's parts. The view reports every crossing; the gate
+  // is here. A clear answers only for its own citizen.
+  const onSubHover = (objectId, nodeId) => {
+    if (nodeId) setSubHover(currentId === objectId ? { objectId, nodeId } : null);
+    else setSubHover((h) => (h && h.objectId === objectId ? null : h));
+  };
+
   // Part/branch focus belongs to its object being current: if the
   // current thing changes away from the focused object, the focus
   // ends. The back events treat both at ONE level (see
@@ -767,6 +793,7 @@ export default function SpaceApp() {
   useEffect(() => {
     if (currentId !== "knot") setPartHoverId(null);
     if (currentId !== "tree") setBranchHoverId(null);
+    setSubHover((h) => (h && h.objectId !== currentId ? null : h));
     setPartFocus((f) => (f.partId && f.objectId !== currentId ? endPartFocus() : f));
     setZoomFocus(null);
   }, [currentId]);
@@ -786,6 +813,7 @@ export default function SpaceApp() {
     setPartFocus(endPartFocus());
     setPartHoverId(null);
     setBranchHoverId(null);
+    setSubHover(null);
     setAppFocusId("stage");
     setTokenHoverId(null);
     setRegionHover(null);
@@ -964,12 +992,23 @@ export default function SpaceApp() {
     // fallback. The decision itself is pure (resolveFAction in
     // space-state.js) and every branch below works from the local
     // action — never from a state value it just asked React to set.
+    // Slice 12: the hovered sub-node of the addressed citizen,
+    // resolved against the provider with shares read against the
+    // citizen's standing display root (a sunburst under descent
+    // seats and descends within its descended hierarchy).
+    const addressed = addressedId(hoverId, currentId);
+    const subNode =
+      subHover && subHover.objectId === addressed && isSubnodeObject(addressed)
+        ? subnodeById(addressed, subHover.nodeId, displayRootOf(descents[addressed], addressed))
+        : null;
     const action = resolveFAction({
       pendingId,
       hoverId,
       currentId,
       partId: partHoverId && partById(partHoverId) ? partHoverId : null,
       branchId: branchHoverId && dataBranchById(DATA_TREE, branchHoverId) ? branchHoverId : null,
+      subId: subNode ? subNode.id : null,
+      subLeaf: subNode ? subNode.isLeaf : false,
       inspectIds: [...MEDIA_IDS, "clipboard"],
     });
     switch (action.type) {
@@ -979,10 +1018,27 @@ export default function SpaceApp() {
       case "partFocus":
         // F on a hovered part of the knot zooms INTO the part —
         // the part focus, one level deeper than entering the knot.
+        // Slice 12: the tray's, tangle's and sunbursts' sub-nodes
+        // take the same seat through the same case.
         setCurrentId(action.targetId);
         setPartFocus(beginPartFocus(partFocus, action.targetId, action.partId));
         setCardId(null);
         return;
+      case "descend": {
+        // F on a sunburst BRANCH wedge descends: the wedge's node
+        // becomes the citizen's display root and the miniature
+        // rebuilds from it. A display change only — the citizen's
+        // transform (rotation, plane spin, MAGNIFY) is untouched,
+        // and the backs climb out level by level.
+        const node = subnodeById(action.targetId, action.nodeId);
+        setCurrentId(action.targetId);
+        setDescents((d) => ({ ...d, [action.targetId]: descend(d[action.targetId], action.targetId, action.nodeId) }));
+        setPartFocus(endPartFocus());
+        setCardId(null);
+        setSubHover(null);
+        showDyn(`DESCENDED — ${node ? node.path.join(" › ") : action.nodeId}`);
+        return;
+      }
       case "branchFocus":
         // F on a hovered depth-1 branch of the tree zooms INTO
         // the subtree — the same focus state and the same level
@@ -1006,12 +1062,18 @@ export default function SpaceApp() {
   /* ----- slice 11: the event layer, dispatched ----- */
 
   // The release stack's occupancy, as data for the resolver.
+  // Slice 12: descent levels count only while the descended
+  // citizen is current — a descent is that citizen's display
+  // state, in scope only while you are on it (its path waits,
+  // untouched, while you are elsewhere).
   const backChain = () => ({
     dragLocked: Boolean(lockRef.current),
     inspection: Boolean(inspection.inspectedId),
     appNav: openAppState.appId ? audio.nav.length : 0,
     appOpen: Boolean(openAppState.appId),
     partFocus: Boolean(partFocus.partId),
+    descent:
+      currentId && descents[currentId] ? descentDepth(descents[currentId]) : 0,
     pending: Boolean(pendingId),
     card: Boolean(cardId),
     selection: Boolean(currentId),
@@ -1064,6 +1126,11 @@ export default function SpaceApp() {
     if (navPops) popAudioNavLevels(navPops);
     const said = [];
     if (navPops) said.push(navPops > 1 ? `app steps back ×${navPops}` : "app step back");
+    // Descent climbs are threaded through a local: one dispatch
+    // may climb two levels, and each climb reads the descent the
+    // previous climb produced — not the render's snapshot.
+    let nextDescent = currentId ? descents[currentId] : null;
+    let climbed = 0;
     for (const level of levels) {
       switch (level) {
         case "appNav": break; // applied as one batch above
@@ -1071,11 +1138,24 @@ export default function SpaceApp() {
         case "inspection": endInspectThing(); said.push(BACK_LEVEL_ECHO.inspection); break;
         case "appClose": closeAudioApp(); said.push(BACK_LEVEL_ECHO.appClose); break;
         case "partFocus": setPartFocus(endPartFocus()); said.push(BACK_LEVEL_ECHO.partFocus); break;
+        case "descent":
+          if (nextDescent) { nextDescent = climbDescent(nextDescent); climbed++; }
+          break;
         case "patch": setPendingId(null); said.push(BACK_LEVEL_ECHO.patch); break;
         case "card": setCardId(null); said.push(BACK_LEVEL_ECHO.card); break;
         case "selection": setCurrentId(null); said.push(BACK_LEVEL_ECHO.selection); break;
         default: break;
       }
+    }
+    if (climbed && currentId) {
+      setDescents((d) => ({ ...d, [currentId]: nextDescent }));
+      const rootId = displayRootOf(nextDescent, currentId);
+      const rootNode = rootId ? subnodeById(currentId, rootId) : null;
+      said.push(
+        rootNode
+          ? `climbed out to ${rootNode.path.join(" › ")}`
+          : `climbed out to ${subnodeRootOf(currentId)?.name || "the root"}`,
+      );
     }
     setEcho({ text: `${said.join(" · ")} — ${event}`, error: false });
     touch();
@@ -1872,7 +1952,7 @@ export default function SpaceApp() {
   }, [space, currentId, hoverId, cardId, pendingId, cmd, uiMode,
     inspection, inspectRot, libraryOpen, clip, clipSummoned, values,
     openAppState, audio, tokenHoverId, appFocusId, regionHover, viewName,
-    partFocus, zoomMul, ringSpin, platterQuat, ringHover, fieldIndex]);
+    partFocus, zoomMul, ringSpin, platterQuat, ringHover, fieldIndex, subHover, descents]);
 
   // Dynamic input during a locked drag: the footer follows the
   // drag point (platter units) while the lock holds.
@@ -1893,6 +1973,17 @@ export default function SpaceApp() {
   const pending = pendingId ? objectById(pendingId) : null;
   const tr = currentId ? space.transforms[currentId] : null;
   const layout = LAYOUTS[space.layout];
+  // Slice 12: a part focus held on a sub-node citizen is a NODE
+  // focus (the knot keeps PART, the tree keeps BRANCH); the
+  // hovered sub-node is resolved for the readout the same way.
+  const focusSub = partFocus.partId && isSubnodeObject(partFocus.objectId)
+    ? subnodeById(partFocus.objectId, partFocus.partId, displayRootOf(descents[partFocus.objectId], partFocus.objectId))
+    : null;
+  const hoverSub = subHover && subHover.objectId === currentId
+    ? subnodeById(subHover.objectId, subHover.nodeId, displayRootOf(descents[subHover.objectId], subHover.objectId))
+    : null;
+  const descentRootId = currentId ? displayRootOf(descents[currentId], currentId) : null;
+  const descentRoot = descentRootId ? subnodeById(currentId, descentRootId) : null;
   const mode = inspection.inspectedId ? `INSPECTING — ${thingName(inspection.inspectedId)}`
     : dragLock ? "DRAG-LOCKED"
     : cmd.armed ? "COMMAND LINE"
@@ -1901,12 +1992,14 @@ export default function SpaceApp() {
     : partFocus.partId
       ? partFocus.objectId === "tree"
         ? `BRANCH FOCUS — ${dataBranchById(DATA_TREE, partFocus.partId)?.name || ""}`
-        : `PART FOCUS — ${partById(partFocus.partId)?.name || ""}`
+        : focusSub
+          ? `NODE FOCUS — ${focusSub.name}`
+          : `PART FOCUS — ${partById(partFocus.partId)?.name || ""}`
     : cardId ? "ENTERED — the card is open"
     : uiMode.labelMode ? "LABEL MODE"
     : currentId ? "TARGETED"
     : "AT REST";
-  const focusPart = partFocus.partId && partFocus.objectId !== "tree" ? partById(partFocus.partId) : null;
+  const focusPart = partFocus.partId && partFocus.objectId === "knot" ? partById(partFocus.partId) : null;
   const focusBranch = partFocus.partId && partFocus.objectId === "tree"
     ? dataBranchById(DATA_TREE, partFocus.partId) : null;
   const addressedName = thingName(addressedId(hoverId, currentId));
@@ -1922,7 +2015,9 @@ export default function SpaceApp() {
           : partFocus.partId
           ? partFocus.objectId === "tree"
             ? `${focusBranch?.name || "branch"} focused — D (GO BACK II) backs out to the tree`
-            : `${focusPart?.name || "part"} focused — D (GO BACK II) backs out to the knot`
+            : focusSub
+              ? `${focusSub.name} focused — D (GO BACK II) backs out${descentRoot ? `, then climbs toward ${descentRoot.name}` : ` to the ${current?.name || "citizen"}`}`
+              : `${focusPart?.name || "part"} focused — D (GO BACK II) backs out to the knot`
           : cardId
             ? `${thingName(cardId)} is open — D (GO BACK II) flies back to the world seat`
             : addressedName
@@ -2080,6 +2175,8 @@ export default function SpaceApp() {
             partFocus={partFocus}
             partHoverId={partHoverId}
             branchHoverId={branchHoverId}
+            subHover={subHover}
+            descents={descents}
             pastes={pastes}
             inspectPanel={inspectPanel}
             openApp={openAppState}
@@ -2092,6 +2189,7 @@ export default function SpaceApp() {
             onRingHover={setRingHover}
             onPartHover={onPartHover}
             onBranchHover={onBranchHover}
+            onSubHover={onSubHover}
             onTokenHover={onTokenHover}
             onTokenActivate={activateToken}
             onRegionHover={setRegionHover}
@@ -2160,6 +2258,21 @@ export default function SpaceApp() {
             {focusBranch ? (
               <>
                 <span className="k">BRANCH</span>{"   "}{focusBranch.name} — value {focusBranch.value} · {(focusBranch.share * 100).toFixed(1)}% of the tree · {focusBranch.leafCount} leaves · depth 1{"\n"}
+              </>
+            ) : null}
+            {focusSub ? (
+              <>
+                <span className="k">NODE</span>{"     "}{focusSub.name} — value {focusSub.value} · {(focusSub.share * 100).toFixed(1)}% of {descentRoot ? descentRoot.name : current?.name || "the citizen"} · depth {focusSub.depth}{"\n"}
+              </>
+            ) : null}
+            {hoverSub && !focusSub ? (
+              <>
+                <span className="k">NODE</span>{"     "}{hoverSub.name} — value {hoverSub.value} · {(hoverSub.share * 100).toFixed(1)}% of {descentRoot ? descentRoot.name : current?.name || "the citizen"} · depth {hoverSub.depth} · hovered{"\n"}
+              </>
+            ) : null}
+            {descentRoot ? (
+              <>
+                <span className="k">DESCENT</span>{"  "}{current?.name || currentId} rooted at {descentRoot.path.join(" › ")} — values and shares are of this root{"\n"}
               </>
             ) : null}
             <span className="k">LIBRARY</span>{"  "}{libraryOpen ? "OPEN" : "CLOSED"} · {MEDIA_ITEMS.length} items{"\n"}
@@ -2390,6 +2503,30 @@ export default function SpaceApp() {
                       Depth-2 branches are not separately addressable in this slice — the
                       depth-1 branch is the unit of address. After Lindenmayer (1968);
                       Prusinkiewicz &amp; Lindenmayer, The Algorithmic Beauty of Plants.
+                    </p>
+                    <p>
+                      Slice 12 extends the same sub-addressing to the remaining data
+                      citizens. The TREEMAP TRAY's plates and cuboids, the TANGLED TREE's
+                      figures and the two SUNBURSTS' wedges are all sub-nodes now: with the
+                      citizen current, hovering one lights it (its siblings dim), a card
+                      stands in the space at the node itself naming it with its value, its
+                      share and its depth, and the readout carries a NODE line. F on a tray
+                      node, a figure or a sunburst leaf wedge takes the focus seat on it,
+                      as with the knot's parts. A figure's value is its progeny — itself
+                      plus every figure descended from it — the genealogy carrying no
+                      weights of its own.
+                    </p>
+                    <p>
+                      The sunbursts go one step further: they DESCEND. F on a branch wedge
+                      makes that wedge's node the citizen's display root — the mesa
+                      rebuilds its terraces, the drum its blocks, from that node down, and
+                      every value and share is read against the new root while the card
+                      and the readout keep the full path from flare in view. Descent sits
+                      in the release stack at the focus tier, one level per root: the
+                      backs climb out level by level, and at the true root the level is
+                      simply gone. It is a display state, never a transform — a citizen
+                      you turned, spun or magnified stays turned, spun and magnified
+                      through the whole descent and the whole climb back.
                     </p>
                     <h4>Media, the Ring and the Apps</h4>
                     <p>

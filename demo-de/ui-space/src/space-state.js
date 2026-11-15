@@ -31,6 +31,12 @@
  *   and Esc/S the single step, a refinement of slice 8's rule
  *   that Esc in the app was automatically the big back.
  *
+ *   Slice 12 adds SUB-NODES (subnodes.js) and SUNBURST DESCENT:
+ *   the tray's, tangle's and sunbursts' nodes are sub-addresses
+ *   like the knot's parts, and F on a sunburst branch wedge
+ *   DESCENDS — the citizen re-roots at that wedge (the descent
+ *   state below), one chain level per descended root.
+ *
  *   Addressing is the key-click model: the object under the cursor
  *   is the addressee and F is the click. KEY LABELS ARE OPT-IN:
  *   Alt+L enters label mode — the chips appear and bare letters
@@ -57,15 +63,15 @@ export function labelForIndex(i) {
  */
 export const OBJECTS = [
   { id: "mesa", name: "Sunburst mesa", group: "graphs",
-    blurb: "The zoomable sunburst as a terraced mesa — flare's houses as annular prisms, area and angle doing the talking." },
+    blurb: "The zoomable sunburst as a terraced mesa — flare's houses as annular prisms, area and angle doing the talking. Its wedges are sub-addresses: hover one to read it, F on a branch wedge descends — the mesa re-roots at that wedge — and F on a leaf flies into it." },
   { id: "drum", name: "Sunburst cylinder", group: "graphs",
-    blurb: "The same sunburst stood up as a drum of wedge blocks; a leaf's wedge slides out of the drum with its card." },
+    blurb: "The same sunburst stood up as a drum of wedge blocks; a leaf's wedge slides out of the drum with its card. Its wedges descend like the mesa's: F on a branch wedge re-roots the drum there." },
   { id: "tray", name: "Treemap tray", group: "graphs",
-    blurb: "Bostock's binary-tiled treemap as a tray of cuboids — the file-system frame, area as value." },
+    blurb: "Bostock's binary-tiled treemap as a tray of cuboids — the file-system frame, area as value. Its plates and cuboids are sub-addresses: hover one to read it, F flies into the node." },
   { id: "cube", name: "Treemap cube", group: "graphs",
     blurb: "The treemap layer spread across a cube's five open faces; bright tiles are leaves, dark framed doors open." },
   { id: "tangle", name: "Tangled tree", group: "instruments",
-    blurb: "The Greek genealogy as a tangled tree — metro lines bundling through seven levels of descent." },
+    blurb: "The Greek genealogy as a tangled tree — metro lines bundling through seven levels of descent. Its figures are sub-addresses: hover one to read it and its line, F flies into it." },
   { id: "horizon3d", name: "Horizon skyline", group: "monitors",
     blurb: "The activity monitor in relief: eight lanes of machine life as terraced skylines on a platter." },
   { id: "horizonflat", name: "Horizon panel", group: "monitors",
@@ -217,7 +223,16 @@ export const EVENTS = {
  * levels sit in it:
  *
  *   drag → inspection → appNav (each nav entry its own level) →
- *   appClose → partFocus → patch → card → selection
+ *   appClose → partFocus → descent (each descended level its own)
+ *   → patch → card → selection
+ *
+ * Slice 12 adds DESCENT at the partFocus tier: a sunburst focus
+ * (a leaf seat) releases before the climb beneath it, and each
+ * level of a descent is one chain level, so CANCEL climbs one
+ * root and GO_BACK_II up to two. The App counts descent levels
+ * only while the descended citizen is current — a descent is
+ * that citizen's display state, and its stack is only in scope
+ * while you are on it.
  *
  * The command line's walk-back is handled BEFORE this layer (its
  * machine consumes Esc while armed) and is not part of the chain;
@@ -233,6 +248,8 @@ export function backChainLevels(chain = {}) {
   for (let i = 0; i < nav; i++) levels.push("appNav");
   if (chain.appOpen) levels.push("appClose");
   if (chain.partFocus) levels.push("partFocus");
+  const descent = Math.max(0, Math.floor(chain.descent || 0));
+  for (let i = 0; i < descent; i++) levels.push("descent");
   if (chain.pending) levels.push("patch");
   if (chain.card) levels.push("card");
   if (chain.selection) levels.push("selection");
@@ -433,6 +450,15 @@ export function addressedId(hoverId, currentId) {
  * validated by the caller, applying only when the addressed target
  * is the tree — it resolves to a branchFocus action that reuses the
  * part-focus state, with partId = the depth-1 node's id.
+ *
+ * `subId` (slice 12) is the hovered SUB-NODE of the tray, the
+ * tangled tree or a sunburst, validated by the caller against the
+ * provider (subnodes.js) and applying only when the addressed
+ * target is that sub-node's citizen. The tray's and the tangle's
+ * sub-nodes take the part-focus seat, like the knot's parts. The
+ * sunbursts split on `subLeaf`: a LEAF wedge seats; a BRANCH
+ * wedge DESCENDS — the citizen re-roots at that wedge (see the
+ * descent state below).
  */
 export function resolveFAction({
   pendingId = null,
@@ -440,6 +466,8 @@ export function resolveFAction({
   currentId = null,
   partId = null,
   branchId = null,
+  subId = null,
+  subLeaf = false,
   inspectIds = [],
 } = {}) {
   const targetId = addressedId(hoverId, currentId);
@@ -454,6 +482,14 @@ export function resolveFAction({
   }
   if (targetId === "tree" && branchId) {
     return { type: "branchFocus", targetId, partId: branchId };
+  }
+  if ((targetId === "tray" || targetId === "tangle") && subId) {
+    return { type: "partFocus", targetId, partId: subId };
+  }
+  if ((targetId === "mesa" || targetId === "drum") && subId) {
+    return subLeaf
+      ? { type: "partFocus", targetId, partId: subId }
+      : { type: "descend", targetId, nodeId: subId };
   }
   if (inspectIds.includes(targetId)) return { type: "inspect", targetId };
   return { type: "open", targetId };
@@ -1030,6 +1066,59 @@ export function endPartFocus() {
 export const isPartFocused = (focus, partId) =>
   Boolean(focus && focus.partId) &&
   (partId === undefined || focus.partId === partId);
+
+/* ---------------- sunburst descent (slice 12) ---------------- */
+
+/**
+ * DESCENT: a sunburst citizen (mesa or drum) displays its
+ * hierarchy from a DISPLAY ROOT — at rest the true root, and
+ * after F on a branch wedge, that wedge's node: the miniature
+ * rebuilds from the node as its root, and values and shares are
+ * read against it. The state is the PATH of node ids descended
+ * through, from just below the true root down to the display
+ * root. The value holds ONE citizen's descent; the App keeps
+ * one value per sunburst (mesa and drum), so a descent in one
+ * never disturbs the other, and displayRootOf is always asked
+ * about a named citizen.
+ *
+ * Descent is a DISPLAY state, not a transform: it never touches
+ * the citizen's transform record — rotation, plane spin and
+ * MAGNIFY persist through descend and climb exactly as they
+ * were, and climbing back to the true root restores the prior
+ * display untouched. The back events climb it one level per
+ * chain level (see backChainLevels): climbDescent pops the
+ * deepest id, and at the true root it is a no-op — the level is
+ * simply absent from the chain there.
+ */
+export function createDescent() {
+  return { objectId: null, path: [] };
+}
+
+/** F on a branch wedge: the wedge's node becomes the display root. */
+export function descend(descent, objectId, nodeId) {
+  if (!objectId || !nodeId) return descent;
+  if (!descent || descent.objectId !== objectId) return { objectId, path: [nodeId] };
+  if (descent.path[descent.path.length - 1] === nodeId) return descent;
+  return { objectId, path: [...descent.path, nodeId] };
+}
+
+/** One climb: the display root's parent becomes the root. At the true root, a no-op. */
+export function climbDescent(descent) {
+  if (!descent || !descent.objectId || !descent.path.length) return descent || createDescent();
+  const path = descent.path.slice(0, -1);
+  return path.length ? { objectId: descent.objectId, path } : createDescent();
+}
+
+/** The display root's node id for a citizen, or null when it stands at its true root. */
+export function displayRootOf(descent, objectId) {
+  if (!descent || descent.objectId !== objectId || !descent.path.length) return null;
+  return descent.path[descent.path.length - 1];
+}
+
+/** How many chain levels a descent occupies (its depth below the true root). */
+export function descentDepth(descent) {
+  return descent && descent.path ? descent.path.length : 0;
+}
 
 /* ---------------- apps and the ring (slice 8) ---------------- */
 
