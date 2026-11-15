@@ -14,8 +14,7 @@ import {
   treemapHouseColor,
 } from "../../NCTGraphite/packages/nctgraphite/src/treemap/NCTGraphiteTreemapLayout.ts";
 import { TANGLE_PALETTE } from "../../NCTGraphite/packages/nctgraphite/src/tangle/NCTGraphiteTangleLayout.ts";
-import { FLARE } from "../../src/sunburst-data.js";
-import { TANGLE_LEVELS } from "../../src/tangle-data.js";
+import { HIERARCHY } from "./hierarchy.js";
 import {
   OBJECTS,
   OBJECT_IDS,
@@ -38,7 +37,7 @@ import {
   isAddressable,
   displayRootOf,
 } from "./space-state.js";
-import { subnodeById, subnodeRootOf, flareDataOf } from "./subnodes.js";
+import { subnodeById, subnodeRootOf, hierarchyDataOf, tangleLevels } from "./subnodes.js";
 import {
   makeTrack,
   peaksForWindow,
@@ -300,14 +299,15 @@ function sectorGeometry(x0, x1, y0, y1, ring, base, height, gapA = 0.008, gapR =
 }
 
 /**
- * Slice 12 — a sunburst layout node's provider id: its name path
- * from the hierarchy's root, joined with "/" — the same id
- * subnodes.js computes from the raw data, so the View's picking
- * and the App's provider name one node. For a descended rebuild
- * the walk stops at the LOCAL root; the caller prefixes the
- * display root's true id.
+ * Slice 12 — a layout node's provider id: its name path from the
+ * hierarchy's root, joined with "/" — the same id subnodes.js
+ * computes from the raw data, so the View's picking and the App's
+ * provider name one node. For a descended rebuild the walk stops
+ * at the LOCAL root; the caller prefixes the display root's true
+ * id. (Slice 13: the hierarchy is the repository itself, so the
+ * ids are repo paths.)
  */
-function flarePathId(node) {
+function hierarchyPathId(node) {
   const names = [];
   let n = node;
   while (n) {
@@ -334,15 +334,52 @@ function buildWedgeSet(rootData, kind) {
     const geo = kind === "mesa"
       ? sectorGeometry(n.x0, n.x1, n.y0, n.y1, 8.5, 0, n.depth === 1 ? 12 : 6.5)
       : sectorGeometry(n.x0, n.x1, n.y0, n.y1, 8.5, 0, 20);
-    if (geo) out.push({ geo, color: colour(n), node: n, id: flarePathId(n) });
+    if (geo) out.push({ geo, color: colour(n), node: n, id: hierarchyPathId(n) });
   }
   return out;
+}
+
+/**
+ * One tangled-tree course made spatial (slice 13): the figures
+ * stand on level sheets, parents linked by line segments. The
+ * genealogy and the import graph share this builder — only the
+ * levels differ. Levels are centred on z, so a course with more
+ * or fewer sheets than the genealogy's seven still stands
+ * centred on its platter.
+ */
+function buildTangleSet(levels) {
+  const pos = new Map();
+  levels.forEach((level, li) => {
+    const n = level.length;
+    level.forEach((node, i) => {
+      const spread = n <= 1 ? 0 : Math.min(6.4, 44 / (n - 1));
+      pos.set(node.id, {
+        id: node.id,
+        x: (i - (n - 1) / 2) * spread,
+        y: 2.5 + li * 3.4,
+        z: (li - (levels.length - 1) / 2) * 5.6,
+        level: li,
+        parents: node.parents || [],
+      });
+    });
+  });
+  const nodes = [...pos.values()];
+  const linePts = [];
+  for (const p of nodes) {
+    for (const par of p.parents) {
+      const q = pos.get(par);
+      if (q) linePts.push(p.x, p.y, p.z, q.x, q.y, q.z);
+    }
+  }
+  const lineGeo = new THREE.BufferGeometry();
+  lineGeo.setAttribute("position", new THREE.Float32BufferAttribute(linePts, 3));
+  return { nodes, lineGeo, levelCount: levels.length };
 }
 
 let _lib = null;
 function geoLib() {
   if (_lib) return _lib;
-  const sbRoot = buildSunburst(FLARE);
+  const sbRoot = buildSunburst(HIERARCHY);
   const sbColour = sunburstColourScale(sbRoot.children.map((c) => c.name));
   const sbNodes = sunburstDescendants(sbRoot).filter((n) => n.depth >= 1 && n.depth <= 2);
   const RING = 8.5;
@@ -355,12 +392,12 @@ function geoLib() {
     // id subnodes.js computes), so picking, highlight and the
     // App's info all name the same node.
     const mesaGeo = sectorGeometry(n.x0, n.x1, n.y0, n.y1, RING, 0, n.depth === 1 ? 12 : 6.5);
-    if (mesaGeo) mesaWedges.push({ geo: mesaGeo, color, node: n, id: flarePathId(n) });
+    if (mesaGeo) mesaWedges.push({ geo: mesaGeo, color, node: n, id: hierarchyPathId(n) });
     const drumGeo = sectorGeometry(n.x0, n.x1, n.y0, n.y1, RING, 0, 20);
-    if (drumGeo) drumBlocks.push({ geo: drumGeo, color, node: n, id: flarePathId(n) });
+    if (drumGeo) drumBlocks.push({ geo: drumGeo, color, node: n, id: hierarchyPathId(n) });
   }
 
-  const tmRoot = buildTreemap(FLARE);
+  const tmRoot = buildTreemap(HIERARCHY);
   const trayPlates = [];
   const trayCuboids = [];
   for (const n of treemapDescendants(tmRoot)) {
@@ -371,32 +408,13 @@ function geoLib() {
     ...p, color: treemapHouseColor(tmRoot, p.node), isLeaf: p.node.children.length === 0,
   }));
 
-  // Tangled tree fan: levels ascend, parents linked by line segments.
-  const tanglePos = new Map();
-  TANGLE_LEVELS.forEach((level, li) => {
-    const n = level.length;
-    level.forEach((node, i) => {
-      const spread = n <= 1 ? 0 : Math.min(6.4, 44 / (n - 1));
-      tanglePos.set(node.id, {
-        id: node.id,
-        x: (i - (n - 1) / 2) * spread,
-        y: 2.5 + li * 3.4,
-        z: (li - 3) * 5.6,
-        level: li,
-        parents: node.parents || [],
-      });
-    });
-  });
-  const tangleNodes = [...tanglePos.values()];
-  const tangleLinePts = [];
-  for (const p of tangleNodes) {
-    for (const par of p.parents) {
-      const q = tanglePos.get(par);
-      if (q) tangleLinePts.push(p.x, p.y, p.z, q.x, q.y, q.z);
-    }
-  }
-  const tangleLineGeo = new THREE.BufferGeometry();
-  tangleLineGeo.setAttribute("position", new THREE.Float32BufferAttribute(tangleLinePts, 3));
+  // Tangled tree fan: BOTH courses are built (slice 13) — the
+  // genealogy and demo-de's import graph; the miniature renders
+  // the active one, the other costs nothing beyond its geometry.
+  const tangles = {
+    genealogy: buildTangleSet(tangleLevels("genealogy")),
+    imports: buildTangleSet(tangleLevels("imports")),
+  };
 
   // Horizon skyline: a seeded relief of boxes.
   let seed = 20261113;
@@ -425,11 +443,12 @@ function geoLib() {
       new THREE.Vector3(2, 15, 5), new THREE.Vector3(9, 19, 1), new THREE.Vector3(17, 10, -3)), 16, 0.45, 6),
   ];
 
-  // The data tree (slice 7): flare grown by lsystems.js. Segments
-  // are annotated with their depth-1 branch and its house colour —
-  // the same sunburst scale the mesa and drum wear, so a branch of
-  // the tree reads as the same flare family as its wedge.
-  const dataTree = buildDataTree(FLARE, { maxDepth: 3 });
+  // The data tree (slice 7): the hierarchy grown by lsystems.js —
+  // since slice 13, the repository itself. Segments are annotated
+  // with their depth-1 branch and its house colour — the same
+  // sunburst scale the mesa and drum wear, so a branch of the
+  // tree reads as the same family as its wedge.
+  const dataTree = buildDataTree(HIERARCHY, { maxDepth: 3 });
   const topColour = new Map(sbRoot.children.map((c) => [c.data.name, sbColour(c)]));
   const branchOf = (node) => {
     let n = node;
@@ -457,7 +476,7 @@ function geoLib() {
 
   _lib = {
     mesaWedges, drumBlocks, trayPlates, trayCuboids, cubePieces,
-    tangleNodes, tangleLineGeo, skyline, bars, wireGeos,
+    tangles, skyline, bars, wireGeos,
     dataTree, treeSegs, treeBuds,
     unitBox: new THREE.BoxGeometry(1, 1, 1),
   };
@@ -520,7 +539,7 @@ function ambientAmp(ampRef, ctx, dt) {
 function SunburstWedges({ kind, lib, matFor, ctx, descentRootId }) {
   const wedges = useMemo(() => {
     if (!descentRootId) return kind === "mesa" ? lib.mesaWedges : lib.drumBlocks;
-    const data = flareDataOf(descentRootId);
+    const data = hierarchyDataOf(descentRootId);
     if (!data) return kind === "mesa" ? lib.mesaWedges : lib.drumBlocks;
     return buildWedgeSet(data, kind).map((w) => ({
       ...w,
@@ -699,12 +718,12 @@ function MiniTray({ lib, matFor, ctx }) {
   // the tray is current, and anchors are published for the Rig.
   const owned = useMemo(() => {
     const plates = lib.trayPlates.map(({ node, color }) => ({
-      id: flarePathId(node),
+      id: hierarchyPathId(node),
       mat: matFor(new THREE.Color(color).multiplyScalar(0.4).getHex(), { rough: 0.9 }),
       base: new THREE.Color(color).multiplyScalar(0.4),
     }));
     const cuboids = lib.trayCuboids.map(({ node, color }) => ({
-      id: flarePathId(node),
+      id: hierarchyPathId(node),
       mat: matFor(color, { rough: 0.5 }),
       base: new THREE.Color(color),
     }));
@@ -841,12 +860,16 @@ function MiniCube({ lib, matFor, ctx }) {
   );
 }
 
-function MiniTangle({ lib, matFor, ctx }) {
+function MiniTangle({ lib, matFor, ctx, tangleDataset }) {
   const ref = useRef(null);
+  // Slice 13: the ACTIVE course — the genealogy or demo-de's
+  // import graph; the App's PARAMETERS switch chooses, and the
+  // miniature (geometry, sheets, picking, anchors) follows it.
+  const tg = lib.tangles[tangleDataset] || lib.tangles.genealogy;
   // Flow: a handful of light points travel the tree's own link
   // segments, end to end, each on its own offset.
   const flow = useMemo(() => {
-    const attr = lib.tangleLineGeo.getAttribute("position");
+    const attr = tg.lineGeo.getAttribute("position");
     const segCount = Math.floor(attr.count / 2);
     const N = Math.min(10, segCount);
     const segs = [];
@@ -865,7 +888,7 @@ function MiniTangle({ lib, matFor, ctx }) {
       depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true,
     });
     return { segs, geo, mat };
-  }, [lib]);
+  }, [tg]);
   useEffect(() => () => { flow.geo.dispose(); flow.mat.dispose(); }, [flow]);
   const amp = useRef(1);
   useFrame((state, dt) => {
@@ -888,14 +911,14 @@ function MiniTangle({ lib, matFor, ctx }) {
     if (!m) return;
     const M = new THREE.Matrix4();
     const C = new THREE.Color();
-    lib.tangleNodes.forEach((p, i) => {
+    tg.nodes.forEach((p, i) => {
       M.makeTranslation(p.x, p.y, p.z);
       m.setMatrixAt(i, M);
       m.setColorAt(i, C.set(TANGLE_PALETTE[p.level % TANGLE_PALETTE.length]));
     });
     m.instanceMatrix.needsUpdate = true;
     if (m.instanceColor) m.instanceColor.needsUpdate = true;
-  }, [lib]);
+  }, [tg]);
   // Slice 12: the figures are sub-nodes. The instanced mesh picks
   // by instanceId (the tree's precedent); the highlight rewrites
   // instance colours with the tree's factors; anchors are the
@@ -905,7 +928,7 @@ function MiniTangle({ lib, matFor, ctx }) {
     const frame = ctx.frame;
     frame.subGroupRefs.set("tangle", groupRef.current);
     const anchors = new Map();
-    for (const p of lib.tangleNodes) {
+    for (const p of tg.nodes) {
       anchors.set(p.id, { centre: new THREE.Vector3(p.x, p.y, p.z), radius: 2 });
     }
     frame.subLocal.set("tangle", anchors);
@@ -913,7 +936,7 @@ function MiniTangle({ lib, matFor, ctx }) {
       frame.subGroupRefs.delete("tangle");
       if (frame.subLocal.get("tangle") === anchors) frame.subLocal.delete("tangle");
     };
-  }, [ctx, lib]);
+  }, [ctx, tg]);
   const lastHi = useRef(undefined);
   useFrame(() => {
     const st = ctx.stateRef.current;
@@ -926,7 +949,7 @@ function MiniTangle({ lib, matFor, ctx }) {
     const m = ref.current;
     if (!m) return;
     const C = new THREE.Color();
-    lib.tangleNodes.forEach((p, i) => {
+    tg.nodes.forEach((p, i) => {
       const f = !hi ? 1 : p.id === hi ? 2.1 : 0.55;
       m.setColorAt(i, C.set(TANGLE_PALETTE[p.level % TANGLE_PALETTE.length]).multiplyScalar(f));
     });
@@ -936,7 +959,7 @@ function MiniTangle({ lib, matFor, ctx }) {
   const reportInst = (e) => {
     if (st().currentId !== "tangle" || !st().onSubHover) return;
     if (e.instanceId == null) return;
-    const p = lib.tangleNodes[e.instanceId];
+    const p = tg.nodes[e.instanceId];
     if (p) st().onSubHover("tangle", p.id);
   };
   const clearInst = () => { if (st().onSubHover) st().onSubHover("tangle", null); };
@@ -945,15 +968,15 @@ function MiniTangle({ lib, matFor, ctx }) {
       <mesh position={[0, 0.8, 0]} geometry={lib.unitBox} scale={[52, 1.6, 46]}
         material={matFor(0x1a2227, { rough: 0.9 })} />
       {/* Level sheets are glass; the figures stand solid on them. */}
-      {TANGLE_LEVELS.map((_, li) => (
-        <mesh key={li} position={[0, 2.3 + li * 3.4, (li - 3) * 5.6]} geometry={lib.unitBox}
+      {Array.from({ length: tg.levelCount }, (_, li) => (
+        <mesh key={li} position={[0, 2.3 + li * 3.4, (li - (tg.levelCount - 1) / 2) * 5.6]} geometry={lib.unitBox}
           scale={[50, 0.35, 5.2]} material={matFor(0x9fd8e8, { opacity: 0.13, glowScale: 0.3 })} />
       ))}
-      <lineSegments geometry={lib.tangleLineGeo}>
+      <lineSegments geometry={tg.lineGeo}>
         <lineBasicMaterial color={0x6f8894} transparent opacity={0.75} />
       </lineSegments>
       <points geometry={flow.geo} material={flow.mat} />
-      <instancedMesh ref={ref} args={[undefined, undefined, lib.tangleNodes.length]} key={lib.tangleNodes.length}
+      <instancedMesh ref={ref} args={[undefined, undefined, tg.nodes.length]} key={`${tangleDataset}:${tg.nodes.length}`}
         onPointerOver={reportInst} onPointerMove={reportInst} onPointerOut={clearInst}>
         <boxGeometry args={[1.8, 1.8, 1.8]} />
         <primitive object={matFor(0xffffff, { rough: 0.5 })} attach="material" />
@@ -1990,7 +2013,7 @@ const MINIATURES = {
 
 /* ---------- one citizen of the space ---------- */
 
-function SpaceObject({ def, ctx, lib, descentRootId }) {
+function SpaceObject({ def, ctx, lib, descentRootId, tangleDataset }) {
   const outer = useRef(null);
   const inner = useRef(null);
   const spin = useRef(null);
@@ -2080,7 +2103,7 @@ function SpaceObject({ def, ctx, lib, descentRootId }) {
       <group ref={inner} position={[0, CENTRE_Y[def.id] || 0, 0]}>
         <group ref={spin}>
           <group position={[0, -(CENTRE_Y[def.id] || 0), 0]}>
-            <Mini lib={lib} matFor={mats.matFor} ctx={ctx} descentRootId={descentRootId} />
+            <Mini lib={lib} matFor={mats.matFor} ctx={ctx} descentRootId={descentRootId} tangleDataset={tangleDataset} />
           </group>
         </group>
       </group>
@@ -3462,6 +3485,7 @@ export default function SpaceView(props) {
     turntableOn, pulsesOn, ambientOn, labelsOn, sharedRef,
     libraryOpen, clipHeld, clipSummoned, inspectedId, inspectRot, pastes, inspectPanel,
     partFocus, partHoverId, branchHoverId, subHover, descents,
+    tangleDataset,
     viewName, snapOn, strata, layers,
     openApp, audio, tokenHoverId, appFocusId, regionHover,
     onHover, onPartHover, onBranchHover, onSubHover, onObjectClick, onSelect, onTouch,
@@ -3477,6 +3501,7 @@ export default function SpaceView(props) {
     turntableOn, pulsesOn, ambientOn, labelsOn,
     libraryOpen, clipSummoned, inspectedId, inspectRot,
     partFocus, partHoverId, branchHoverId, subHover, descents,
+    tangleDataset,
     viewName, snapOn, strata, layers,
     openApp, audio, tokenHoverId, appFocusId, regionHover,
     shared: sharedRef.current,
@@ -3715,9 +3740,9 @@ export default function SpaceView(props) {
         const nid = focSub ? focSub.partId : hovSub ? hovSub.nodeId : null;
         const sw = oid && nid ? frame.subWorld.get(`${oid}:${nid}`) : null;
         const rootId = oid && st.descents ? displayRootOf(st.descents[oid], oid) : null;
-        const node = oid && nid ? subnodeById(oid, nid, rootId) : null;
+        const node = oid && nid ? subnodeById(oid, nid, rootId, st.tangleDataset) : null;
         if (oid && nid && sw && node) {
-          const whole = subnodeRootOf(oid, rootId);
+          const whole = subnodeRootOf(oid, rootId, st.tangleDataset);
           const lines = [
             node.name,
             `value ${node.value} · ${(node.share * 100).toFixed(1)}% of ${whole ? whole.name : "the whole"} · depth ${node.depth}`,
@@ -3897,7 +3922,8 @@ export default function SpaceView(props) {
             <>
               {OBJECTS.map((def) => (
                 <SpaceObject key={def.id} def={def} ctx={ctx} lib={lib}
-                  descentRootId={descents ? displayRootOf(descents[def.id], def.id) : null} />
+                  descentRootId={descents ? displayRootOf(descents[def.id], def.id) : null}
+                  tangleDataset={tangleDataset} />
               ))}
               {space.cables.map(([a, b], i) => (
                 <Cable key={`${a}|${b}`} a={a} b={b} offset={(i * 0.37) % 1} ctx={ctx} />
@@ -4002,7 +4028,7 @@ export default function SpaceView(props) {
               {cardObj.id === "tree" ? (
                 <span style={{ display: "block", marginTop: 4 }}>
                   total value {lib.dataTree.totalValue} · {lib.dataTree.leafCount} leaves · depth {lib.dataTree.maxDepth}<br />
-                  grown from the flare hierarchy by L-system rules
+                  grown from the noctivagous-linux repository by L-system rules — file sizes are the values
                 </span>
               ) : null}
               {(cardObj.id === "mesa" || cardObj.id === "drum") && descents

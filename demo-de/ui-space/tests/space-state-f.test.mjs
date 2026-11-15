@@ -72,8 +72,8 @@ test("the knot focuses a hovered part, and otherwise opens", () => {
 
 test("slice 12: tray and tangle sub-nodes take the part-focus seat", () => {
   assert.deepEqual(
-    resolveFAction({ hoverId: "tray", currentId: "tray", subId: "flare/vis", inspectIds: INSPECT }),
-    { type: "partFocus", targetId: "tray", partId: "flare/vis" },
+    resolveFAction({ hoverId: "tray", currentId: "tray", subId: "noctivagous-linux/demo-de", inspectIds: INSPECT }),
+    { type: "partFocus", targetId: "tray", partId: "noctivagous-linux/demo-de" },
   );
   assert.deepEqual(
     resolveFAction({ hoverId: "tangle", currentId: "tangle", subId: "Zeus", inspectIds: INSPECT }),
@@ -83,11 +83,11 @@ test("slice 12: tray and tangle sub-nodes take the part-focus seat", () => {
   // the caller validates subId against the addressed citizen, and
   // for any other target the resolver ignores it entirely.
   assert.deepEqual(
-    resolveFAction({ hoverId: "knot", currentId: "knot", subId: "flare/vis", inspectIds: INSPECT }),
+    resolveFAction({ hoverId: "knot", currentId: "knot", subId: "noctivagous-linux/demo-de", inspectIds: INSPECT }),
     { type: "open", targetId: "knot" },
   );
   assert.deepEqual(
-    resolveFAction({ hoverId: "cube", currentId: "cube", subId: "flare/vis", subLeaf: false, inspectIds: INSPECT }),
+    resolveFAction({ hoverId: "cube", currentId: "cube", subId: "noctivagous-linux/demo-de", subLeaf: false, inspectIds: INSPECT }),
     { type: "open", targetId: "cube" },
   );
   // No sub-node hovered: the citizen simply opens.
@@ -99,25 +99,25 @@ test("slice 12: tray and tangle sub-nodes take the part-focus seat", () => {
 
 test("slice 12: a sunburst branch wedge descends; a leaf wedge seats", () => {
   assert.deepEqual(
-    resolveFAction({ hoverId: "mesa", currentId: "mesa", subId: "flare/vis", subLeaf: false, inspectIds: INSPECT }),
-    { type: "descend", targetId: "mesa", nodeId: "flare/vis" },
+    resolveFAction({ hoverId: "mesa", currentId: "mesa", subId: "noctivagous-linux/demo-de", subLeaf: false, inspectIds: INSPECT }),
+    { type: "descend", targetId: "mesa", nodeId: "noctivagous-linux/demo-de" },
   );
   assert.deepEqual(
-    resolveFAction({ hoverId: "drum", currentId: "drum", subId: "flare/data", subLeaf: false, inspectIds: INSPECT }),
-    { type: "descend", targetId: "drum", nodeId: "flare/data" },
+    resolveFAction({ hoverId: "drum", currentId: "drum", subId: "noctivagous-linux/refs", subLeaf: false, inspectIds: INSPECT }),
+    { type: "descend", targetId: "drum", nodeId: "noctivagous-linux/refs" },
   );
   assert.deepEqual(
     resolveFAction({
       hoverId: "mesa", currentId: "mesa",
-      subId: "flare/analytics/cluster/AgglomerativeCluster", subLeaf: true, inspectIds: INSPECT,
+      subId: "noctivagous-linux/demo-de/ui-space/src/SpaceApp.jsx", subLeaf: true, inspectIds: INSPECT,
     }),
-    { type: "partFocus", targetId: "mesa", partId: "flare/analytics/cluster/AgglomerativeCluster" },
+    { type: "partFocus", targetId: "mesa", partId: "noctivagous-linux/demo-de/ui-space/src/SpaceApp.jsx" },
   );
   assert.deepEqual(
     resolveFAction({
       hoverId: "drum", currentId: "drum",
-      subId: "flare/vis/operator/Zoom", subLeaf: true, inspectIds: INSPECT,
+      subId: "noctivagous-linux/demo-de/src/sunburst-data.js", subLeaf: true, inspectIds: INSPECT,
     }),
-    { type: "partFocus", targetId: "drum", partId: "flare/vis/operator/Zoom" },
+    { type: "partFocus", targetId: "drum", partId: "noctivagous-linux/demo-de/src/sunburst-data.js" },
   );
 });

@@ -16,7 +16,7 @@ import {
   buildDataTree,
   TREE_GRAMMAR,
 } from "../src/lsystems.js";
-import { FLARE } from "../../src/sunburst-data.js";
+import { HIERARCHY } from "../src/hierarchy.js";
 import { resolveFAction, labelForIndex, objectById } from "../src/space-state.js";
 
 const EPS = 1e-9;
@@ -188,13 +188,13 @@ test("data tree: depth limiting aggregates deeper leaves into the tip", () => {
   assert.equal(y.leafCount, 2, "and the aggregated leaf count");
 });
 
-test("data tree on flare: counts, branches and invariants", () => {
-  const tree = buildDataTree(FLARE);
+test("data tree on the repository snapshot: counts, branches and invariants", () => {
+  const tree = buildDataTree(HIERARCHY);
   // independent depth-limited node count of the raw hierarchy
   const count = (n, d) =>
     1 + (d < 3 && n.children ? n.children.reduce((s, k) => s + count(k, d + 1), 0) : 0);
-  assert.equal(tree.nodes.length, count(FLARE, 0));
-  assert.equal(tree.branches.length, FLARE.children.length, "one branch per top-level child");
+  assert.equal(tree.nodes.length, count(HIERARCHY, 0));
+  assert.equal(tree.branches.length, HIERARCHY.children.length, "one branch per top-level child");
   const branchSum = tree.branches.reduce((s, b) => s + b.value, 0);
   assert.equal(branchSum, tree.totalValue, "branch values sum to the total exactly");
   for (const b of tree.branches) {
@@ -202,7 +202,7 @@ test("data tree on flare: counts, branches and invariants", () => {
     assert.ok(near(b.share, b.value / tree.totalValue, 1e-12));
     assert.equal(b.depth, 1);
   }
-  assertPipeConserved(tree.segments, "flare");
+  assertPipeConserved(tree.segments, "repository");
 });
 
 // ---- the citizen + branch focus resolution ------------------------------
@@ -216,10 +216,10 @@ test("the data tree is the twelfth citizen, labelled N", () => {
 });
 
 test("resolveFAction: branch focus reuses the part-focus level", () => {
-  const base = { pendingId: null, currentId: "tree", branchId: "flare/analytics" };
+  const base = { pendingId: null, currentId: "tree", branchId: "noctivagous-linux/demo-de" };
   assert.deepEqual(
     resolveFAction({ ...base, hoverId: "tree" }),
-    { type: "branchFocus", targetId: "tree", partId: "flare/analytics" }
+    { type: "branchFocus", targetId: "tree", partId: "noctivagous-linux/demo-de" }
   );
   // hover wins: a branch id never hijacks another object's F
   assert.deepEqual(
@@ -237,7 +237,7 @@ test("resolveFAction: branch focus reuses the part-focus level", () => {
     { type: "inspect", targetId: "tree" }
   );
   assert.deepEqual(
-    resolveFAction({ pendingId: null, hoverId: null, currentId: null, branchId: "flare/analytics" }),
+    resolveFAction({ pendingId: null, hoverId: null, currentId: null, branchId: "noctivagous-linux/demo-de" }),
     { type: "none", targetId: null }
   );
   // a pending patch still outranks branch focus

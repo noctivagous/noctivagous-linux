@@ -1,0 +1,2169 @@
+{
+ "name": "noctivagous-linux",
+ "children": [
+  {
+   "name": ".gitattributes",
+   "value": 66
+  },
+  {
+   "name": ".gitignore",
+   "value": 374
+  },
+  {
+   "name": "d3-js-uses.txt",
+   "value": 854
+  },
+  {
+   "name": "demo-de",
+   "children": [
+    {
+     "name": "GRASSHOPPER-TAXONOMY-MAP.md",
+     "value": 14948
+    },
+    {
+     "name": "NCTGraphite",
+     "children": [
+      {
+       "name": ".gitignore",
+       "value": 287
+      },
+      {
+       "name": "GIT-SUBMODULE-INSTRUCTIONS.md",
+       "value": 1545
+      },
+      {
+       "name": "NCTGraphite-app-kit-and-builder-plan.md",
+       "value": 72996
+      },
+      {
+       "name": "NOCTCODE-APPKIT-COMPONENT-INVENTORY.md",
+       "value": 9785
+      },
+      {
+       "name": "README.md",
+       "value": 14126
+      },
+      {
+       "name": "apps",
+       "children": [
+        {
+         "name": "NCTGraphiteStudio",
+         "children": [
+          {
+           "name": "LAYOUT-AUDIT.md",
+           "value": 4363
+          },
+          {
+           "name": "PROJECT-FORMAT.md",
+           "value": 3460
+          },
+          {
+           "name": "README.md",
+           "value": 2496
+          },
+          {
+           "name": "TASKS.md",
+           "value": 12852
+          },
+          {
+           "name": "index.html",
+           "value": 264
+          },
+          {
+           "name": "package.json",
+           "value": 488
+          },
+          {
+           "name": "refs",
+           "children": [
+            {
+             "name": "ai-agent.txt",
+             "value": 816
+            }
+           ]
+          },
+          {
+           "name": "src",
+           "children": [
+            {
+             "name": "App.tsx",
+             "value": 65231
+            },
+            {
+             "name": "agent.ts",
+             "value": 6741
+            },
+            {
+             "name": "main.tsx",
+             "value": 261
+            },
+            {
+             "name": "model.ts",
+             "value": 6117
+            },
+            {
+             "name": "project.ts",
+             "value": 15948
+            },
+            {
+             "name": "storage.ts",
+             "value": 6509
+            },
+            {
+             "name": "studio",
+             "children": [
+              {
+               "name": "Preview.tsx",
+               "value": 10548
+              },
+              {
+               "name": "SceneSelectionOverlay.tsx",
+               "value": 6246
+              },
+              {
+               "name": "Tree.tsx",
+               "value": 3929
+              },
+              {
+               "name": "constants.ts",
+               "value": 2977
+              },
+              {
+               "name": "nodes.ts",
+               "value": 5478
+              },
+              {
+               "name": "starter.ts",
+               "value": 5862
+              }
+             ]
+            },
+            {
+             "name": "studio.css",
+             "value": 16686
+            }
+           ]
+          },
+          {
+           "name": "tests",
+           "children": [
+            {
+             "name": "app-logic.test.mjs",
+             "value": 5403
+            },
+            {
+             "name": "builder-foundation.test.mjs",
+             "value": 4712
+            },
+            {
+             "name": "controls.test.mjs",
+             "value": 10331
+            },
+            {
+             "name": "layout.test.mjs",
+             "value": 10720
+            },
+            {
+             "name": "modules.test.mjs",
+             "value": 2338
+            },
+            {
+             "name": "project.test.mjs",
+             "value": 12005
+            },
+            {
+             "name": "proshade-gaps.test.mjs",
+             "value": 14213
+            }
+           ]
+          },
+          {
+           "name": "tsconfig.json",
+           "value": 237
+          },
+          {
+           "name": "vite.config.ts",
+           "value": 102
+          },
+          {
+           "name": "web-artifacts",
+           "children": [
+            {
+             "name": "Grid+Systems+Lab+Print",
+             "children": [
+              {
+               "name": ".clippy",
+               "children": [
+                {
+                 "name": "vfs-manifest.json",
+                 "value": 316
+                }
+               ]
+              },
+              {
+               "name": "App.tsx",
+               "value": 57523
+              },
+              {
+               "name": "index.css",
+               "value": 2538
+              }
+             ]
+            },
+            {
+             "name": "Pro+Audio+Control+Lab",
+             "children": [
+              {
+               "name": ".clippy",
+               "children": [
+                {
+                 "name": "vfs-manifest.json",
+                 "value": 316
+                }
+               ]
+              },
+              {
+               "name": "App.tsx",
+               "value": 77662
+              },
+              {
+               "name": "index.css",
+               "value": 3135
+              }
+             ]
+            },
+            {
+             "name": "Proshade+Gui+Builder+Late",
+             "children": [
+              {
+               "name": ".clippy",
+               "children": [
+                {
+                 "name": "vfs-manifest.json",
+                 "value": 316
+                }
+               ]
+              },
+              {
+               "name": "App.tsx",
+               "value": 87150
+              },
+              {
+               "name": "index.css",
+               "value": 2424
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "name": "web-artifacts-instructions.txt",
+           "value": 1171
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "examples",
+       "children": [
+        {
+         "name": "README.md",
+         "value": 242
+        }
+       ]
+      },
+      {
+       "name": "package.json",
+       "value": 153
+      },
+      {
+       "name": "packages",
+       "children": [
+        {
+         "name": "nctgraphite",
+         "children": [
+          {
+           "name": "README.md",
+           "value": 396
+          },
+          {
+           "name": "package.json",
+           "value": 600
+          },
+          {
+           "name": "src",
+           "children": [
+            {
+             "name": "bindings",
+             "children": [
+              {
+               "name": "NCTGraphiteCommands.ts",
+               "value": 6095
+              },
+              {
+               "name": "NCTGraphiteStageFocus.ts",
+               "value": 4428
+              },
+              {
+               "name": "README.md",
+               "value": 299
+              }
+             ]
+            },
+            {
+             "name": "components",
+             "children": [
+              {
+               "name": "NCTGraphiteAccordion.tsx",
+               "value": 1972
+              },
+              {
+               "name": "NCTGraphiteAppShell.tsx",
+               "value": 6769
+              },
+              {
+               "name": "NCTGraphiteBaseline.tsx",
+               "value": 1784
+              },
+              {
+               "name": "NCTGraphiteButton.tsx",
+               "value": 3232
+              },
+              {
+               "name": "NCTGraphiteCheckbox.tsx",
+               "value": 2926
+              },
+              {
+               "name": "NCTGraphiteColumnGuides.tsx",
+               "value": 2228
+              },
+              {
+               "name": "NCTGraphiteColumns.tsx",
+               "value": 1300
+              },
+              {
+               "name": "NCTGraphiteDialog.tsx",
+               "value": 2280
+              },
+              {
+               "name": "NCTGraphiteDualRange.tsx",
+               "value": 4230
+              },
+              {
+               "name": "NCTGraphiteFader.tsx",
+               "value": 5148
+              },
+              {
+               "name": "NCTGraphiteField.tsx",
+               "value": 3209
+              },
+              {
+               "name": "NCTGraphiteGrid.tsx",
+               "value": 6754
+              },
+              {
+               "name": "NCTGraphiteHint.tsx",
+               "value": 2027
+              },
+              {
+               "name": "NCTGraphiteImageWell.tsx",
+               "value": 3366
+              },
+              {
+               "name": "NCTGraphiteKeyMap.tsx",
+               "value": 4512
+              },
+              {
+               "name": "NCTGraphiteKnob.tsx",
+               "value": 5295
+              },
+              {
+               "name": "NCTGraphiteLayoutItem.tsx",
+               "value": 1857
+              },
+              {
+               "name": "NCTGraphiteLayoutShell.tsx",
+               "value": 2378
+              },
+              {
+               "name": "NCTGraphiteList.tsx",
+               "value": 4246
+              },
+              {
+               "name": "NCTGraphiteMenuBar.tsx",
+               "value": 6772
+              },
+              {
+               "name": "NCTGraphiteMeta.ts",
+               "value": 1577
+              },
+              {
+               "name": "NCTGraphiteMeter.tsx",
+               "value": 3606
+              },
+              {
+               "name": "NCTGraphiteOverlay.tsx",
+               "value": 1540
+              },
+              {
+               "name": "NCTGraphitePanel.tsx",
+               "value": 2191
+              },
+              {
+               "name": "NCTGraphitePopover.tsx",
+               "value": 5122
+              },
+              {
+               "name": "NCTGraphiteProgress.tsx",
+               "value": 2460
+              },
+              {
+               "name": "NCTGraphiteScene.tsx",
+               "value": 3153
+              },
+              {
+               "name": "NCTGraphiteSegmented.tsx",
+               "value": 2936
+              },
+              {
+               "name": "NCTGraphiteSeparator.tsx",
+               "value": 1480
+              },
+              {
+               "name": "NCTGraphiteSlider.tsx",
+               "value": 2117
+              },
+              {
+               "name": "NCTGraphiteSplitter.tsx",
+               "value": 5792
+              },
+              {
+               "name": "NCTGraphiteStack.tsx",
+               "value": 3257
+              },
+              {
+               "name": "NCTGraphiteStage.tsx",
+               "value": 3027
+              },
+              {
+               "name": "NCTGraphiteSwatch.tsx",
+               "value": 1287
+              },
+              {
+               "name": "NCTGraphiteTabs.tsx",
+               "value": 3974
+              },
+              {
+               "name": "NCTGraphiteTextArea.tsx",
+               "value": 3402
+              },
+              {
+               "name": "NCTGraphiteToast.tsx",
+               "value": 1015
+              },
+              {
+               "name": "NCTGraphiteToggle.tsx",
+               "value": 3163
+              },
+              {
+               "name": "NCTGraphiteToolbar.tsx",
+               "value": 1992
+              },
+              {
+               "name": "NCTGraphiteValueDisplay.tsx",
+               "value": 2383
+              },
+              {
+               "name": "NCTGraphiteWindow.tsx",
+               "value": 5196
+              },
+              {
+               "name": "README.md",
+               "value": 1277
+              }
+             ]
+            },
+            {
+             "name": "datatree",
+             "children": [
+              {
+               "name": "NCTGraphiteDataTree.ts",
+               "value": 5218
+              }
+             ]
+            },
+            {
+             "name": "document",
+             "children": [
+              {
+               "name": "NCTGraphiteDocument.ts",
+               "value": 13284
+              },
+              {
+               "name": "NCTGraphiteDocumentReact.ts",
+               "value": 384
+              },
+              {
+               "name": "README.md",
+               "value": 1442
+              }
+             ]
+            },
+            {
+             "name": "grid",
+             "children": [
+              {
+               "name": "NCTGraphiteGridGeometry.ts",
+               "value": 13691
+              },
+              {
+               "name": "NCTGraphiteViewport.ts",
+               "value": 1618
+              },
+              {
+               "name": "README.md",
+               "value": 1174
+              }
+             ]
+            },
+            {
+             "name": "horizon",
+             "children": [
+              {
+               "name": "NCTGraphiteHorizon.ts",
+               "value": 14160
+              },
+              {
+               "name": "README.md",
+               "value": 3226
+              }
+             ]
+            },
+            {
+             "name": "index.ts",
+             "value": 15575
+            },
+            {
+             "name": "logic",
+             "children": [
+              {
+               "name": "NCTGraphiteAppLogic.ts",
+               "value": 9416
+              }
+             ]
+            },
+            {
+             "name": "panelization",
+             "children": [
+              {
+               "name": "NCTGraphiteNurbsSurface.ts",
+               "value": 9325
+              },
+              {
+               "name": "NCTGraphitePanelization.ts",
+               "value": 17579
+              },
+              {
+               "name": "NCTGraphiteVec3.ts",
+               "value": 1888
+              },
+              {
+               "name": "README.md",
+               "value": 3939
+              }
+             ]
+            },
+            {
+             "name": "parameters",
+             "children": [
+              {
+               "name": "NCTGraphiteParameters.tsx",
+               "value": 2065
+              },
+              {
+               "name": "README.md",
+               "value": 402
+              }
+             ]
+            },
+            {
+             "name": "sunburst",
+             "children": [
+              {
+               "name": "NCTGraphiteSunburstLayout.ts",
+               "value": 8846
+              },
+              {
+               "name": "README.md",
+               "value": 2468
+              }
+             ]
+            },
+            {
+             "name": "tangle",
+             "children": [
+              {
+               "name": "NCTGraphiteTangleLayout.ts",
+               "value": 9181
+              },
+              {
+               "name": "README.md",
+               "value": 1485
+              }
+             ]
+            },
+            {
+             "name": "theme",
+             "children": [
+              {
+               "name": "NCTGraphiteDensity.css",
+               "value": 1232
+              },
+              {
+               "name": "NCTGraphiteTheme.css",
+               "value": 4928
+              },
+              {
+               "name": "README.md",
+               "value": 863
+              }
+             ]
+            },
+            {
+             "name": "treemap",
+             "children": [
+              {
+               "name": "NCTGraphiteTreemapLayout.ts",
+               "value": 11521
+              },
+              {
+               "name": "README.md",
+               "value": 2924
+              }
+             ]
+            },
+            {
+             "name": "utilities",
+             "children": [
+              {
+               "name": "graphics",
+               "children": [
+                {
+                 "name": "README.md",
+                 "value": 848
+                },
+                {
+                 "name": "hull.ts",
+                 "value": 6896
+                },
+                {
+                 "name": "metaballField.ts",
+                 "value": 9696
+                },
+                {
+                 "name": "sampleLattice.ts",
+                 "value": 6053
+                },
+                {
+                 "name": "satoNeck.ts",
+                 "value": 4710
+                },
+                {
+                 "name": "vectorField.ts",
+                 "value": 19952
+                }
+               ]
+              }
+             ]
+            },
+            {
+             "name": "xml",
+             "children": [
+              {
+               "name": "NCTGraphiteLayoutCatalog.ts",
+               "value": 5966
+              },
+              {
+               "name": "NCTGraphiteLayoutDocument.ts",
+               "value": 8588
+              },
+              {
+               "name": "NCTGraphiteLayoutReact.tsx",
+               "value": 9648
+              },
+              {
+               "name": "NCTGraphiteLayoutXml.ts",
+               "value": 9675
+              },
+              {
+               "name": "README.md",
+               "value": 234
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "refs",
+       "children": [
+        {
+         "name": "Paramorphic-Components.txt",
+         "value": 31868
+        }
+       ]
+      },
+      {
+       "name": "themes.json",
+       "value": 4865
+      }
+     ]
+    },
+    {
+     "name": "README.md",
+     "value": 7957
+    },
+    {
+     "name": "definition.html",
+     "value": 324
+    },
+    {
+     "name": "horizon.html",
+     "value": 338
+    },
+    {
+     "name": "horizon3d.html",
+     "value": 337
+    },
+    {
+     "name": "igeo-live.html",
+     "value": 797
+    },
+    {
+     "name": "index.html",
+     "value": 4509
+    },
+    {
+     "name": "package-lock.json",
+     "value": 101763
+    },
+    {
+     "name": "package.json",
+     "value": 495
+    },
+    {
+     "name": "paramorphic-components",
+     "children": [
+      {
+       "name": ".github",
+       "children": [
+        {
+         "name": "workflows",
+         "children": [
+          {
+           "name": "ci.yml",
+           "value": 595
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": ".gitignore",
+       "value": 230
+      },
+      {
+       "name": "ADDITIONS-AI.md",
+       "value": 4335
+      },
+      {
+       "name": "AGENTS.md",
+       "value": 3601
+      },
+      {
+       "name": "App.tsx",
+       "value": 51821
+      },
+      {
+       "name": "README.md",
+       "value": 70386
+      },
+      {
+       "name": "TASKS.md",
+       "value": 54320
+      },
+      {
+       "name": "apps",
+       "children": [
+        {
+         "name": "browser",
+         "children": [
+          {
+           "name": "app.json",
+           "value": 304
+          },
+          {
+           "name": "index.html",
+           "value": 258
+          },
+          {
+           "name": "package.json",
+           "value": 197
+          },
+          {
+           "name": "shell.json",
+           "value": 2351
+          },
+          {
+           "name": "src",
+           "children": [
+            {
+             "name": "App.tsx",
+             "value": 5757
+            },
+            {
+             "name": "main.tsx",
+             "value": 234
+            }
+           ]
+          },
+          {
+           "name": "vite.config.ts",
+           "value": 283
+          }
+         ]
+        },
+        {
+         "name": "gui-builder",
+         "children": [
+          {
+           "name": "app.json",
+           "value": 662
+          },
+          {
+           "name": "index.html",
+           "value": 318
+          },
+          {
+           "name": "morph-plans",
+           "children": [
+            {
+             "name": "starter.json",
+             "value": 11303
+            }
+           ]
+          },
+          {
+           "name": "package.json",
+           "value": 225
+          },
+          {
+           "name": "shell.json",
+           "value": 4676
+          },
+          {
+           "name": "src",
+           "children": [
+            {
+             "name": "App.tsx",
+             "value": 26135
+            },
+            {
+             "name": "canvas-drag.ts",
+             "value": 6485
+            },
+            {
+             "name": "main.tsx",
+             "value": 232
+            },
+            {
+             "name": "plans.ts",
+             "value": 283
+            },
+            {
+             "name": "save.ts",
+             "value": 1734
+            },
+            {
+             "name": "starter.ts",
+             "value": 6534
+            }
+           ]
+          },
+          {
+           "name": "vite.config.ts",
+           "value": 448
+          }
+         ]
+        },
+        {
+         "name": "keyboard",
+         "children": [
+          {
+           "name": "app.json",
+           "value": 497
+          },
+          {
+           "name": "index.html",
+           "value": 353
+          },
+          {
+           "name": "morph-plans",
+           "children": [
+            {
+             "name": "keyboard.json",
+             "value": 32573
+            }
+           ]
+          },
+          {
+           "name": "package.json",
+           "value": 198
+          },
+          {
+           "name": "src",
+           "children": [
+            {
+             "name": "App.tsx",
+             "value": 13771
+            },
+            {
+             "name": "main.tsx",
+             "value": 247
+            },
+            {
+             "name": "plans.ts",
+             "value": 328
+            },
+            {
+             "name": "save.ts",
+             "value": 1029
+            }
+           ]
+          },
+          {
+           "name": "vite.config.ts",
+           "value": 448
+          }
+         ]
+        },
+        {
+         "name": "player",
+         "children": [
+          {
+           "name": "app.json",
+           "value": 489
+          },
+          {
+           "name": "index.html",
+           "value": 351
+          },
+          {
+           "name": "morph-plans",
+           "children": [
+            {
+             "name": "player.json",
+             "value": 12953
+            }
+           ]
+          },
+          {
+           "name": "package.json",
+           "value": 196
+          },
+          {
+           "name": "src",
+           "children": [
+            {
+             "name": "App.tsx",
+             "value": 9729
+            },
+            {
+             "name": "main.tsx",
+             "value": 247
+            },
+            {
+             "name": "plans.ts",
+             "value": 318
+            },
+            {
+             "name": "save.ts",
+             "value": 1364
+            }
+           ]
+          },
+          {
+           "name": "vite.config.ts",
+           "value": 448
+          }
+         ]
+        },
+        {
+         "name": "spreadsheet",
+         "children": [
+          {
+           "name": "app.json",
+           "value": 536
+          },
+          {
+           "name": "index.html",
+           "value": 356
+          },
+          {
+           "name": "morph-plans",
+           "children": [
+            {
+             "name": "spreadsheet.json",
+             "value": 16125
+            }
+           ]
+          },
+          {
+           "name": "package.json",
+           "value": 201
+          },
+          {
+           "name": "shell.json",
+           "value": 5456
+          },
+          {
+           "name": "src",
+           "children": [
+            {
+             "name": "App.tsx",
+             "value": 36435
+            },
+            {
+             "name": "main.tsx",
+             "value": 247
+            },
+            {
+             "name": "plans.ts",
+             "value": 331
+            },
+            {
+             "name": "save.ts",
+             "value": 1021
+            }
+           ]
+          },
+          {
+           "name": "vite.config.ts",
+           "value": 448
+          }
+         ]
+        },
+        {
+         "name": "supershape",
+         "children": [
+          {
+           "name": "app.json",
+           "value": 515
+          },
+          {
+           "name": "index.html",
+           "value": 355
+          },
+          {
+           "name": "morph-plans",
+           "children": [
+            {
+             "name": "supershape.json",
+             "value": 1528
+            }
+           ]
+          },
+          {
+           "name": "package.json",
+           "value": 224
+          },
+          {
+           "name": "src",
+           "children": [
+            {
+             "name": "App.tsx",
+             "value": 9423
+            },
+            {
+             "name": "main.tsx",
+             "value": 247
+            },
+            {
+             "name": "plans.ts",
+             "value": 3946
+            },
+            {
+             "name": "save.ts",
+             "value": 1422
+            }
+           ]
+          },
+          {
+           "name": "vite.config.ts",
+           "value": 448
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "index.css",
+       "value": 5147
+      },
+      {
+       "name": "index.html",
+       "value": 309
+      },
+      {
+       "name": "measurements",
+       "children": [
+        {
+         "name": "README.md",
+         "value": 1332
+        }
+       ]
+      },
+      {
+       "name": "morph-plans",
+       "children": [
+        {
+         "name": "bezier.json",
+         "value": 1526
+        },
+        {
+         "name": "calendar.json",
+         "value": 3590
+        },
+        {
+         "name": "chat.json",
+         "value": 6323
+        },
+        {
+         "name": "checkers.json",
+         "value": 55873
+        },
+        {
+         "name": "chess8.json",
+         "value": 57048
+        },
+        {
+         "name": "index.ts",
+         "value": 1616
+        },
+        {
+         "name": "painter.json",
+         "value": 2223
+        },
+        {
+         "name": "sequencer.json",
+         "value": 14481
+        },
+        {
+         "name": "tictactoe.json",
+         "value": 3413
+        }
+       ]
+      },
+      {
+       "name": "package-lock.json",
+       "value": 93619
+      },
+      {
+       "name": "package.json",
+       "value": 4779
+      },
+      {
+       "name": "postcss.config.js",
+       "value": 80
+      },
+      {
+       "name": "refs",
+       "children": [
+        {
+         "name": "Paramorphic-Components-orig.txt",
+         "value": 31868
+        },
+        {
+         "name": "theme-plan.md",
+         "value": 4739
+        }
+       ]
+      },
+      {
+       "name": "scripts",
+       "children": [
+        {
+         "name": "export-app.ts",
+         "value": 2592
+        },
+        {
+         "name": "generate-game-plans.ts",
+         "value": 3394
+        },
+        {
+         "name": "import-boundaries.mjs",
+         "value": 4227
+        },
+        {
+         "name": "layout-report.ts",
+         "value": 3448
+        },
+        {
+         "name": "lint-rule-identity.mjs",
+         "value": 1911
+        },
+        {
+         "name": "report-app-metrics.mjs",
+         "value": 4274
+        },
+        {
+         "name": "verify-browser.ts",
+         "value": 10106
+        },
+        {
+         "name": "verify-export.ts",
+         "value": 11091
+        },
+        {
+         "name": "verify-games.ts",
+         "value": 14255
+        },
+        {
+         "name": "verify-gui.ts",
+         "value": 20001
+        },
+        {
+         "name": "verify-manifests.ts",
+         "value": 9207
+        },
+        {
+         "name": "verify-morph-replay.ts",
+         "value": 71661
+        },
+        {
+         "name": "verify-relations.ts",
+         "value": 26833
+        },
+        {
+         "name": "verify-rules.ts",
+         "value": 14960
+        },
+        {
+         "name": "verify-selection.ts",
+         "value": 1765
+        },
+        {
+         "name": "verify-sheet-ops.ts",
+         "value": 12625
+        },
+        {
+         "name": "verify-tilings.ts",
+         "value": 1294
+        },
+        {
+         "name": "verify-turns.ts",
+         "value": 975
+        }
+       ]
+      },
+      {
+       "name": "src",
+       "children": [
+        {
+         "name": "framework",
+         "children": [
+          {
+           "name": "actions.ts",
+           "value": 5473
+          },
+          {
+           "name": "adapters",
+           "children": [
+            {
+             "name": "audio.ts",
+             "value": 1542
+            }
+           ]
+          },
+          {
+           "name": "app-kit",
+           "children": [
+            {
+             "name": "Chrome.tsx",
+             "value": 10923
+            },
+            {
+             "name": "GridLayout.tsx",
+             "value": 921
+            },
+            {
+             "name": "browser.ts",
+             "value": 2631
+            },
+            {
+             "name": "controls",
+             "children": [
+              {
+               "name": "GuiRenderer.tsx",
+               "value": 3276
+              },
+              {
+               "name": "Inspector.tsx",
+               "value": 3138
+              },
+              {
+               "name": "controls.css",
+               "value": 11185
+              },
+              {
+               "name": "registry-data.ts",
+               "value": 14056
+              },
+              {
+               "name": "registry.tsx",
+               "value": 20211
+              },
+              {
+               "name": "types.ts",
+               "value": 2878
+              }
+             ]
+            },
+            {
+             "name": "gui-document.ts",
+             "value": 18513
+            },
+            {
+             "name": "gui-layout.ts",
+             "value": 8281
+            },
+            {
+             "name": "plans.ts",
+             "value": 16541
+            },
+            {
+             "name": "wireframe.ts",
+             "value": 24233
+            }
+           ]
+          },
+          {
+           "name": "app-manifest.ts",
+           "value": 18492
+          },
+          {
+           "name": "components",
+           "children": [
+            {
+             "name": "GridViewport.tsx",
+             "value": 44022
+            },
+            {
+             "name": "stubs.ts",
+             "value": 1217
+            }
+           ]
+          },
+          {
+           "name": "derivation.ts",
+           "value": 1538
+          },
+          {
+           "name": "editing.ts",
+           "value": 2048
+          },
+          {
+           "name": "engine.ts",
+           "value": 30680
+          },
+          {
+           "name": "export",
+           "children": [
+            {
+             "name": "gui.ts",
+             "value": 19245
+            },
+            {
+             "name": "index.ts",
+             "value": 14630
+            },
+            {
+             "name": "relations.ts",
+             "value": 19862
+            }
+           ]
+          },
+          {
+           "name": "graph-kernel.ts",
+           "value": 2373
+          },
+          {
+           "name": "grid-selection.ts",
+           "value": 2126
+          },
+          {
+           "name": "history.ts",
+           "value": 4138
+          },
+          {
+           "name": "index.ts",
+           "value": 2003
+          },
+          {
+           "name": "morphs",
+           "children": [
+            {
+             "name": "cursor.ts",
+             "value": 2095
+            },
+            {
+             "name": "formulas.ts",
+             "value": 29564
+            },
+            {
+             "name": "framing.ts",
+             "value": 1474
+            },
+            {
+             "name": "grid.ts",
+             "value": 4306
+            },
+            {
+             "name": "keys.ts",
+             "value": 3513
+            },
+            {
+             "name": "player.ts",
+             "value": 3849
+            },
+            {
+             "name": "registry.ts",
+             "value": 7005
+            },
+            {
+             "name": "relation-defs.ts",
+             "value": 15365
+            },
+            {
+             "name": "rules.ts",
+             "value": 10905
+            },
+            {
+             "name": "scoped.ts",
+             "value": 8408
+            },
+            {
+             "name": "sheet-ops.ts",
+             "value": 19299
+            },
+            {
+             "name": "sheet.ts",
+             "value": 7682
+            },
+            {
+             "name": "tree.ts",
+             "value": 6456
+            },
+            {
+             "name": "tree2.ts",
+             "value": 11806
+            }
+           ]
+          },
+          {
+           "name": "occupancy.ts",
+           "value": 3021
+          },
+          {
+           "name": "plan-inventory.ts",
+           "value": 2278
+          },
+          {
+           "name": "plan-kits",
+           "children": [
+            {
+             "name": "index.ts",
+             "value": 338
+            },
+            {
+             "name": "spreadsheet.ts",
+             "value": 3913
+            }
+           ]
+          },
+          {
+           "name": "plan.ts",
+           "value": 26467
+          },
+          {
+           "name": "presentations.ts",
+           "value": 15320
+          },
+          {
+           "name": "presets.ts",
+           "value": 25413
+          },
+          {
+           "name": "relations.ts",
+           "value": 21843
+          },
+          {
+           "name": "rule-chains.ts",
+           "value": 7069
+          },
+          {
+           "name": "rule-sets.ts",
+           "value": 9783
+          },
+          {
+           "name": "save.ts",
+           "value": 2308
+          },
+          {
+           "name": "tiling-interface.ts",
+           "value": 2054
+          },
+          {
+           "name": "tilings.ts",
+           "value": 9151
+          },
+          {
+           "name": "traversal.ts",
+           "value": 3030
+          },
+          {
+           "name": "tree-state.ts",
+           "value": 1104
+          },
+          {
+           "name": "types.ts",
+           "value": 3460
+          }
+         ]
+        },
+        {
+         "name": "index.css",
+         "value": 5147
+        },
+        {
+         "name": "main.tsx",
+         "value": 237
+        },
+        {
+         "name": "views",
+         "children": [
+          {
+           "name": "ChatView.tsx",
+           "value": 5049
+          },
+          {
+           "name": "PlayerView.tsx",
+           "value": 5047
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "name": "tailwind.config.js",
+       "value": 204
+      },
+      {
+       "name": "tests",
+       "children": [
+        {
+         "name": "boundaries.test.mjs",
+         "value": 1298
+        },
+        {
+         "name": "metrics.test.mjs",
+         "value": 773
+        },
+        {
+         "name": "rules-lint.test.mjs",
+         "value": 542
+        },
+        {
+         "name": "workflows.test.mjs",
+         "value": 277
+        }
+       ]
+      },
+      {
+       "name": "tsconfig.json",
+       "value": 529
+      },
+      {
+       "name": "tsconfig.node.json",
+       "value": 233
+      },
+      {
+       "name": "vite.config.ts",
+       "value": 161
+      },
+      {
+       "name": "web-artifacts",
+       "children": [
+        {
+         "name": "Paramorphic+Grid+Demo",
+         "children": [
+          {
+           "name": ".clippy",
+           "children": [
+            {
+             "name": "vfs-manifest.json",
+             "value": 316
+            }
+           ]
+          },
+          {
+           "name": "App.tsx",
+           "value": 42566
+          },
+          {
+           "name": "index.css",
+           "value": 1447
+          }
+         ]
+        },
+        {
+         "name": "Paramorphic+Grid+Demo2",
+         "children": [
+          {
+           "name": ".clippy",
+           "children": [
+            {
+             "name": "vfs-manifest.json",
+             "value": 900
+            }
+           ]
+          },
+          {
+           "name": "App.tsx",
+           "value": 82191
+          },
+          {
+           "name": "index.css",
+           "value": 1447
+          }
+         ]
+        },
+        {
+         "name": "Paramorphic+Runtime+V3",
+         "children": [
+          {
+           "name": ".clippy",
+           "children": [
+            {
+             "name": "vfs-manifest.json",
+             "value": 316
+            }
+           ]
+          },
+          {
+           "name": "App.tsx",
+           "value": 73600
+          },
+          {
+           "name": "index.css",
+           "value": 1579
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "react.html",
+     "value": 302
+    },
+    {
+     "name": "sim.js",
+     "value": 129755
+    },
+    {
+     "name": "src",
+     "children": [
+      {
+       "name": "App.jsx",
+       "value": 2709
+      },
+      {
+       "name": "DefinitionApp.jsx",
+       "value": 35273
+      },
+      {
+       "name": "Horizon3DApp.jsx",
+       "value": 18045
+      },
+      {
+       "name": "Horizon3DView.jsx",
+       "value": 20616
+      },
+      {
+       "name": "HorizonApp.jsx",
+       "value": 17591
+      },
+      {
+       "name": "IgeoLiveApp.jsx",
+       "value": 19564
+      },
+      {
+       "name": "IgeoLiveView.jsx",
+       "value": 25288
+      },
+      {
+       "name": "PanelizationView.jsx",
+       "value": 7774
+      },
+      {
+       "name": "SunburstApp.jsx",
+       "value": 16691
+      },
+      {
+       "name": "SunburstCylinderApp.jsx",
+       "value": 21843
+      },
+      {
+       "name": "SunburstCylinderView.jsx",
+       "value": 20953
+      },
+      {
+       "name": "SunburstView.jsx",
+       "value": 14104
+      },
+      {
+       "name": "TangledApp.jsx",
+       "value": 15587
+      },
+      {
+       "name": "TangledView.jsx",
+       "value": 11229
+      },
+      {
+       "name": "TreemapApp.jsx",
+       "value": 18489
+      },
+      {
+       "name": "TreemapCubeApp.jsx",
+       "value": 18514
+      },
+      {
+       "name": "TreemapCubeView.jsx",
+       "value": 19590
+      },
+      {
+       "name": "TreemapView.jsx",
+       "value": 19673
+      },
+      {
+       "name": "definition-main.jsx",
+       "value": 245
+      },
+      {
+       "name": "horizon-main.jsx",
+       "value": 236
+      },
+      {
+       "name": "horizon3d-main.jsx",
+       "value": 242
+      },
+      {
+       "name": "igeo-live-main.jsx",
+       "value": 239
+      },
+      {
+       "name": "main.jsx",
+       "value": 138
+      },
+      {
+       "name": "sunburst-cylinder-main.jsx",
+       "value": 263
+      },
+      {
+       "name": "sunburst-data.js",
+       "value": 16524
+      },
+      {
+       "name": "sunburst-main.jsx",
+       "value": 239
+      },
+      {
+       "name": "tangle-data.js",
+       "value": 4436
+      },
+      {
+       "name": "tangled-main.jsx",
+       "value": 236
+      },
+      {
+       "name": "treemap-cube-main.jsx",
+       "value": 248
+      },
+      {
+       "name": "treemap-main.jsx",
+       "value": 236
+      }
+     ]
+    },
+    {
+     "name": "style.css",
+     "value": 77131
+    },
+    {
+     "name": "sunburst-cylinder.html",
+     "value": 346
+    },
+    {
+     "name": "sunburst.html",
+     "value": 329
+    },
+    {
+     "name": "tangled.html",
+     "value": 323
+    },
+    {
+     "name": "treemap-cube.html",
+     "value": 322
+    },
+    {
+     "name": "treemap.html",
+     "value": 327
+    },
+    {
+     "name": "ui-space",
+     "children": [
+      {
+       "name": "index.html",
+       "value": 807
+      },
+      {
+       "name": "src",
+       "children": [
+        {
+         "name": "SpaceApp.jsx",
+         "value": 148406
+        },
+        {
+         "name": "SpaceView.jsx",
+         "value": 167003
+        },
+        {
+         "name": "crystals.js",
+         "value": 13255
+        },
+        {
+         "name": "hierarchy.js",
+         "value": 1127
+        },
+        {
+         "name": "keyboard.js",
+         "value": 14777
+        },
+        {
+         "name": "knots.js",
+         "value": 4980
+        },
+        {
+         "name": "lsystems.js",
+         "value": 16564
+        },
+        {
+         "name": "media-library.js",
+         "value": 5393
+        },
+        {
+         "name": "space-command.js",
+         "value": 17897
+        },
+        {
+         "name": "space-main.jsx",
+         "value": 230
+        },
+        {
+         "name": "space-state.js",
+         "value": 51479
+        },
+        {
+         "name": "subnodes.js",
+         "value": 11372
+        },
+        {
+         "name": "sweeps.js",
+         "value": 18482
+        },
+        {
+         "name": "waveform.js",
+         "value": 11700
+        }
+       ]
+      },
+      {
+       "name": "tests",
+       "children": [
+        {
+         "name": "dolly.test.mjs",
+         "value": 4654
+        },
+        {
+         "name": "events.test.mjs",
+         "value": 15621
+        },
+        {
+         "name": "keyboard.test.mjs",
+         "value": 15055
+        },
+        {
+         "name": "lsystems.test.mjs",
+         "value": 10164
+        },
+        {
+         "name": "snapshot.test.mjs",
+         "value": 7440
+        },
+        {
+         "name": "space-state-f.test.mjs",
+         "value": 4859
+        },
+        {
+         "name": "subnodes.test.mjs",
+         "value": 14757
+        },
+        {
+         "name": "sweeps.test.mjs",
+         "value": 14274
+        },
+        {
+         "name": "waveform.test.mjs",
+         "value": 10303
+        }
+       ]
+      },
+      {
+       "name": "tools",
+       "children": [
+        {
+         "name": "snapshot-repo.mjs",
+         "value": 11560
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "name": "vite.config.js",
+     "value": 1989
+    }
+   ]
+  },
+  {
+   "name": "nct-linux-web-demo.txt",
+   "value": 116
+  },
+  {
+   "name": "noctivagous-linux.txt",
+   "value": 2847
+  },
+  {
+   "name": "refs",
+   "children": [
+    {
+     "name": ".gitattributes",
+     "value": 8
+    },
+    {
+     "name": "bimodal",
+     "children": [
+      {
+       "name": "bimodal-dual-input.rtf",
+       "value": 17197
+      },
+      {
+       "name": "bimodal-index.html",
+       "value": 40334
+      },
+      {
+       "name": "bimodalDragLine-CodeAsList.html",
+       "value": 15926
+      },
+      {
+       "name": "bimodalFunctionKeys-asdfKeys-A2.ahk",
+       "value": 9932
+      },
+      {
+       "name": "desktopUI-KeyboardInputModesForBimodal.txt",
+       "value": 1758
+      },
+      {
+       "name": "editorprojectstructure.md",
+       "value": 3049
+      },
+      {
+       "name": "improvingTheAIChatbot.txt",
+       "value": 65114
+      },
+      {
+       "name": "nct-ai-hybridinterfaceagenticide.txt",
+       "value": 6877
+      },
+      {
+       "name": "nct-bimodal-codeditor-example.txt",
+       "value": 845
+      },
+      {
+       "name": "nct-bimodal-keyboardmodelayoutkeys.txt",
+       "value": 1601
+      },
+      {
+       "name": "nct-bimodal-notesoninputconventions.txt",
+       "value": 2668
+      },
+      {
+       "name": "nct-bimodal-selectclicks.txt",
+       "value": 1946
+      },
+      {
+       "name": "nct-bimodal-tabletcursorwithscreenclickbuttons.txt",
+       "value": 630
+      },
+      {
+       "name": "nct-desktop-applicationmenu.txt",
+       "value": 2035
+      },
+      {
+       "name": "nodeBasedProgramming.txt",
+       "value": 9069
+      },
+      {
+       "name": "referenceBimodalTheory-noctivagous.txt",
+       "value": 34482
+      },
+      {
+       "name": "referenceBimodalTheory.txt",
+       "value": 34140
+      },
+      {
+       "name": "referenceForAICode-KeyClicks.txt",
+       "value": 19958
+      },
+      {
+       "name": "specSheet-AnnulusSequencer.txt",
+       "value": 18072
+      }
+     ]
+    },
+    {
+     "name": "nct-desktop-applaunchmenus.txt",
+     "value": 757
+    },
+    {
+     "name": "nct-desktop-applicationmenu.txt",
+     "value": 2035
+    },
+    {
+     "name": "nct-desktop-embedded-windows.txt",
+     "value": 8100
+    },
+    {
+     "name": "nct-desktop-env1.txt",
+     "value": 6545
+    },
+    {
+     "name": "nct-desktop-filenavigatorfeatures.txt",
+     "value": 4555
+    },
+    {
+     "name": "nct-desktop-filepathIndependence.txt",
+     "value": 3694
+    },
+    {
+     "name": "nct-desktop-os.txt",
+     "value": 10875
+    },
+    {
+     "name": "nct-desktop-passiveappmenubar.txt",
+     "value": 739
+    },
+    {
+     "name": "nct-desktop-treemapapplicationoverview.svg",
+     "value": 13237
+    },
+    {
+     "name": "nct-desktop-treemapapplicationoverview.txt",
+     "value": 1704
+    },
+    {
+     "name": "nct-desktop-windows-minimization.txt",
+     "value": 3385
+    },
+    {
+     "name": "nct-tablet-touchactivationuitheory.txt",
+     "value": 1665
+    },
+    {
+     "name": "nct_tabletui.txt",
+     "value": 38097
+    },
+    {
+     "name": "nctos-windows.txt",
+     "value": 5581
+    },
+    {
+     "name": "nctos-wiringupthewindows.txt",
+     "value": 4006
+    },
+    {
+     "name": "noctos-guiandos.txt",
+     "value": 5375
+    },
+    {
+     "name": "ui",
+     "children": [
+      {
+       "name": "patch_synth_demo.html",
+       "value": 132894
+      },
+      {
+       "name": "patch_synth_demo_cleaned.html",
+       "value": 121127
+      },
+      {
+       "name": "touchops",
+       "children": [
+        {
+         "name": "index.html",
+         "value": 54997
+        },
+        {
+         "name": "index2.html",
+         "value": 39774
+        },
+        {
+         "name": "index3.html",
+         "value": 42884
+        },
+        {
+         "name": "touchOperations.js",
+         "value": 33305
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "seamless-program-bundles.txt",
+   "value": 1943
+  },
+  {
+   "name": "wireframe-editing-view-to-rendered-view-toggle.txt",
+   "value": 700
+  }
+ ]
+}

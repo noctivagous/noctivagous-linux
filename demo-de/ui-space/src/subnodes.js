@@ -1,5 +1,5 @@
 /**
- * UI Space — the SUB-NODE providers (slice 12).
+ * UI Space — the SUB-NODE providers (slice 12; repo data, slice 13).
  *
  * Slice 5 gave the data KNOT parts and slice 7 gave the data TREE
  * depth-1 branches: sub-addresses that exist while their citizen
@@ -14,29 +14,46 @@
  * — { id, name, value, share, depth, path, isLeaf } — computed
  * from the SAME layouts the miniatures render. Node ids are
  * stable and shared between the App (info, focus, descent) and
- * the View (picking, highlight): for the flare citizens the id
- * is the node's name path from the root ("flare/vis/operator"),
- * the tree's branchId precedent generalised; the tangled tree's
- * figures keep the ids their data already carries. The tables
- * are built here, once, from the raw data — the hierarchy
- * mathematics is the layouts' own (branch value = own value plus
- * all descendants, as d3.hierarchy().sum() and the NCTGraphite
- * builders compute it), so the App's table and the View's layout
- * agree node for node, as the tree's two builds do.
+ * the View (picking, highlight): for the hierarchy citizens the
+ * id is the node's name path from the root
+ * ("noctivagous-linux/demo-de/ui-space"), the tree's branchId
+ * precedent generalised; the tangled tree's figures keep the ids
+ * their data already carries. The tables are built here, once,
+ * from the raw data — the hierarchy mathematics is the layouts'
+ * own (branch value = own value plus all descendants, as
+ * d3.hierarchy().sum() and the NCTGraphite builders compute it),
+ * so the App's table and the View's layout agree node for node,
+ * as the tree's two builds do.
+ *
+ * THE HIERARCHY (slice 13) is the space's one hierarchy source
+ * (hierarchy.js): the noctivagous-linux repository itself,
+ * snapshot-generated — file sizes in bytes are the values.
+ * Until this slice it was d3's FLARE placeholder.
+ *
+ * THE TANGLED TREE HAS TWO COURSES (slice 13): the GENEALOGY
+ * (the Greek figures, the original data) and IMPORTS (demo-de's
+ * own module import graph, snapshot-generated into
+ * import-graph.json: a module's parents are its importers, its
+ * level its longest path from the entry modules). The provider
+ * follows the ACTIVE course — pass `dataset` ("genealogy" by
+ * default) to the tangle calls; the App holds the switch (the
+ * PARAMETERS panel's "Tangled tree data").
  *
  * SHARE is always relative to a stated whole: at rest, the
- * citizen's whole (the flare total; the genealogy's figure
- * count). While a sunburst is DESCENDED (space-state.js holds
- * the descent), the whole is the display root — pass its id as
- * `rootId` and shares, and the rendered set, resolve against it.
+ * citizen's whole (the repository total; the active course's
+ * figure count). While a sunburst is DESCENDED (space-state.js
+ * holds the descent), the whole is the display root — pass its
+ * id as `rootId` and shares, and the rendered set, resolve
+ * against it.
  */
 
-import { FLARE } from "../../src/sunburst-data.js";
+import { HIERARCHY } from "./hierarchy.js";
 import { TANGLE_LEVELS } from "../../src/tangle-data.js";
+import importGraph from "./import-graph.json" with { type: "json" };
 
-/* ---------------- the flare hierarchy (tray, mesa, drum) ---------------- */
+/* ---------------- the hierarchy (tray, mesa, drum) ---------------- */
 
-function buildFlareTable() {
+function buildHierarchyTable() {
   const byId = new Map();
   const all = [];
   const walk = (data, parent, depth, pathNames) => {
@@ -66,38 +83,56 @@ function buildFlareTable() {
     node.children.sort((a, b) => b.value - a.value);
     return node;
   };
-  const root = walk(FLARE, null, 0, []);
+  const root = walk(HIERARCHY, null, 0, []);
   return { root, byId, all };
 }
 
-const FLARE_TABLE = buildFlareTable();
+const HIERARCHY_TABLE = buildHierarchyTable();
 
-/** The flare root as a provider node ("flare" itself). */
-export function flareRoot() {
-  return publicNode(FLARE_TABLE.root, 1, 0);
+/** The hierarchy root as a provider node ("noctivagous-linux" itself). */
+export function hierarchyRoot() {
+  return publicNode(HIERARCHY_TABLE.root, 1, 0);
 }
 
-/** A flare node by its path id, or null. No share — see subnodeById. */
-export function flareNodeById(id) {
-  return FLARE_TABLE.byId.get(id) || null;
+/** A hierarchy node by its path id, or null. No share — see subnodeById. */
+export function hierarchyNodeById(id) {
+  return HIERARCHY_TABLE.byId.get(id) || null;
 }
 
-/** The raw flare data subtree under a path id (the descent rebuild's input). */
-export function flareDataOf(id) {
-  const n = FLARE_TABLE.byId.get(id);
+/** The raw hierarchy data subtree under a path id (the descent rebuild's input). */
+export function hierarchyDataOf(id) {
+  const n = HIERARCHY_TABLE.byId.get(id);
   return n ? n.data : null;
 }
 
-/* ---------------- the tangled tree's figures ---------------- */
+/* ---------------- the tangled tree's two courses ---------------- */
 
-function buildTangleTable() {
+/** The tangle's datasets, in the PARAMETERS panel's order. */
+export const TANGLE_DATASETS = ["genealogy", "imports"];
+
+const TANGLE_LEVEL_SETS = {
+  genealogy: TANGLE_LEVELS,
+  imports: importGraph.levels,
+};
+
+const TANGLE_WHOLE_NAMES = {
+  genealogy: "the genealogy",
+  imports: "the import graph",
+};
+
+/** A course's raw levels ([[{ id, parents }], ...]) — the View's input too. */
+export function tangleLevels(dataset = "genealogy") {
+  return TANGLE_LEVEL_SETS[dataset] || TANGLE_LEVELS;
+}
+
+function buildTangleTable(levels, nameOf) {
   const byId = new Map();
   const all = [];
-  TANGLE_LEVELS.forEach((level, li) => {
+  levels.forEach((level, li) => {
     for (const raw of level) {
       const node = {
         id: raw.id,
-        name: raw.id,
+        name: nameOf(raw.id),
         depth: li,
         parentId: raw.parents && raw.parents.length ? raw.parents[0] : null,
         parents: raw.parents || [],
@@ -118,9 +153,10 @@ function buildTangleTable() {
   }
   for (const node of all) node.isLeaf = node.children.length === 0;
   // A figure's PATH: its first-parent line up to a root figure.
-  // The genealogy is a DAG with several roots (Uranus has no
-  // parents at all), so the path is a representative ancestry,
-  // stated as such — the first parent is the data's own order.
+  // Both courses are DAGs with several roots (Uranus has no
+  // parents at all; the import graph has eleven entry modules),
+  // so the path is a representative ancestry, stated as such —
+  // the first parent is the data's own order.
   const pathOf = (node, seen = new Set()) => {
     if (node.path) return node.path;
     if (seen.has(node.id)) return [node.id];
@@ -130,9 +166,11 @@ function buildTangleTable() {
     return node.path;
   };
   // A figure's VALUE is its progeny: itself plus every figure
-  // that descends from it. The genealogy carries no weights of
-  // its own; the size of a figure's line is its honest measure,
-  // and its share is that count over the whole genealogy.
+  // that descends from it. Neither course carries weights of its
+  // own; the size of a figure's line is its honest measure, and
+  // its share is that count over the whole course. (For the
+  // import graph, a module's progeny is its dependency closure:
+  // itself plus everything it imports, directly or not.)
   const progenyOf = (node) => {
     const seen = new Set();
     const stack = [node];
@@ -151,7 +189,16 @@ function buildTangleTable() {
   return { byId, all, total: all.length };
 }
 
-const TANGLE_TABLE = buildTangleTable();
+const TANGLE_TABLES = {
+  // The genealogy's figures are named by their ids; a module's
+  // NAME is its file name — its id is the full repo path.
+  genealogy: buildTangleTable(TANGLE_LEVELS, (id) => id),
+  imports: buildTangleTable(importGraph.levels, (id) => id.split("/").pop()),
+};
+
+function tangleTable(dataset) {
+  return TANGLE_TABLES[dataset] || TANGLE_TABLES.genealogy;
+}
 
 /* ---------------- the provider API ---------------- */
 
@@ -160,7 +207,7 @@ export const SUBNODE_OBJECT_IDS = ["tray", "tangle", "mesa", "drum"];
 
 export const isSubnodeObject = (id) => SUBNODE_OBJECT_IDS.includes(id);
 
-const FLARE_CITIZENS = ["tray", "mesa", "drum"];
+const HIERARCHY_CITIZENS = ["tray", "mesa", "drum"];
 
 function publicNode(node, share, relDepth) {
   return {
@@ -179,17 +226,22 @@ function publicNode(node, share, relDepth) {
 /**
  * The whole a citizen's shares are of, as { id, name, value }:
  * for a sunburst under descent, the display root (pass rootId);
- * otherwise the citizen's own whole — the flare root, or the
- * genealogy itself (id null: it is not a node).
+ * otherwise the citizen's own whole — the repository root, or
+ * the tangle's active course itself (id null: it is not a node).
  */
-export function subnodeRootOf(objectId, rootId = null) {
-  if (FLARE_CITIZENS.includes(objectId)) {
-    const root = rootId ? FLARE_TABLE.byId.get(rootId) : FLARE_TABLE.root;
+export function subnodeRootOf(objectId, rootId = null, dataset = "genealogy") {
+  if (HIERARCHY_CITIZENS.includes(objectId)) {
+    const root = rootId ? HIERARCHY_TABLE.byId.get(rootId) : HIERARCHY_TABLE.root;
     if (!root) return null;
     return { id: root.id, name: root.name, value: root.value };
   }
   if (objectId === "tangle") {
-    return { id: null, name: "the genealogy", value: TANGLE_TABLE.total };
+    const table = tangleTable(dataset);
+    return {
+      id: null,
+      name: TANGLE_WHOLE_NAMES[dataset] || TANGLE_WHOLE_NAMES.genealogy,
+      value: table.total,
+    };
   }
   return null;
 }
@@ -197,21 +249,23 @@ export function subnodeRootOf(objectId, rootId = null) {
 /**
  * One sub-node by id, with its share resolved against the whole
  * `rootId` names (the true whole when omitted). Null when the
- * citizen has no such node.
+ * citizen has no such node. `dataset` selects the tangle's
+ * active course; the hierarchy citizens ignore it.
  */
-export function subnodeById(objectId, nodeId, rootId = null) {
+export function subnodeById(objectId, nodeId, rootId = null, dataset = "genealogy") {
   if (!nodeId) return null;
-  if (FLARE_CITIZENS.includes(objectId)) {
-    const node = FLARE_TABLE.byId.get(nodeId);
+  if (HIERARCHY_CITIZENS.includes(objectId)) {
+    const node = HIERARCHY_TABLE.byId.get(nodeId);
     if (!node) return null;
     const whole = subnodeRootOf(objectId, rootId);
-    const relDepth = whole && rootId ? node.depth - (FLARE_TABLE.byId.get(rootId)?.depth ?? 0) : node.depth;
+    const relDepth = whole && rootId ? node.depth - (HIERARCHY_TABLE.byId.get(rootId)?.depth ?? 0) : node.depth;
     return publicNode(node, whole ? node.value / whole.value : 0, relDepth);
   }
   if (objectId === "tangle") {
-    const node = TANGLE_TABLE.byId.get(nodeId);
+    const table = tangleTable(dataset);
+    const node = table.byId.get(nodeId);
     if (!node) return null;
-    return publicNode(node, node.value / TANGLE_TABLE.total, node.depth);
+    return publicNode(node, node.value / table.total, node.depth);
   }
   return null;
 }
@@ -219,20 +273,20 @@ export function subnodeById(objectId, nodeId, rootId = null) {
 /**
  * The sub-nodes a citizen currently RENDERS, with shares against
  * the whole `rootId` names:
- *   tray   — flare's depth-1 plates and depth-2 cuboids;
+ *   tray   — the repository's depth-1 plates and depth-2 cuboids;
  *   mesa / drum — the display root's relative depth 1..2 wedges
- *     (at rest, the true root's: flare's depth 1..2);
- *   tangle — every figure, on its level sheet.
+ *     (at rest, the true root's: the repository's depth 1..2);
+ *   tangle — every figure of the active course, on its level sheet.
  */
-export function subnodesFor(objectId, rootId = null) {
+export function subnodesFor(objectId, rootId = null, dataset = "genealogy") {
   if (objectId === "tray") {
-    const whole = FLARE_TABLE.root;
-    return FLARE_TABLE.all
+    const whole = HIERARCHY_TABLE.root;
+    return HIERARCHY_TABLE.all
       .filter((n) => n.depth >= 1 && n.depth <= 2)
       .map((n) => publicNode(n, n.value / whole.value, n.depth));
   }
   if (objectId === "mesa" || objectId === "drum") {
-    const root = rootId ? FLARE_TABLE.byId.get(rootId) : FLARE_TABLE.root;
+    const root = rootId ? HIERARCHY_TABLE.byId.get(rootId) : HIERARCHY_TABLE.root;
     if (!root) return [];
     const out = [];
     const walk = (node) => {
@@ -246,13 +300,14 @@ export function subnodesFor(objectId, rootId = null) {
     return out;
   }
   if (objectId === "tangle") {
-    return TANGLE_TABLE.all.map((n) => publicNode(n, n.value / TANGLE_TABLE.total, n.depth));
+    const table = tangleTable(dataset);
+    return table.all.map((n) => publicNode(n, n.value / table.total, n.depth));
   }
   return [];
 }
 
 /** A sub-node's parent id (the descent's climb target), or null at the top. */
-export function subnodeParentOf(objectId, nodeId) {
-  const node = subnodeById(objectId, nodeId);
+export function subnodeParentOf(objectId, nodeId, dataset = "genealogy") {
+  const node = subnodeById(objectId, nodeId, null, dataset);
   return node ? node.parentId : null;
 }

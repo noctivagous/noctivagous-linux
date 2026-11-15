@@ -1,0 +1,755 @@
+{
+ "nodes": [
+  "demo-de/NCTGraphite/packages/nctgraphite/src/datatree/NCTGraphiteDataTree.ts",
+  "demo-de/NCTGraphite/packages/nctgraphite/src/horizon/NCTGraphiteHorizon.ts",
+  "demo-de/NCTGraphite/packages/nctgraphite/src/panelization/NCTGraphiteNurbsSurface.ts",
+  "demo-de/NCTGraphite/packages/nctgraphite/src/panelization/NCTGraphitePanelization.ts",
+  "demo-de/NCTGraphite/packages/nctgraphite/src/panelization/NCTGraphiteVec3.ts",
+  "demo-de/NCTGraphite/packages/nctgraphite/src/parameters/NCTGraphiteParameters.tsx",
+  "demo-de/NCTGraphite/packages/nctgraphite/src/sunburst/NCTGraphiteSunburstLayout.ts",
+  "demo-de/NCTGraphite/packages/nctgraphite/src/tangle/NCTGraphiteTangleLayout.ts",
+  "demo-de/NCTGraphite/packages/nctgraphite/src/treemap/NCTGraphiteTreemapLayout.ts",
+  "demo-de/src/App.jsx",
+  "demo-de/src/DefinitionApp.jsx",
+  "demo-de/src/Horizon3DApp.jsx",
+  "demo-de/src/Horizon3DView.jsx",
+  "demo-de/src/HorizonApp.jsx",
+  "demo-de/src/IgeoLiveApp.jsx",
+  "demo-de/src/IgeoLiveView.jsx",
+  "demo-de/src/PanelizationView.jsx",
+  "demo-de/src/SunburstApp.jsx",
+  "demo-de/src/SunburstCylinderApp.jsx",
+  "demo-de/src/SunburstCylinderView.jsx",
+  "demo-de/src/SunburstView.jsx",
+  "demo-de/src/TangledApp.jsx",
+  "demo-de/src/TangledView.jsx",
+  "demo-de/src/TreemapApp.jsx",
+  "demo-de/src/TreemapCubeApp.jsx",
+  "demo-de/src/TreemapCubeView.jsx",
+  "demo-de/src/TreemapView.jsx",
+  "demo-de/src/definition-main.jsx",
+  "demo-de/src/horizon-main.jsx",
+  "demo-de/src/horizon3d-main.jsx",
+  "demo-de/src/igeo-live-main.jsx",
+  "demo-de/src/main.jsx",
+  "demo-de/src/sunburst-cylinder-main.jsx",
+  "demo-de/src/sunburst-data.js",
+  "demo-de/src/sunburst-main.jsx",
+  "demo-de/src/tangle-data.js",
+  "demo-de/src/tangled-main.jsx",
+  "demo-de/src/treemap-cube-main.jsx",
+  "demo-de/src/treemap-main.jsx",
+  "demo-de/ui-space/src/SpaceApp.jsx",
+  "demo-de/ui-space/src/SpaceView.jsx",
+  "demo-de/ui-space/src/crystals.js",
+  "demo-de/ui-space/src/hierarchy.js",
+  "demo-de/ui-space/src/keyboard.js",
+  "demo-de/ui-space/src/knots.js",
+  "demo-de/ui-space/src/lsystems.js",
+  "demo-de/ui-space/src/media-library.js",
+  "demo-de/ui-space/src/space-command.js",
+  "demo-de/ui-space/src/space-main.jsx",
+  "demo-de/ui-space/src/space-state.js",
+  "demo-de/ui-space/src/subnodes.js",
+  "demo-de/ui-space/src/sweeps.js",
+  "demo-de/ui-space/src/waveform.js"
+ ],
+ "edges": [
+  [
+   "demo-de/src/App.jsx",
+   "demo-de/src/PanelizationView.jsx"
+  ],
+  [
+   "demo-de/src/DefinitionApp.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/datatree/NCTGraphiteDataTree.ts"
+  ],
+  [
+   "demo-de/src/DefinitionApp.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/panelization/NCTGraphiteNurbsSurface.ts"
+  ],
+  [
+   "demo-de/src/DefinitionApp.jsx",
+   "demo-de/src/PanelizationView.jsx"
+  ],
+  [
+   "demo-de/src/Horizon3DApp.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/horizon/NCTGraphiteHorizon.ts"
+  ],
+  [
+   "demo-de/src/Horizon3DApp.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/parameters/NCTGraphiteParameters.tsx"
+  ],
+  [
+   "demo-de/src/Horizon3DApp.jsx",
+   "demo-de/src/Horizon3DView.jsx"
+  ],
+  [
+   "demo-de/src/Horizon3DView.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/horizon/NCTGraphiteHorizon.ts"
+  ],
+  [
+   "demo-de/src/HorizonApp.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/horizon/NCTGraphiteHorizon.ts"
+  ],
+  [
+   "demo-de/src/HorizonApp.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/parameters/NCTGraphiteParameters.tsx"
+  ],
+  [
+   "demo-de/src/IgeoLiveApp.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/parameters/NCTGraphiteParameters.tsx"
+  ],
+  [
+   "demo-de/src/IgeoLiveApp.jsx",
+   "demo-de/src/IgeoLiveView.jsx"
+  ],
+  [
+   "demo-de/src/IgeoLiveView.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/panelization/NCTGraphiteNurbsSurface.ts"
+  ],
+  [
+   "demo-de/src/IgeoLiveView.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/panelization/NCTGraphitePanelization.ts"
+  ],
+  [
+   "demo-de/src/IgeoLiveView.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/panelization/NCTGraphiteVec3.ts"
+  ],
+  [
+   "demo-de/src/PanelizationView.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/datatree/NCTGraphiteDataTree.ts"
+  ],
+  [
+   "demo-de/src/PanelizationView.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/panelization/NCTGraphiteNurbsSurface.ts"
+  ],
+  [
+   "demo-de/src/PanelizationView.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/panelization/NCTGraphitePanelization.ts"
+  ],
+  [
+   "demo-de/src/PanelizationView.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/panelization/NCTGraphiteVec3.ts"
+  ],
+  [
+   "demo-de/src/SunburstApp.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/datatree/NCTGraphiteDataTree.ts"
+  ],
+  [
+   "demo-de/src/SunburstApp.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/parameters/NCTGraphiteParameters.tsx"
+  ],
+  [
+   "demo-de/src/SunburstApp.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/sunburst/NCTGraphiteSunburstLayout.ts"
+  ],
+  [
+   "demo-de/src/SunburstApp.jsx",
+   "demo-de/src/SunburstView.jsx"
+  ],
+  [
+   "demo-de/src/SunburstApp.jsx",
+   "demo-de/src/sunburst-data.js"
+  ],
+  [
+   "demo-de/src/SunburstCylinderApp.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/datatree/NCTGraphiteDataTree.ts"
+  ],
+  [
+   "demo-de/src/SunburstCylinderApp.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/parameters/NCTGraphiteParameters.tsx"
+  ],
+  [
+   "demo-de/src/SunburstCylinderApp.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/sunburst/NCTGraphiteSunburstLayout.ts"
+  ],
+  [
+   "demo-de/src/SunburstCylinderApp.jsx",
+   "demo-de/src/SunburstCylinderView.jsx"
+  ],
+  [
+   "demo-de/src/SunburstCylinderApp.jsx",
+   "demo-de/src/sunburst-data.js"
+  ],
+  [
+   "demo-de/src/SunburstCylinderView.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/sunburst/NCTGraphiteSunburstLayout.ts"
+  ],
+  [
+   "demo-de/src/SunburstView.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/sunburst/NCTGraphiteSunburstLayout.ts"
+  ],
+  [
+   "demo-de/src/TangledApp.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/datatree/NCTGraphiteDataTree.ts"
+  ],
+  [
+   "demo-de/src/TangledApp.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/parameters/NCTGraphiteParameters.tsx"
+  ],
+  [
+   "demo-de/src/TangledApp.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/tangle/NCTGraphiteTangleLayout.ts"
+  ],
+  [
+   "demo-de/src/TangledApp.jsx",
+   "demo-de/src/TangledView.jsx"
+  ],
+  [
+   "demo-de/src/TangledApp.jsx",
+   "demo-de/src/tangle-data.js"
+  ],
+  [
+   "demo-de/src/TreemapApp.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/parameters/NCTGraphiteParameters.tsx"
+  ],
+  [
+   "demo-de/src/TreemapApp.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/treemap/NCTGraphiteTreemapLayout.ts"
+  ],
+  [
+   "demo-de/src/TreemapApp.jsx",
+   "demo-de/src/TreemapView.jsx"
+  ],
+  [
+   "demo-de/src/TreemapApp.jsx",
+   "demo-de/src/sunburst-data.js"
+  ],
+  [
+   "demo-de/src/TreemapCubeApp.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/parameters/NCTGraphiteParameters.tsx"
+  ],
+  [
+   "demo-de/src/TreemapCubeApp.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/treemap/NCTGraphiteTreemapLayout.ts"
+  ],
+  [
+   "demo-de/src/TreemapCubeApp.jsx",
+   "demo-de/src/TreemapCubeView.jsx"
+  ],
+  [
+   "demo-de/src/TreemapCubeApp.jsx",
+   "demo-de/src/sunburst-data.js"
+  ],
+  [
+   "demo-de/src/TreemapCubeView.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/treemap/NCTGraphiteTreemapLayout.ts"
+  ],
+  [
+   "demo-de/src/TreemapView.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/treemap/NCTGraphiteTreemapLayout.ts"
+  ],
+  [
+   "demo-de/src/definition-main.jsx",
+   "demo-de/src/DefinitionApp.jsx"
+  ],
+  [
+   "demo-de/src/horizon-main.jsx",
+   "demo-de/src/HorizonApp.jsx"
+  ],
+  [
+   "demo-de/src/horizon3d-main.jsx",
+   "demo-de/src/Horizon3DApp.jsx"
+  ],
+  [
+   "demo-de/src/igeo-live-main.jsx",
+   "demo-de/src/IgeoLiveApp.jsx"
+  ],
+  [
+   "demo-de/src/main.jsx",
+   "demo-de/src/App.jsx"
+  ],
+  [
+   "demo-de/src/sunburst-cylinder-main.jsx",
+   "demo-de/src/SunburstCylinderApp.jsx"
+  ],
+  [
+   "demo-de/src/sunburst-main.jsx",
+   "demo-de/src/SunburstApp.jsx"
+  ],
+  [
+   "demo-de/src/tangled-main.jsx",
+   "demo-de/src/TangledApp.jsx"
+  ],
+  [
+   "demo-de/src/treemap-cube-main.jsx",
+   "demo-de/src/TreemapCubeApp.jsx"
+  ],
+  [
+   "demo-de/src/treemap-main.jsx",
+   "demo-de/src/TreemapApp.jsx"
+  ],
+  [
+   "demo-de/ui-space/src/SpaceApp.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/parameters/NCTGraphiteParameters.tsx"
+  ],
+  [
+   "demo-de/ui-space/src/SpaceApp.jsx",
+   "demo-de/ui-space/src/SpaceView.jsx"
+  ],
+  [
+   "demo-de/ui-space/src/SpaceApp.jsx",
+   "demo-de/ui-space/src/hierarchy.js"
+  ],
+  [
+   "demo-de/ui-space/src/SpaceApp.jsx",
+   "demo-de/ui-space/src/keyboard.js"
+  ],
+  [
+   "demo-de/ui-space/src/SpaceApp.jsx",
+   "demo-de/ui-space/src/knots.js"
+  ],
+  [
+   "demo-de/ui-space/src/SpaceApp.jsx",
+   "demo-de/ui-space/src/lsystems.js"
+  ],
+  [
+   "demo-de/ui-space/src/SpaceApp.jsx",
+   "demo-de/ui-space/src/media-library.js"
+  ],
+  [
+   "demo-de/ui-space/src/SpaceApp.jsx",
+   "demo-de/ui-space/src/space-command.js"
+  ],
+  [
+   "demo-de/ui-space/src/SpaceApp.jsx",
+   "demo-de/ui-space/src/space-state.js"
+  ],
+  [
+   "demo-de/ui-space/src/SpaceApp.jsx",
+   "demo-de/ui-space/src/subnodes.js"
+  ],
+  [
+   "demo-de/ui-space/src/SpaceApp.jsx",
+   "demo-de/ui-space/src/waveform.js"
+  ],
+  [
+   "demo-de/ui-space/src/SpaceView.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/sunburst/NCTGraphiteSunburstLayout.ts"
+  ],
+  [
+   "demo-de/ui-space/src/SpaceView.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/tangle/NCTGraphiteTangleLayout.ts"
+  ],
+  [
+   "demo-de/ui-space/src/SpaceView.jsx",
+   "demo-de/NCTGraphite/packages/nctgraphite/src/treemap/NCTGraphiteTreemapLayout.ts"
+  ],
+  [
+   "demo-de/ui-space/src/SpaceView.jsx",
+   "demo-de/ui-space/src/crystals.js"
+  ],
+  [
+   "demo-de/ui-space/src/SpaceView.jsx",
+   "demo-de/ui-space/src/hierarchy.js"
+  ],
+  [
+   "demo-de/ui-space/src/SpaceView.jsx",
+   "demo-de/ui-space/src/knots.js"
+  ],
+  [
+   "demo-de/ui-space/src/SpaceView.jsx",
+   "demo-de/ui-space/src/lsystems.js"
+  ],
+  [
+   "demo-de/ui-space/src/SpaceView.jsx",
+   "demo-de/ui-space/src/media-library.js"
+  ],
+  [
+   "demo-de/ui-space/src/SpaceView.jsx",
+   "demo-de/ui-space/src/space-state.js"
+  ],
+  [
+   "demo-de/ui-space/src/SpaceView.jsx",
+   "demo-de/ui-space/src/subnodes.js"
+  ],
+  [
+   "demo-de/ui-space/src/SpaceView.jsx",
+   "demo-de/ui-space/src/sweeps.js"
+  ],
+  [
+   "demo-de/ui-space/src/SpaceView.jsx",
+   "demo-de/ui-space/src/waveform.js"
+  ],
+  [
+   "demo-de/ui-space/src/keyboard.js",
+   "demo-de/ui-space/src/space-command.js"
+  ],
+  [
+   "demo-de/ui-space/src/keyboard.js",
+   "demo-de/ui-space/src/space-state.js"
+  ],
+  [
+   "demo-de/ui-space/src/media-library.js",
+   "demo-de/ui-space/src/space-state.js"
+  ],
+  [
+   "demo-de/ui-space/src/space-command.js",
+   "demo-de/ui-space/src/space-state.js"
+  ],
+  [
+   "demo-de/ui-space/src/space-main.jsx",
+   "demo-de/ui-space/src/SpaceApp.jsx"
+  ],
+  [
+   "demo-de/ui-space/src/subnodes.js",
+   "demo-de/src/tangle-data.js"
+  ],
+  [
+   "demo-de/ui-space/src/subnodes.js",
+   "demo-de/ui-space/src/hierarchy.js"
+  ]
+ ],
+ "levels": [
+  [
+   {
+    "id": "demo-de/src/definition-main.jsx",
+    "parents": []
+   },
+   {
+    "id": "demo-de/src/horizon-main.jsx",
+    "parents": []
+   },
+   {
+    "id": "demo-de/src/horizon3d-main.jsx",
+    "parents": []
+   },
+   {
+    "id": "demo-de/src/igeo-live-main.jsx",
+    "parents": []
+   },
+   {
+    "id": "demo-de/src/main.jsx",
+    "parents": []
+   },
+   {
+    "id": "demo-de/src/sunburst-cylinder-main.jsx",
+    "parents": []
+   },
+   {
+    "id": "demo-de/src/sunburst-main.jsx",
+    "parents": []
+   },
+   {
+    "id": "demo-de/src/tangled-main.jsx",
+    "parents": []
+   },
+   {
+    "id": "demo-de/src/treemap-cube-main.jsx",
+    "parents": []
+   },
+   {
+    "id": "demo-de/src/treemap-main.jsx",
+    "parents": []
+   },
+   {
+    "id": "demo-de/ui-space/src/space-main.jsx",
+    "parents": []
+   }
+  ],
+  [
+   {
+    "id": "demo-de/src/App.jsx",
+    "parents": [
+     "demo-de/src/main.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/src/DefinitionApp.jsx",
+    "parents": [
+     "demo-de/src/definition-main.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/src/Horizon3DApp.jsx",
+    "parents": [
+     "demo-de/src/horizon3d-main.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/src/HorizonApp.jsx",
+    "parents": [
+     "demo-de/src/horizon-main.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/src/IgeoLiveApp.jsx",
+    "parents": [
+     "demo-de/src/igeo-live-main.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/src/SunburstApp.jsx",
+    "parents": [
+     "demo-de/src/sunburst-main.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/src/SunburstCylinderApp.jsx",
+    "parents": [
+     "demo-de/src/sunburst-cylinder-main.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/src/TangledApp.jsx",
+    "parents": [
+     "demo-de/src/tangled-main.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/src/TreemapApp.jsx",
+    "parents": [
+     "demo-de/src/treemap-main.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/src/TreemapCubeApp.jsx",
+    "parents": [
+     "demo-de/src/treemap-cube-main.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/ui-space/src/SpaceApp.jsx",
+    "parents": [
+     "demo-de/ui-space/src/space-main.jsx"
+    ]
+   }
+  ],
+  [
+   {
+    "id": "demo-de/NCTGraphite/packages/nctgraphite/src/parameters/NCTGraphiteParameters.tsx",
+    "parents": [
+     "demo-de/src/Horizon3DApp.jsx",
+     "demo-de/src/HorizonApp.jsx",
+     "demo-de/src/IgeoLiveApp.jsx",
+     "demo-de/src/SunburstApp.jsx",
+     "demo-de/src/SunburstCylinderApp.jsx",
+     "demo-de/src/TangledApp.jsx",
+     "demo-de/src/TreemapApp.jsx",
+     "demo-de/src/TreemapCubeApp.jsx",
+     "demo-de/ui-space/src/SpaceApp.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/src/Horizon3DView.jsx",
+    "parents": [
+     "demo-de/src/Horizon3DApp.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/src/IgeoLiveView.jsx",
+    "parents": [
+     "demo-de/src/IgeoLiveApp.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/src/PanelizationView.jsx",
+    "parents": [
+     "demo-de/src/App.jsx",
+     "demo-de/src/DefinitionApp.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/src/SunburstCylinderView.jsx",
+    "parents": [
+     "demo-de/src/SunburstCylinderApp.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/src/SunburstView.jsx",
+    "parents": [
+     "demo-de/src/SunburstApp.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/src/TangledView.jsx",
+    "parents": [
+     "demo-de/src/TangledApp.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/src/TreemapCubeView.jsx",
+    "parents": [
+     "demo-de/src/TreemapCubeApp.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/src/TreemapView.jsx",
+    "parents": [
+     "demo-de/src/TreemapApp.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/src/sunburst-data.js",
+    "parents": [
+     "demo-de/src/SunburstApp.jsx",
+     "demo-de/src/SunburstCylinderApp.jsx",
+     "demo-de/src/TreemapApp.jsx",
+     "demo-de/src/TreemapCubeApp.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/ui-space/src/SpaceView.jsx",
+    "parents": [
+     "demo-de/ui-space/src/SpaceApp.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/ui-space/src/keyboard.js",
+    "parents": [
+     "demo-de/ui-space/src/SpaceApp.jsx"
+    ]
+   }
+  ],
+  [
+   {
+    "id": "demo-de/NCTGraphite/packages/nctgraphite/src/datatree/NCTGraphiteDataTree.ts",
+    "parents": [
+     "demo-de/src/DefinitionApp.jsx",
+     "demo-de/src/PanelizationView.jsx",
+     "demo-de/src/SunburstApp.jsx",
+     "demo-de/src/SunburstCylinderApp.jsx",
+     "demo-de/src/TangledApp.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/NCTGraphite/packages/nctgraphite/src/horizon/NCTGraphiteHorizon.ts",
+    "parents": [
+     "demo-de/src/Horizon3DApp.jsx",
+     "demo-de/src/Horizon3DView.jsx",
+     "demo-de/src/HorizonApp.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/NCTGraphite/packages/nctgraphite/src/panelization/NCTGraphiteNurbsSurface.ts",
+    "parents": [
+     "demo-de/src/DefinitionApp.jsx",
+     "demo-de/src/IgeoLiveView.jsx",
+     "demo-de/src/PanelizationView.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/NCTGraphite/packages/nctgraphite/src/panelization/NCTGraphitePanelization.ts",
+    "parents": [
+     "demo-de/src/IgeoLiveView.jsx",
+     "demo-de/src/PanelizationView.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/NCTGraphite/packages/nctgraphite/src/panelization/NCTGraphiteVec3.ts",
+    "parents": [
+     "demo-de/src/IgeoLiveView.jsx",
+     "demo-de/src/PanelizationView.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/NCTGraphite/packages/nctgraphite/src/sunburst/NCTGraphiteSunburstLayout.ts",
+    "parents": [
+     "demo-de/src/SunburstApp.jsx",
+     "demo-de/src/SunburstCylinderApp.jsx",
+     "demo-de/src/SunburstCylinderView.jsx",
+     "demo-de/src/SunburstView.jsx",
+     "demo-de/ui-space/src/SpaceView.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/NCTGraphite/packages/nctgraphite/src/tangle/NCTGraphiteTangleLayout.ts",
+    "parents": [
+     "demo-de/src/TangledApp.jsx",
+     "demo-de/ui-space/src/SpaceView.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/NCTGraphite/packages/nctgraphite/src/treemap/NCTGraphiteTreemapLayout.ts",
+    "parents": [
+     "demo-de/src/TreemapApp.jsx",
+     "demo-de/src/TreemapCubeApp.jsx",
+     "demo-de/src/TreemapCubeView.jsx",
+     "demo-de/src/TreemapView.jsx",
+     "demo-de/ui-space/src/SpaceView.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/ui-space/src/crystals.js",
+    "parents": [
+     "demo-de/ui-space/src/SpaceView.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/ui-space/src/knots.js",
+    "parents": [
+     "demo-de/ui-space/src/SpaceApp.jsx",
+     "demo-de/ui-space/src/SpaceView.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/ui-space/src/lsystems.js",
+    "parents": [
+     "demo-de/ui-space/src/SpaceApp.jsx",
+     "demo-de/ui-space/src/SpaceView.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/ui-space/src/media-library.js",
+    "parents": [
+     "demo-de/ui-space/src/SpaceApp.jsx",
+     "demo-de/ui-space/src/SpaceView.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/ui-space/src/space-command.js",
+    "parents": [
+     "demo-de/ui-space/src/SpaceApp.jsx",
+     "demo-de/ui-space/src/keyboard.js"
+    ]
+   },
+   {
+    "id": "demo-de/ui-space/src/subnodes.js",
+    "parents": [
+     "demo-de/ui-space/src/SpaceApp.jsx",
+     "demo-de/ui-space/src/SpaceView.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/ui-space/src/sweeps.js",
+    "parents": [
+     "demo-de/ui-space/src/SpaceView.jsx"
+    ]
+   },
+   {
+    "id": "demo-de/ui-space/src/waveform.js",
+    "parents": [
+     "demo-de/ui-space/src/SpaceApp.jsx",
+     "demo-de/ui-space/src/SpaceView.jsx"
+    ]
+   }
+  ],
+  [
+   {
+    "id": "demo-de/src/tangle-data.js",
+    "parents": [
+     "demo-de/src/TangledApp.jsx",
+     "demo-de/ui-space/src/subnodes.js"
+    ]
+   },
+   {
+    "id": "demo-de/ui-space/src/hierarchy.js",
+    "parents": [
+     "demo-de/ui-space/src/SpaceApp.jsx",
+     "demo-de/ui-space/src/SpaceView.jsx",
+     "demo-de/ui-space/src/subnodes.js"
+    ]
+   },
+   {
+    "id": "demo-de/ui-space/src/space-state.js",
+    "parents": [
+     "demo-de/ui-space/src/SpaceApp.jsx",
+     "demo-de/ui-space/src/SpaceView.jsx",
+     "demo-de/ui-space/src/keyboard.js",
+     "demo-de/ui-space/src/media-library.js",
+     "demo-de/ui-space/src/space-command.js"
+    ]
+   }
+  ]
+ ]
+}

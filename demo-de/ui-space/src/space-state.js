@@ -63,15 +63,15 @@ export function labelForIndex(i) {
  */
 export const OBJECTS = [
   { id: "mesa", name: "Sunburst mesa", group: "graphs",
-    blurb: "The zoomable sunburst as a terraced mesa — flare's houses as annular prisms, area and angle doing the talking. Its wedges are sub-addresses: hover one to read it, F on a branch wedge descends — the mesa re-roots at that wedge — and F on a leaf flies into it." },
+    blurb: "The zoomable sunburst as a terraced mesa — the noctivagous-linux repository itself as annular prisms, file sizes as values, area and angle doing the talking. Its wedges are sub-addresses: hover one to read it, F on a branch wedge descends — the mesa re-roots at that wedge — and F on a leaf flies into it." },
   { id: "drum", name: "Sunburst cylinder", group: "graphs",
-    blurb: "The same sunburst stood up as a drum of wedge blocks; a leaf's wedge slides out of the drum with its card. Its wedges descend like the mesa's: F on a branch wedge re-roots the drum there." },
+    blurb: "The same sunburst stood up as a drum of wedge blocks — the repository in the round; a leaf's wedge slides out of the drum with its card. Its wedges descend like the mesa's: F on a branch wedge re-roots the drum there." },
   { id: "tray", name: "Treemap tray", group: "graphs",
-    blurb: "Bostock's binary-tiled treemap as a tray of cuboids — the file-system frame, area as value. Its plates and cuboids are sub-addresses: hover one to read it, F flies into the node." },
+    blurb: "Bostock's binary-tiled treemap as a tray of cuboids — the repository's own files, area as byte size. Its plates and cuboids are sub-addresses: hover one to read it, F flies into the node." },
   { id: "cube", name: "Treemap cube", group: "graphs",
     blurb: "The treemap layer spread across a cube's five open faces; bright tiles are leaves, dark framed doors open." },
   { id: "tangle", name: "Tangled tree", group: "instruments",
-    blurb: "The Greek genealogy as a tangled tree — metro lines bundling through seven levels of descent. Its figures are sub-addresses: hover one to read it and its line, F flies into it." },
+    blurb: "A tangled tree with two courses — the Greek genealogy, and demo-de's own module import graph (switch in PARAMETERS) — metro lines bundling through levels of descent. Its figures are sub-addresses: hover one to read it and its line, F flies into it." },
   { id: "horizon3d", name: "Horizon skyline", group: "monitors",
     blurb: "The activity monitor in relief: eight lanes of machine life as terraced skylines on a platter." },
   { id: "horizonflat", name: "Horizon panel", group: "monitors",
@@ -85,7 +85,7 @@ export const OBJECTS = [
   { id: "crystal", name: "Living crystal", group: "graphs",
     blurb: "An octahedron that is alive: its eight faces carry eight values, each face's distance from the centre set by its value, so the shape is the chart. It turns slowly on its pedestal, and the faces regrow as the values drift." },
   { id: "tree", name: "Data tree", group: "graphs",
-    blurb: "The flare hierarchy grown as a branching tree by L-system rules — its depth-1 branches are sub-addresses: hover one, then F zooms into the subtree." },
+    blurb: "The noctivagous-linux repository grown as a branching tree by L-system rules — file sizes are the values; its depth-1 branches are sub-addresses: hover one, then F zooms into the subtree." },
 ];
 
 export const OBJECT_IDS = OBJECTS.map((o) => o.id);

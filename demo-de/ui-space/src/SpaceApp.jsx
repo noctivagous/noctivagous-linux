@@ -108,12 +108,13 @@ import {
 } from "./knots.js";
 import { buildDataTree, dataBranchById } from "./lsystems.js";
 import { isSubnodeObject, subnodeById, subnodeRootOf } from "./subnodes.js";
-import { FLARE } from "../../src/sunburst-data.js";
+import { HIERARCHY } from "./hierarchy.js";
 
 // Slice 7: the data tree's own bookkeeping for panels and readout —
-// the same buildDataTree(FLARE) the view grows in the scene
-// (deterministic, so the two builds agree node for node).
-const DATA_TREE = buildDataTree(FLARE);
+// the same buildDataTree(HIERARCHY) the view grows in the scene
+// (deterministic, so the two builds agree node for node). Slice
+// 13: the hierarchy is the repository itself (hierarchy.js).
+const DATA_TREE = buildDataTree(HIERARCHY);
 
 import {
   NCTParameterPanel,
@@ -208,6 +209,16 @@ const PARAM_DEFS = [
   { id: "labelsOn", label: "Key labels", type: "boolean", defaultValue: true },
   { id: "keyboardPanel", label: "Keyboard panel", type: "boolean", defaultValue: true },
   { id: "snap", label: "Snap", type: "boolean", defaultValue: true },
+  {
+    // Slice 13: the tangled tree's second course. The switch is a
+    // parameter — key-click native like every other setting here;
+    // subnodes.js holds the two datasets it names.
+    id: "tangleData", label: "Tangled tree data", type: "select", defaultValue: "genealogy",
+    options: [
+      { value: "genealogy", label: "Genealogy — the Greek figures" },
+      { value: "imports", label: "Imports — demo-de's own modules" },
+    ],
+  },
   { id: "layerData", label: "Layer · DATA", type: "boolean", defaultValue: true },
   { id: "layerDataLock", label: "Lock · DATA", type: "boolean", defaultValue: false },
   { id: "layerInstruments", label: "Layer · INSTRUMENTS", type: "boolean", defaultValue: true },
@@ -326,9 +337,9 @@ const KEY_GROUPS = [
       ["knot parts", "with the knot current, hover a part — F flies into it, D (GO BACK II) backs out to the knot"],
       ["tree branches", "with the tree current, hover a depth-1 branch — F flies to the subtree, D backs out to the tree"],
       ["treemap nodes", "with the tray current, hover a plate or a cuboid — it lights, its card stands in the space, and F flies into the node"],
-      ["tangled figures", "with the tangled tree current, hover a figure — its card names the figure and its line; F flies into it"],
+      ["tangled figures", "with the tangled tree current, hover a figure — its card names the figure and its line; F flies into it. PARAMETERS switches the tree's course: the Greek genealogy, or demo-de's own module import graph"],
       ["sunburst wedges", "with the mesa or the drum current, hover a wedge to read it — F on a leaf wedge flies into it; F on a branch wedge descends"],
-      ["sunburst descent", "F on a branch wedge re-roots the sunburst at that wedge — values and shares are of the new root, and the readout shows the path from flare. The backs climb out, one root per level, until the true root stands again. Descent is a display state only: rotation, plane spin and MAGNIFY are exactly as you left them, on the way down and on the way back up"],
+      ["sunburst descent", "F on a branch wedge re-roots the sunburst at that wedge — values and shares are of the new root, and the readout shows the path from the repository root. The backs climb out, one root per level, until the true root stands again. Descent is a display state only: rotation, plane spin and MAGNIFY are exactly as you left them, on the way down and on the way back up"],
     ],
   },
   {
@@ -670,6 +681,17 @@ export default function SpaceApp() {
   // disturbs the other, and neither touches a transform).
   const [subHover, setSubHover] = useState(null); // { objectId, nodeId } | null
   const [descents, setDescents] = useState(() => ({ mesa: createDescent(), drum: createDescent() }));
+  // Slice 13: the tangled tree's active course, from PARAMETERS.
+  // A figure of one course is not an address in the other, so a
+  // tangle hover or focus does not survive the switch.
+  const tangleDataset = String(values.tangleData || "genealogy");
+  const prevTangleDataset = useRef(tangleDataset);
+  useEffect(() => {
+    if (prevTangleDataset.current === tangleDataset) return;
+    prevTangleDataset.current = tangleDataset;
+    setSubHover((h) => (h && h.objectId === "tangle" ? null : h));
+    setPartFocus((f) => (f.objectId === "tangle" ? createPartFocus() : f));
+  }, [tangleDataset]);
   // Slice 8: the open app (pure state in space-state.js), the
   // audio app's own state — track, window, transport, and its nav
   // history, which D walks back — and the app's addressing: the
@@ -999,7 +1021,7 @@ export default function SpaceApp() {
     const addressed = addressedId(hoverId, currentId);
     const subNode =
       subHover && subHover.objectId === addressed && isSubnodeObject(addressed)
-        ? subnodeById(addressed, subHover.nodeId, displayRootOf(descents[addressed], addressed))
+        ? subnodeById(addressed, subHover.nodeId, displayRootOf(descents[addressed], addressed), tangleDataset)
         : null;
     const action = resolveFAction({
       pendingId,
@@ -1977,10 +1999,10 @@ export default function SpaceApp() {
   // focus (the knot keeps PART, the tree keeps BRANCH); the
   // hovered sub-node is resolved for the readout the same way.
   const focusSub = partFocus.partId && isSubnodeObject(partFocus.objectId)
-    ? subnodeById(partFocus.objectId, partFocus.partId, displayRootOf(descents[partFocus.objectId], partFocus.objectId))
+    ? subnodeById(partFocus.objectId, partFocus.partId, displayRootOf(descents[partFocus.objectId], partFocus.objectId), tangleDataset)
     : null;
   const hoverSub = subHover && subHover.objectId === currentId
-    ? subnodeById(subHover.objectId, subHover.nodeId, displayRootOf(descents[subHover.objectId], subHover.objectId))
+    ? subnodeById(subHover.objectId, subHover.nodeId, displayRootOf(descents[subHover.objectId], subHover.objectId), tangleDataset)
     : null;
   const descentRootId = currentId ? displayRootOf(descents[currentId], currentId) : null;
   const descentRoot = descentRootId ? subnodeById(currentId, descentRootId) : null;
@@ -2079,7 +2101,7 @@ export default function SpaceApp() {
           `kind — object · ${o.group} · a grown dataset`,
           `total value — ${DATA_TREE.totalValue}`,
           `leaves — ${DATA_TREE.leafCount} · depth ${DATA_TREE.maxDepth} · ${DATA_TREE.branches.length} branches`,
-          "grown from the flare hierarchy by L-system rules",
+          "grown from the noctivagous-linux repository itself by L-system rules — file sizes are the values",
           "depth-1 branches are sub-addresses — hover one, F zooms to the subtree",
           "D / Esc — send it home, exactly as it was",
         ],
@@ -2177,6 +2199,7 @@ export default function SpaceApp() {
             branchHoverId={branchHoverId}
             subHover={subHover}
             descents={descents}
+            tangleDataset={tangleDataset}
             pastes={pastes}
             inspectPanel={inspectPanel}
             openApp={openAppState}
@@ -2421,7 +2444,7 @@ export default function SpaceApp() {
                     <p>
                       The world is the lab's platter, and its citizens are the frames themselves,
                       miniaturised but not faked: the mesa's terraces are the sunburst partition
-                      of flare, the tray's cuboids are the binary treemap, the cube's faces carry
+                      of the repository itself, the tray's cuboids are the binary treemap, the cube's faces carry
                       the treemap's children exactly as the cube page spreads them. Around them
                       the stylised citizens — the tangled tree's figures on their glass level
                       sheets, the horizon skyline, the panelization arch, the definition's wired
@@ -2493,7 +2516,7 @@ export default function SpaceApp() {
                       the western rim a BOTANICAL TREE stands on its mound as scenery, grown
                       from a small stochastic grammar — no data, only the feel of a grown
                       thing, swaying almost imperceptibly. The second use is a citizen: the
-                      DATA TREE, flare's hierarchy generating the branching directly — each
+                      DATA TREE, the repository's own hierarchy generating the branching directly — each
                       child spirals off its parent at a golden angle, its length set by its
                       share of the whole, its tips budded with the leaves it aggregates. Its
                       depth-1 branches are sub-addresses, like the knot's parts: with the tree
@@ -2521,12 +2544,35 @@ export default function SpaceApp() {
                       makes that wedge's node the citizen's display root — the mesa
                       rebuilds its terraces, the drum its blocks, from that node down, and
                       every value and share is read against the new root while the card
-                      and the readout keep the full path from flare in view. Descent sits
+                      and the readout keep the full path from the root in view. Descent sits
                       in the release stack at the focus tier, one level per root: the
                       backs climb out level by level, and at the true root the level is
                       simply gone. It is a display state, never a transform — a citizen
                       you turned, spun or magnified stays turned, spun and magnified
                       through the whole descent and the whole climb back.
+                    </p>
+                    <p>
+                      Slice 13 makes the data real: THE SPACE EATS ITS OWN REPO. The
+                      hierarchy citizens no longer read d3's flare placeholder — a
+                      snapshot generator (ui-space/tools/snapshot-repo.mjs) walks the
+                      noctivagous-linux repository itself and writes the hierarchy the
+                      mesa, drum, tray, cube and data tree all consume: directories
+                      and files, a file's value its size in bytes. Sub-node ids are
+                      repo paths now, and the sunbursts descend through the repo's
+                      real directories. A few huge files dominate their citizens —
+                      that is the truth of this repo, not a defect of the picture.
+                      The data arrives as a generated snapshot, never a live bridge:
+                      regenerate it and the space eats the repo as it then stands.
+                    </p>
+                    <p>
+                      The TANGLED TREE gains a second course beside the Greek
+                      genealogy: DEMO-DE'S OWN MODULE IMPORT GRAPH, from the same
+                      snapshot — every module of demo-de's sources a figure, its
+                      parents its importers, its level its longest path from the
+                      entry modules, its progeny its dependency closure. Switch
+                      courses in PARAMETERS (Tangled tree data). The figures stay
+                      sub-addresses in both courses: hover to read a module and its
+                      line, F flies into it.
                     </p>
                     <h4>Media, the Ring and the Apps</h4>
                     <p>
