@@ -1,7 +1,7 @@
 // Node tests for the user flow graph model (src/flat-graph.js).
 // Run: node tests/flat-graph.test.mjs  (from demo-de/)
 import assert from "node:assert";
-import { buildFlowGraph, reachableFrom, accessPaths, USUAL_ACTIVITIES } from "../src/flat-graph.js";
+import { buildFlowGraph, buildFrameGraph, reachableFrom, accessPaths, USUAL_ACTIVITIES } from "../src/flat-graph.js";
 
 let n = 0;
 const eq = (a, b, m) => { assert.strictEqual(a, b, m); n++; };
@@ -74,6 +74,22 @@ eq(byId.get("sub:monitor:cpu").descends, undefined, "lanes do not descend");
 for (const a of USUAL_ACTIVITIES) {
   if (a.status === "present") ok(frames.some((f) => f.id === a.frame), `activity frame exists: ${a.activity}`);
   else eq(a.frame, null, `gap activity has no frame: ${a.activity}`);
+}
+
+
+// buildFrameGraph: a frame's own graph for FLOW drill-in.
+{
+  const fg = buildFrameGraph(
+    { id: "frame:mail", kind: "frame", frame: "mail", name: "MAIL" },
+    [
+      { id: "sub:mail:inbox", kind: "subnode", frame: "mail", name: "INBOX" },
+      { id: "sub:mail:sent", kind: "subnode", frame: "mail", name: "SENT" },
+    ],
+    (s) => (s.id.endsWith("inbox") ? [{ key: "m1", name: "Backup completed", desc: "from backup@noct-pc" }, { key: "m2", name: "Upgrades", desc: "from apt@noct-pc" }] : []),
+  );
+  ok(fg.nodes.length === 5, "frame graph: frame + 2 subs + 2 children");
+  ok(fg.edges.filter((e) => e.via === "F").length === 4 && fg.edges.filter((e) => e.via === "D").length === 4, "frame graph: F descends and D returns on every link");
+  ok(fg.nodes.find((n) => n.kind === "child")?.parentSub === "sub:mail:inbox", "frame graph: children know their subnode");
 }
 
 console.log(`flat-graph: ${n} checks pass`);

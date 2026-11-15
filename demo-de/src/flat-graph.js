@@ -24,7 +24,7 @@
  *     of them. A gap node is a promise with a name, drawn dashed.
  *
  * The graph is BUILT FROM THE LIVE REGISTRIES (the app's FRAMES,
- * ACTIVITY_LANES, FOLDERS, web pages and the flare hierarchy's top
+ * ACTIVITY_LANES, FOLDERS, web pages and the filesystem's top
  * level), so it cannot drift from the environment it describes: add
  * a frame and it appears here, with its access edges, automatically.
  */
@@ -86,7 +86,7 @@ export function buildFlowGraph({ frames, lanes, folders, webPages, flareTop, ext
   // reached through Home, above, so they are not repeated here).
   sub("home", "ops", "OPERATIONS STREAM", { jump: "monitor", desc: "Live operations — rides the MONITOR frame" });
 
-  // FILES + SUNBURST share the flare hierarchy's top level; branches
+  // FILES + SUNBURST share the filesystem's top level; branches
   // descend, so their subnodes continue below these.
   for (const b of flareTop) {
     sub("files", b.name, b.name, { descends: true, jumpNode: b.name, desc: `branch — F descends (${b.leafCount} leaves below)` });
@@ -143,4 +143,29 @@ export function reachableFrom(graph, startId) {
 /** The distinct ways INTO a node: [{ via, from }]. */
 export function accessPaths(graph, nodeId) {
   return graph.edges.filter((e) => e.to === nodeId).map((e) => ({ via: e.via, from: e.from }));
+}
+
+/**
+ * One frame's own graph, for the FLOW frame's drill-in view: the
+ * frame node, its subnodes, and each subnode's contents (children)
+ * — the graph the frame would draw of itself, brought into FLOW
+ * instead of FLOW exiting to the frame. childrenOf(sub) returns
+ * [{ key, name, desc }]. Edges: F descends (frame → sub → child),
+ * D returns.
+ */
+export function buildFrameGraph(frameNode, subs, childrenOf) {
+  const nodes = [{ ...frameNode }];
+  const edges = [];
+  for (const s of subs) {
+    nodes.push(s);
+    edges.push({ from: frameNode.id, to: s.id, via: "F" });
+    edges.push({ from: s.id, to: frameNode.id, via: "D" });
+    for (const c of childrenOf(s) || []) {
+      const id = `child:${s.id}:${c.key}`;
+      nodes.push({ id, kind: "child", frame: s.frame, name: c.name, desc: c.desc || "", parentSub: s.id });
+      edges.push({ from: s.id, to: id, via: "F" });
+      edges.push({ from: id, to: s.id, via: "D" });
+    }
+  }
+  return { nodes, edges };
 }

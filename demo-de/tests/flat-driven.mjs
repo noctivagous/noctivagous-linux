@@ -56,7 +56,7 @@ const cardCount = () => page.locator("[data-gui-node]").evaluateAll((els) => els
   await page.keyboard.press("f");
   await page.waitForSelector(".fl-tm", { timeout: 3000 });
   check("F opens FILES: treemap renders", (await page.locator(".fl-tm-node").count()) > 10);
-  check("files crumbs show flare root", (await page.locator(".fl-crumbs").innerText()).includes("flare"));
+  check("files crumbs show the filesystem root", (await page.locator(".fl-crumbs").innerText()).includes("/"));
 
   // Keys descend into a branch (its surface is covered by its children,
   // so the label is the way in — that is the demo's point); D climbs back.
@@ -108,9 +108,10 @@ const cardCount = () => page.locator("[data-gui-node]").evaluateAll((els) => els
   check("Space holds time", (await echo()).includes("held"));
   await page.keyboard.press(" ");
   await page.keyboard.press("Escape"); // clears the lane target first
+  await page.keyboard.press("Escape"); // pops the focused-lane subview (nav graph rung)
   await page.keyboard.press("Escape"); // then leaves the frame
-  await page.waitForTimeout(100);
-  check("Esc Esc from monitor returns HOME", (await cardCount()) === 14);
+  await page.waitForTimeout(500);
+  check("Esc Esc Esc from monitor returns HOME", (await cardCount()) === 14);
 
   // Drag-lock on home: hover FILES card, Space, move, Space drops.
   const card = page.locator('[data-gui-node="gui:card:files"]');
@@ -158,10 +159,10 @@ const cardCount = () => page.locator("[data-gui-node]").evaluateAll((els) => els
   await page.keyboard.press("h");
   await page.keyboard.press("f");
   await page.waitForSelector('[data-gui-node^="gui:mail:"]', { timeout: 3000 });
-  check("MAIL: inbox messages listed", (await page.locator("[data-gui-node]").evaluateAll((els) => els.filter((e) => /^gui:mail:[^:]+$/.test(e.getAttribute("data-gui-node"))).length)) === 3);
+  check("MAIL: inbox messages listed", (await page.locator("[data-gui-node]").evaluateAll((els) => els.filter((e) => /^gui:mail:[^:]+$/.test(e.getAttribute("data-gui-node"))).length)) === 5);
   await page.locator('[data-gui-node^="gui:mail:"] .gui-panel-title').first().click();
   await page.waitForTimeout(120);
-  check("click opens message in reading pane", (await page.locator('[data-gui-node="gui:read"] .gui-panel-title').innerText()).includes("KeyPilot"));
+  check("click opens message in reading pane", (await page.locator('[data-gui-node="gui:read"] .gui-panel-title').innerText()).includes("Nightly backup"));
   await page.keyboard.press("d");
   await page.waitForTimeout(100);
   check("D backs to list (reading pane cleared)", (await page.locator('[data-gui-node="gui:read:body"]').innerText()).includes("Open a message with F"));
@@ -169,7 +170,17 @@ const cardCount = () => page.locator("[data-gui-node]").evaluateAll((els) => els
   // Compose: real text mode — F typed into a field must not click.
   await page.locator('[data-gui-node="gui:act:compose"]').click();
   await page.waitForSelector('[data-gui-node="gui:cmp-to"] input', { timeout: 3000 });
-  await page.click('[data-gui-node="gui:cmp-to"] input');
+  // F clicks fields too: the TO field is label A in compose — target + F
+  // puts the keyboard into it (text mode is state, shown on the chip).
+  // (Mouse to neutral chrome first: hover wins for F, and the cursor is
+  // resting where the COMPOSE button was.)
+  await page.mouse.move(20, 20);
+  await page.waitForTimeout(100);
+  await page.keyboard.press("a");
+  await page.keyboard.press("f");
+  await page.waitForTimeout(120);
+  check("F on the TO field enters text mode", (await page.locator(".fl-mode").innerText()).includes("TEXT")
+    && (await page.evaluate(() => document.activeElement?.closest("[data-gui-node]")?.getAttribute("data-gui-node"))) === "gui:cmp-to");
   await page.keyboard.type("friend@example.com");
   await page.keyboard.type("fff"); // would be clicks outside text mode
   check("text mode: fff lands in the To field", (await page.inputValue('[data-gui-node="gui:cmp-to"] input')) === "friend@example.comfff");
@@ -180,8 +191,12 @@ const cardCount = () => page.locator("[data-gui-node]").evaluateAll((els) => els
   await page.click('[data-gui-node="gui:cmp-body"] textarea');
   await page.keyboard.type("Sent by the driven-key harness.");
   await page.keyboard.press("Escape");
-  // SEND is the first compose action (label A): target + F.
-  await page.keyboard.press("a");
+  // SEND follows the three fields in compose (labels A B E, SEND = G): target + F.
+  // (Mouse off the body field first — fields are addressable now, so a
+  // resting hover on one would win F.)
+  await page.mouse.move(20, 20);
+  await page.waitForTimeout(100);
+  await page.keyboard.press("g");
   await page.keyboard.press("f");
   await page.waitForTimeout(200);
   check("SEND lands message in Sent", (await page.locator('[data-gui-node^="gui:mail:"] .gui-panel-title').first().innerText()).includes("Driven test"));
@@ -215,10 +230,10 @@ const cardCount = () => page.locator("[data-gui-node]").evaluateAll((els) => els
   await page.keyboard.press("f");
   await page.waitForSelector('[data-gui-node="gui:page"]', { timeout: 3000 });
   check("WEB: start page renders", (await page.locator('[data-gui-node="gui:page"] .gui-panel-title').innerText()).includes("Start"));
-  await page.keyboard.press("a"); // first link on the page
+  await page.keyboard.press("b"); // first link on the page (A is the address field now)
   await page.keyboard.press("f");
   await page.waitForTimeout(200);
-  check("F follows a link to the article", (await page.locator('[data-gui-node="gui:page"] .gui-panel-title').innerText()).includes("Tech Weekly"));
+  check("F follows a link to the article", (await page.locator('[data-gui-node="gui:page"] .gui-panel-title').innerText()).includes("Installation guide"));
   await page.keyboard.press("d");
   await page.waitForTimeout(150);
   check("D is history back to Start", (await page.locator('[data-gui-node="gui:page"] .gui-panel-title').innerText()).includes("Start"));
@@ -237,14 +252,22 @@ const cardCount = () => page.locator("[data-gui-node]").evaluateAll((els) => els
   check("FLOW: no activities marked not yet", (await page.locator(".fl-act-chip.gap").count()) === 0);
   const jumpLabel = await page.evaluate(() => {
     const gs = [...document.querySelectorAll(".fl-flow-svg g")];
-    const idx = gs.findIndex((g) => g.querySelector("text")?.textContent === "analytics");
+    const idx = gs.findIndex((g) => g.querySelector("text")?.textContent === "var");
     return idx > 0 ? document.querySelectorAll(".fl-flow-chip")[idx - 1]?.textContent.trim() : null;
   });
-  check("found the FILES analytics subnode in the graph", Boolean(jumpLabel), `label=${jumpLabel}`);
+  check("found the FILES var subnode in the graph", Boolean(jumpLabel), `label=${jumpLabel}`);
   await page.keyboard.type(jumpLabel.toLowerCase());
   await page.keyboard.press("f");
-  await page.waitForSelector(".fl-tm", { timeout: 3000 });
-  check("F on the graph node jumps into FILES, descended", (await page.locator(".fl-crumbs").innerText()).includes("analytics"));
+  await page.waitForSelector(".fl-flow-detail", { timeout: 3000 });
+  check("FLOW: F on a subnode drills in — the view never leaves FLOW", (await page.locator(".fl-flow-svg").count()) === 1);
+  check("FLOW: the subnode's contents are here (var ▸ backups)", (await page.locator(".fl-flow-detail").innerText()).includes("backups"));
+  check("FLOW: crumbs track the drill path", (await page.locator(".fl-crumbs").innerText()).includes("FILES"));
+  await page.keyboard.press("d");
+  await page.waitForTimeout(150);
+  check("FLOW: D climbs to the frame's graph (detail closed)", (await page.locator(".fl-flow-detail").count()) === 0 && (await page.locator(".fl-flow-svg").count()) === 1);
+  await page.keyboard.press("d");
+  await page.waitForTimeout(150);
+  check("FLOW: D again returns to the whole-environment graph", (await page.locator(".fl-flow-node").count()) > 40);
 
   // SETTINGS (card K): F on the ACCENT setting cycles it, live.
   await page.keyboard.press("Escape");
@@ -281,11 +304,11 @@ const cardCount = () => page.locator("[data-gui-node]").evaluateAll((els) => els
   await page.keyboard.press("m");
   await page.keyboard.press("f");
   await page.waitForSelector('[data-gui-node="gui:doc-body"] textarea', { timeout: 3000 });
-  check("DOCUMENTS: field notes opens at 31 words", (await page.locator('[data-gui-node="gui:doc-meta"]').innerText()).includes("31 words"));
+  check("DOCUMENTS: install checklist opens at 41 words", (await page.locator('[data-gui-node="gui:doc-meta"]').innerText()).includes("41 words"));
   await page.click('[data-gui-node="gui:doc-body"] textarea');
   await page.keyboard.type(" Again.");
   await page.waitForTimeout(200);
-  check("DOCUMENTS: typing updates the word count", (await page.locator('[data-gui-node="gui:doc-meta"]').innerText()).includes("32 words"));
+  check("DOCUMENTS: typing updates the word count", (await page.locator('[data-gui-node="gui:doc-meta"]').innerText()).includes("42 words"));
 
   // TERMINAL (card N): commands run; open <frame> really jumps.
   await page.keyboard.press("Escape");
@@ -314,7 +337,7 @@ const cardCount = () => page.locator("[data-gui-node]").evaluateAll((els) => els
   await page.keyboard.press("a");
   await page.keyboard.press("f");
   await page.waitForTimeout(200);
-  check("MEDIA: F plays the first item", (await page.locator('[data-gui-node="gui:media-title"]').innerText()).includes("Horizon Suite"));
+  check("MEDIA: F plays the first item", (await page.locator('[data-gui-node="gui:media-title"]').innerText()).includes("ui-space-slice15-demo"));
   await page.keyboard.press(" ");
   await page.waitForTimeout(150);
   check("MEDIA: Space pauses", (await page.locator('[data-gui-node="gui:media-title"]').innerText()).includes("paused"));

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import {
   buildTreemap,
   descendants as tmDescendants,
@@ -23,7 +24,7 @@ import {
   NCTParameterPanel,
   useNCTParameters,
 } from "../NCTGraphite/packages/nctgraphite/src/parameters/NCTGraphiteParameters.tsx";
-import { FLARE } from "./sunburst-data.js";
+import { FS_TREE, FOLDERS, MAIL_SEED, THREADS_SEED, DOCS_SEED, MEDIA_ITEMS } from "./flat-data.js";
 import {
   assignLabels,
   resolveBuffer,
@@ -31,7 +32,8 @@ import {
   isTextEntryControl,
   resolveBoard,
 } from "./flat-keys.js";
-import { buildFlowGraph, USUAL_ACTIVITIES } from "./flat-graph.js";
+import { buildFlowGraph, buildFrameGraph, USUAL_ACTIVITIES } from "./flat-graph.js";
+import { createNav, navOpenFrame, navPush, navPop, navSetTop, navBackPlan, navEnterText, navExitText, navTop, navCrumbs, MODE_TEXT } from "./flat-nav.js";
 import { WEB_PAGES, webPageById, resolveWebAddress } from "./flat-web.js";
 /* The standing rule (2026-11-14): every app in the 2D environment is
    made out of paramorphic components; gaps become framework features.
@@ -102,19 +104,6 @@ const FRAMES = [
 ];
 const frameById = (id) => FRAMES.find((f) => f.id === id);
 
-const MAIL_SEED = [
-  { id: "m1", folder: "inbox", from: "team@keypilot.io", subject: "Welcome to KeyPilot!", when: "2h ago", body: "Thank you for installing KeyPilot. Steering is the mouse's job; clicking belongs to the keys now. Press F on anything you hover, and Esc is always the way out of a mode." },
-  { id: "m2", folder: "inbox", from: "orders@shop.example", subject: "Your order confirmation", when: "1d ago", body: "Order #KP-2025-001 has been confirmed. Keyboard XL ×1 — it will ship with the next post." },
-  { id: "m3", folder: "inbox", from: "newsletter@techweekly.example", subject: "Weekly Newsletter", when: "3d ago", body: "This week's top stories: bimodal interfaces, sparse key databases, and why the mouse click was always two jobs collapsed into one." },
-  { id: "m4", folder: "drafts", from: "you", subject: "Draft: the 2D view", when: "draft", body: "Stationary panels, a plane of frames, and labels on everything…" },
-  { id: "m5", folder: "trash", from: "promo@spam.example", subject: "You won (not really)", when: "9d ago", body: "Deleted, as it should be." },
-];
-const FOLDERS = [
-  { id: "inbox", name: "Inbox" },
-  { id: "sent", name: "Sent" },
-  { id: "drafts", name: "Drafts" },
-  { id: "trash", name: "Trash" },
-];
 
 const SAMPLES = 480;
 const fmt = (v) => Math.round(v).toLocaleString("en-US");
@@ -149,6 +138,28 @@ function layoutFlowGraph(g) {
   const gapY = TOP + row * ROW + 30;
   gaps.forEach((nd, i) => pos.set(nd.id, { x: 150 + (i % 3) * 300, y: gapY + Math.floor(i / 3) * ROW }));
   return { pos, w: 940, h: gapY + Math.ceil(gaps.length / 3) * ROW + 14 };
+}
+
+/* A frame's own graph inside FLOW: frame node left, subnodes in a
+   column, each subnode's contents fanned to the right. */
+function layoutFrameGraph(g) {
+  const ROW = 30;
+  const TOP = 22;
+  const subs = g.nodes.filter((nd) => nd.kind === "subnode");
+  const kidsOf = (sid) => g.nodes.filter((nd) => nd.kind === "child" && nd.parentSub === sid);
+  const pos = new Map();
+  let row = 0;
+  for (const s of subs) {
+    const kids = kidsOf(s.id);
+    const rows = Math.max(1, kids.length);
+    const y0 = TOP + row * ROW;
+    pos.set(s.id, { x: 350, y: y0 + ((rows - 1) * ROW) / 2 });
+    kids.forEach((c, i) => pos.set(c.id, { x: 690, y: y0 + i * ROW }));
+    row += rows;
+  }
+  const frameNode = g.nodes.find((nd) => nd.kind === "frame");
+  if (frameNode) pos.set(frameNode.id, { x: 100, y: TOP + ((Math.max(1, row) - 1) * ROW) / 2 });
+  return { pos, w: 940, h: TOP + row * ROW + 14 };
 }
 
 /* Sunburst arc path in a 640 box, centre 320. Angles: 0 = up, clockwise. */
@@ -357,20 +368,6 @@ function settingsDocument({ size }) {
   return { schema: "paramorphic-gui/1", device: "desktop", separateLayouts: false, nodes };
 }
 
-const THREADS_SEED = [
-  { id: "ops", name: "OPS CHANNEL", who: "relay", msgs: [
-    { from: "relay", text: "All slices green. The library push landed at 8b4c69a." },
-    { from: "you", text: "Flat Space rebuild is next." },
-    { from: "relay", text: "Standing by — gaps become features." },
-  ], replies: ["Logged.", "Relay copies that.", "On the board."] },
-  { id: "desk", name: "MISSION DESK", who: "desk", msgs: [
-    { from: "desk", text: "Board is current: goals tracked, six items awaiting your word." },
-    { from: "desk", text: "The Flat Space branch holds for a real git push." },
-  ], replies: ["Filed.", "Desk notes it.", "Added to the board."] },
-  { id: "cabin", name: "CABIN CREW", who: "cabin", msgs: [
-    { from: "cabin", text: "Tea is on. The treemap looks lovely today." },
-  ], replies: ["Crew copies.", "Tea first, then frames.", "Noted with pleasure."] },
-];
 
 /* CHAT as a GuiDocument: channel buttons, a message panel whose
    text-blocks are the conversation, and a field + SEND riding the
@@ -398,11 +395,6 @@ function chatDocument({ threads, thread, msgs, size }) {
   return { schema: "paramorphic-gui/1", device: "desktop", separateLayouts: false, nodes };
 }
 
-const DOCS_SEED = [
-  { id: "field-notes", title: "Field notes", body: "The board is the desktop. Cards stay where they are dropped; the frames come and go underneath them. Dolly with V and C, always centred on what you are looking at." },
-  { id: "key-clicks", title: "Key-clicks, a short spec", body: "Labels address things. F clicks the addressee — the hover wins, else the target. D goes back within the frame's own scope. Esc is the big release. Operators are never addresses." },
-  { id: "provisions", title: "Provisions", body: "Tea. Paper. Ink. One spare nib. Time to look out of the window." },
-];
 
 /* DOCUMENTS as a GuiDocument: document buttons, an editor panel
    whose text-area rides the values channel, a live word count. */
@@ -438,14 +430,6 @@ function termDocument({ lines, size }) {
   return { schema: "paramorphic-gui/1", device: "desktop", separateLayouts: false, nodes };
 }
 
-const MEDIA_ITEMS = [
-  { id: "horizon-suite", title: "Horizon Suite", kind: "TRACK", dur: 24 },
-  { id: "treemap-study", title: "Treemap Study in Green", kind: "TRACK", dur: 18 },
-  { id: "mesa-flyover", title: "Mesa Flyover", kind: "CLIP", dur: 30 },
-  { id: "knot-still", title: "Trefoil, Held", kind: "STILL", dur: 12 },
-  { id: "panel-song", title: "Panelization Song", kind: "TRACK", dur: 21 },
-  { id: "crystal-still", title: "Crystal at Rest", kind: "STILL", dur: 15 },
-];
 
 /* MEDIA as a GuiDocument: a shelf of image-wells and a now-playing
    panel with the registry's own progress strip. */
@@ -501,12 +485,18 @@ function hostDocument(size) {
 
 export default function FlatApp() {
   const [frame, setFrame] = useState("home");
+  /* The navigation state graph (flat-nav.js): where the user is in
+     the view hierarchy, which frame they came from, and whether the
+     keyboard is in nav or text mode. F pushes, D pops, Esc unwinds —
+     decided from this graph, the same in every frame. */
+  const [nav, setNav] = useState(() => createNav());
+  const navRef = useRef(null);
+  navRef.current = nav;
   const [targetId, setTargetId] = useState(null);
   const [hoverId, setHoverId] = useState(null);
   const [buffer, setBuffer] = useState("");
   const [echo, setEcho] = useState("FLAT SPACE — type a label to target, F to click it");
   const [keysOpen, setKeysOpen] = useState(false);
-  const [textMode, setTextMode] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   /* OVERLAYS + DOLLY: the panels float over a full-viewport stage */
@@ -522,11 +512,11 @@ export default function FlatApp() {
   const fileParams = useNCTParameters(PARAM_DEFS.files);
 
   /* FILES — treemap */
-  const tmRoot = useMemo(() => buildTreemap(FLARE), []);
+  const tmRoot = useMemo(() => buildTreemap(FS_TREE), []);
   const [tmFocus, setTmFocus] = useState(null);
   const tmFocusNode = tmFocus || tmRoot;
   /* SUNBURST */
-  const sbRoot = useMemo(() => buildSunburst(FLARE), []);
+  const sbRoot = useMemo(() => buildSunburst(FS_TREE), []);
   const sbColour = useMemo(() => sunburstColourScale(sbRoot.children.map((c) => c.name)), [sbRoot]);
   const [sbFocus, setSbFocus] = useState(null);
   const sbFocusNode = sbFocus || sbRoot;
@@ -587,6 +577,11 @@ export default function FlatApp() {
      back-stack, so D is the browser's back button */
   const [webHistory, setWebHistory] = useState(["start"]);
   const [webIndex, setWebIndex] = useState(0);
+  /* FLOW drill-in: level 0 is the whole-environment graph; level 1
+     is one frame's own graph, brought into FLOW; level 2 has one
+     node of that graph selected, its detail open. F descends, D
+     climbs — the view never leaves the FLOW frame. */
+  const [flowView, setFlowView] = useState({ level: 0, frame: null, sub: null });
   const webPage = webPageById(webHistory[webIndex]);
   const [addrText, setAddrText] = useState(webPage.url);
   useEffect(() => { setAddrText(webPage.url); }, [webPage]);
@@ -715,6 +710,14 @@ export default function FlatApp() {
 
   const say = (msg) => setEcho(msg);
 
+  /* F on a field: put the keyboard into it. Focus is what enters
+     text mode — the focus-capture handler on the page records it in
+     the nav graph, so the mode is state, not a guess. */
+  const focusField = (guiId) => {
+    const el = document.querySelector(`[data-gui-node="${guiId}"] input, [data-gui-node="${guiId}"] textarea`);
+    if (el) { el.focus(); if (guiId === "gui:web-addr") el.select(); }
+  };
+
   const flowGraph = useMemo(() => buildFlowGraph({
     frames: FRAMES, lanes: ACTIVITY_LANES, folders: FOLDERS, webPages: WEB_PAGES,
     flareTop: tmRoot.children.map((c) => ({ name: c.name, leafCount: countLeaves(c) })),
@@ -731,15 +734,107 @@ export default function FlatApp() {
     ],
   }), [tmRoot, docs]);
   const flowLayout = useMemo(() => layoutFlowGraph(flowGraph), [flowGraph]);
+  /* The contents of a graph subnode — what the frame's graph shows
+     when FLOW brings it in: a folder's messages, a directory's
+     entries, a page's links, a channel's messages. */
+  const flowChildren = (nd) => {
+    if (nd.jumpNode) {
+      const root = nd.frame === "sunburst" ? sbRoot : tmRoot;
+      const c = root.children.find((x) => x.name === nd.jumpNode);
+      return c ? c.children.map((k) => ({ key: k.name, name: k.name, desc: k.children.length ? `${k.children.length} entries · ${fmt(k.value)} KiB in all` : `file · ${fmt(k.value)} KiB` })) : [];
+    }
+    if (nd.jumpFolder) return allMail.filter((m) => m.folder === nd.jumpFolder).map((m) => ({ key: m.id, name: m.subject, desc: `from ${m.from} · ${m.when}` }));
+    if (nd.jumpPage) { const p = webPageById(nd.jumpPage); return p.links.map((l) => ({ key: l.to, name: l.text, desc: `link → ${webPageById(l.to).title}` })); }
+    if (nd.jumpApp && nd.jumpApp.startsWith("thread:")) {
+      const t = THREADS_SEED.find((x) => x.id === nd.jumpApp.slice(7));
+      const msgs = t ? [...t.msgs, ...(chatExtra[t.id] || [])] : [];
+      return msgs.map((m, i) => ({ key: `m${i}`, name: `${m.from}: ${m.text.slice(0, 44)}`, desc: "message" }));
+    }
+    return [];
+  };
+  const frameGraph = useMemo(() => {
+    if (!flowView.frame) return null;
+    const frameNode = flowGraph.nodes.find((nd) => nd.kind === "frame" && nd.frame === flowView.frame);
+    if (!frameNode) return null;
+    const subs = flowGraph.nodes.filter((nd) => nd.kind === "subnode" && nd.frame === flowView.frame);
+    return buildFrameGraph(frameNode, subs, flowChildren);
+  }, [flowGraph, flowView.frame, tmRoot, sbRoot, allMail, chatExtra]);
+  const frameLayout = useMemo(() => (frameGraph ? layoutFrameGraph(frameGraph) : null), [frameGraph]);
+  /* F inside FLOW descends the graph itself — the frame's graph is
+     brought here; the view never exits to the frame. */
+  /* stackNav always adds a rung (or relabels the same view's rung):
+     drilling from the overview straight into a subnode stacks the
+     frame rung and the subnode rung, so the crumbs show the whole
+     path and D climbs it one level at a time. */
+  const stackNav = (view, label) => updateNav((n) => (navTop(n).view === view ? navSetTop(n, view, label) : navPush(n, view, label)));
+  const drillFlow = (frameId, subId = null) => {
+    setFlowView({ level: subId ? 2 : 1, frame: frameId, sub: subId });
+    if (subId) {
+      const nd = flowGraph.nodes.find((n) => n.id === subId);
+      stackNav(`flow:frame:${frameId}`, frameById(frameId).name);
+      stackNav(`flow:sub:${subId}`, nd ? nd.name : "DETAIL");
+      say(`FLOW ▸ ${frameById(frameId).name} ▸ ${nd ? nd.name : "detail"} — its contents, inside FLOW`);
+    } else {
+      stackNav(`flow:frame:${frameId}`, frameById(frameId).name);
+      say(`FLOW ▸ ${frameById(frameId).name} — its graph, inside FLOW (D climbs back)`);
+    }
+  };
+  const selectFlowNode = (nd) => {
+    setFlowView({ level: 2, frame: flowView.frame, sub: nd.id });
+    stackNav(`flow:sub:${nd.id}`, nd.name);
+    say(`FLOW ▸ ${nd.name} — ${nd.desc || "detail"}`);
+  };
+  /* D inside FLOW: one level up the graph, never out of the frame. */
+  const backFlow = () => {
+    if (flowView.level === 2) {
+      setFlowView({ level: 1, frame: flowView.frame, sub: null });
+      updateNav((n) => navPop(n));
+      say(`FLOW ▸ ${frameById(flowView.frame).name} — its graph`);
+    } else if (flowView.level === 1) {
+      setFlowView({ level: 0, frame: null, sub: null });
+      updateNav((n) => navPop(n));
+      say("FLOW ▸ the whole environment");
+    }
+  };
+  /* updateNav keeps navRef fresh synchronously, so a rapid F D Esc
+     sequence never reads a stale graph; pushNav opens a subview rung
+     (push at a root, retarget the rung when one is already open). */
+  const updateNav = (fn) => setNav((n) => { const next = fn(n); navRef.current = next; return next; });
+  const pushNav = (view, label) => updateNav((n) => (navTop(n).view === "root" ? navPush(n, view, label) : navSetTop(n, view, label)));
   const openFrame = (id) => {
     if (disabledFrames.includes(id)) { say(`${frameById(id).name} is disabled — enable it in SOFTWARE`); return; }
+    if (id !== "flow") setFlowView({ level: 0, frame: null, sub: null });
     setFrame(id);
+    updateNav((n) => navOpenFrame(n, id, frameById(id).name));
     setTargetId(null);
     setHoverId(null);
     setDolly(1);
     clearBuffer();
     say(`${frameById(id).name} — ${frameById(id).sub}`);
   };
+  /* Mirror the frames' subview state into the nav graph: when a
+     subview opens (a message read, a treemap descended, a lane
+     focused, a page visited), a rung appears; when it closes, the
+     rung pops. D and Esc read the graph, so they never guess. */
+  useEffect(() => {
+    updateNav((n) => {
+      if (navTop(n).frame !== frame) return n; // frame changes are openFrame's job
+      let want = null;
+      if (frame === "files" && tmFocus) want = { view: `node:${nodePath(tmFocusNode, tmAncestors)}`, label: nodePath(tmFocusNode, tmAncestors) };
+      else if (frame === "sunburst" && sbFocus) want = { view: `node:${nodePath(sbFocusNode, sbAncestors)}`, label: nodePath(sbFocusNode, sbAncestors) };
+      else if (frame === "mail" && composeOpen) want = { view: "compose", label: "COMPOSE" };
+      else if (frame === "mail" && mailOpenId) { const m = allMail.find((x) => x.id === mailOpenId); want = { view: `reading:${mailOpenId}`, label: m ? m.subject : "READING" }; }
+      else if (frame === "monitor" && laneFocus !== null) want = { view: `lane:${ACTIVITY_LANES[laneFocus].id}`, label: ACTIVITY_LANES[laneFocus].label };
+      else if (frame === "web" && webIndex > 0) want = { view: `page:${webPage.id}`, label: webPage.title };
+      else if (frame === "flow" && flowView.level === 1) want = { view: `flow:frame:${flowView.frame}`, label: frameById(flowView.frame).name };
+      else if (frame === "flow" && flowView.level === 2) { const nd = (frameGraph ? frameGraph.nodes : flowGraph.nodes).find((x) => x.id === flowView.sub) || flowGraph.nodes.find((x) => x.id === flowView.sub); want = { view: `flow:sub:${flowView.sub}`, label: nd ? nd.name : "DETAIL" }; }
+      const top = navTop(n);
+      if (!want) return n.stack.length > 1 ? navPop(n) : n;
+      if (top.view === want.view) return top.label === want.label ? n : navSetTop(n, want.view, want.label);
+      if (top.view === "root") return navPush(n, want.view, want.label);
+      return navSetTop(n, want.view, want.label);
+    });
+  }, [frame, tmFocus, sbFocus, mailOpenId, composeOpen, laneFocus, webIndex, webPage, flowView, frameGraph]);
   /* WEB navigation — push onto the frame's history (truncating any
      forward entries, as a browser does) */
   const webGo = (pageId) => {
@@ -747,6 +842,7 @@ export default function FlatApp() {
     const base = webHistory.slice(0, webIndex + 1);
     setWebHistory([...base, pageId]);
     setWebIndex(base.length);
+    pushNav(`page:${pageId}`, webPageById(pageId).title);
   };
   const openWebAt = (pageId) => {
     setFrame("web");
@@ -844,7 +940,7 @@ export default function FlatApp() {
         desc: `${nodePath(v.node, tmAncestors)} · value ${fmt(v.node.value)} · ${v.node.children.length ? `${v.node.children.length} children — F descends` : "leaf — F inspects"}`,
         node: v.node, vis: v,
         onF: () => {
-          if (v.node.children.length) { setTmFocus(v.node); setTargetId(null); say(`FILES ▸ ${nodePath(v.node, tmAncestors)}`); }
+          if (v.node.children.length) { setTmFocus(v.node); setTargetId(null); pushNav(`node:${nodePath(v.node, tmAncestors)}`, nodePath(v.node, tmAncestors)); say(`FILES ▸ ${nodePath(v.node, tmAncestors)}`); }
           else say(`LEAF ${v.node.name} — value ${fmt(v.node.value)} · ${nodePath(v.node, tmAncestors)}`);
         },
       }));
@@ -852,7 +948,7 @@ export default function FlatApp() {
       raw = monitor.map((s, i) => ({
         id: `lane:${s.lane.id}`, name: s.lane.label, kind: "LANE",
         desc: `${s.lane.label.toLowerCase()} · now ${s.current.toFixed(2)} · key ${i + 1} or its label focuses the lane`,
-        onF: () => { setLaneFocus(i); say(`LANE ${s.lane.label} focused — strip magnified`); },
+        onF: () => { setLaneFocus(i); pushNav(`lane:${s.lane.id}`, s.lane.label); say(`LANE ${s.lane.label} focused — strip magnified`); },
       }));
     } else if (frame === "sunburst") {
       raw = sbVisible.map((v) => ({
@@ -860,13 +956,16 @@ export default function FlatApp() {
         desc: `${nodePath(v.node, sbAncestors)} · value ${fmt(v.node.value)} · ${v.node.children.length ? "F descends" : "leaf — F inspects"}`,
         node: v.node, vis: v,
         onF: () => {
-          if (v.node.children.length) { setSbFocus(v.node); setTargetId(null); say(`SUNBURST ▸ ${nodePath(v.node, sbAncestors)}`); }
+          if (v.node.children.length) { setSbFocus(v.node); setTargetId(null); pushNav(`node:${nodePath(v.node, sbAncestors)}`, nodePath(v.node, sbAncestors)); say(`SUNBURST ▸ ${nodePath(v.node, sbAncestors)}`); }
           else say(`LEAF ${v.node.name} — value ${fmt(v.node.value)} · ${nodePath(v.node, sbAncestors)}`);
         },
       }));
     } else if (frame === "mail") {
       if (composeOpen) {
         raw = [
+          { id: "cmp-to", name: "TO", kind: "FIELD", desc: "The To field — F enters text mode; Esc leaves it", onF: () => focusField("gui:cmp-to") },
+          { id: "cmp-subject", name: "SUBJECT", kind: "FIELD", desc: "The Subject field — F enters text mode; Esc leaves it", onF: () => focusField("gui:cmp-subject") },
+          { id: "cmp-body", name: "MESSAGE", kind: "FIELD", desc: "The message body — F enters text mode; Esc leaves it", onF: () => focusField("gui:cmp-body") },
           { id: "act:send", name: "SEND", kind: "ACTION", desc: "Send the composed message (lands in Sent)", onF: () => sendCompose() },
           { id: "act:discard", name: "DISCARD", kind: "ACTION", desc: "Discard the draft and return to the list", onF: () => { setComposeOpen(false); say("Draft discarded"); } },
         ];
@@ -877,16 +976,17 @@ export default function FlatApp() {
             desc: `${allMail.filter((m) => m.folder === fo.id).length} messages`,
             onF: () => { setMailFolder(fo.id); setMailOpenId(null); say(`MAIL ▸ ${fo.name}`); },
           })),
-          { id: "act:compose", name: "COMPOSE", kind: "ACTION", desc: "Write a message — the fields are real text mode; Esc leaves it", onF: () => { setComposeOpen(true); say("COMPOSE — click a field or Tab into it; Esc exits text mode"); } },
+          { id: "act:compose", name: "COMPOSE", kind: "ACTION", desc: "Write a message — the fields are real text mode; Esc leaves it", onF: () => { setComposeOpen(true); pushNav("compose", "COMPOSE"); say("COMPOSE — F on a field enters text mode; Esc leaves it"); } },
           ...folderMail.map((m) => ({
             id: `mail:${m.id}`, name: m.subject, kind: "MESSAGE",
             desc: `from ${m.from} · ${m.when}`,
-            onF: () => { setMailOpenId(m.id); say(`MAIL ▸ ${m.subject}`); },
+            onF: () => { setMailOpenId(m.id); pushNav(`reading:${m.id}`, m.subject); say(`MAIL ▸ ${m.subject}`); },
           })),
         ];
       }
     } else if (frame === "web") {
       raw = [
+        { id: "web-addr", name: "ADDRESS", kind: "FIELD", desc: "The address bar — F enters text mode; Enter visits a captured page; Esc leaves text mode", onF: () => focusField("gui:web-addr") },
         ...(webIndex < webHistory.length - 1 ? [{
           id: "act:web-fwd", name: "FORWARD ▸", kind: "ACTION",
           desc: `Forward to ${webPageById(webHistory[webIndex + 1]).title}`,
@@ -912,6 +1012,7 @@ export default function FlatApp() {
           desc: `${[...t.msgs, ...(chatExtra[t.id] || [])].length} messages — F opens the channel`,
           onF: () => { setChatThreadId(t.id); say(`CHAT ▸ ${t.name}`); },
         })),
+        { id: "chat-in", name: "MESSAGE FIELD", kind: "FIELD", desc: "The message field — F enters text mode; Enter sends; Esc leaves text mode", onF: () => focusField("gui:chat-in") },
         { id: "act:chat-send", name: "SEND", kind: "ACTION", desc: "Send the message in the field", onF: () => sendChat() },
       ];
     } else if (frame === "docs") {
@@ -922,9 +1023,11 @@ export default function FlatApp() {
           onF: () => { setDocId(d.id); say(`DOCUMENTS ▸ ${d.title}`); },
         })),
         { id: "act:new-doc", name: "NEW DOCUMENT", kind: "ACTION", desc: "Start an untitled document", onF: () => newDoc() },
+        { id: "doc-body", name: "EDITOR", kind: "FIELD", desc: "The document body — F enters text mode; Esc leaves it", onF: () => focusField("gui:doc-body") },
       ];
     } else if (frame === "terminal") {
       raw = [
+        { id: "term-in", name: "COMMAND LINE", kind: "FIELD", desc: "The command line — F enters text mode; Enter runs; Esc leaves text mode", onF: () => focusField("gui:term-in") },
         { id: "act:term-clear", name: "CLEAR", kind: "ACTION", desc: "Clear the scrollback", onF: () => setTermLines([]) },
       ];
     } else if (frame === "media") {
@@ -943,16 +1046,26 @@ export default function FlatApp() {
         onF: () => toggleFrame(f.id),
       }));
     } else if (frame === "flow") {
-      raw = flowGraph.nodes
-        .filter((nd) => nd.kind === "frame" || nd.kind === "subnode")
-        .map((nd) => ({
-          id: `graph:${nd.id}`, name: nd.name, kind: nd.kind === "frame" ? "FRAME NODE" : "SUBNODE",
-          desc: nd.desc || "", graphNode: nd,
-          onF: () => jumpToGraphNode(nd),
-        }));
+      if (flowView.level === 0) {
+        raw = flowGraph.nodes
+          .filter((nd) => nd.kind === "frame" || nd.kind === "subnode")
+          .map((nd) => ({
+            id: `graph:${nd.id}`, name: nd.name, kind: nd.kind === "frame" ? "FRAME NODE" : "SUBNODE",
+            desc: `${nd.desc || ""} — F brings its graph into FLOW`, graphNode: nd,
+            onF: () => { if (nd.kind === "frame") drillFlow(nd.frame); else drillFlow(nd.frame, nd.id); },
+          }));
+      } else if (frameGraph) {
+        raw = frameGraph.nodes
+          .filter((nd) => nd.kind !== "frame")
+          .map((nd) => ({
+            id: `graph:${nd.id}`, name: nd.name, kind: nd.kind === "child" ? "DETAIL" : "SUBNODE",
+            desc: nd.desc || "", graphNode: nd,
+            onF: () => selectFlowNode(nd),
+          }));
+      }
     }
     return assignLabels(raw);
-  }, [frame, tmVisible, sbVisible, laneFocus, mailFolder, folderMail, composeOpen, allMail, webPage, webIndex, webHistory, flowGraph, settings, chatThreadId, chatExtra, chatDraft, docs, docId, docSeq, mediaId, mediaPlaying, mediaPos, disabledFrames]);
+  }, [frame, tmVisible, sbVisible, laneFocus, mailFolder, folderMail, composeOpen, allMail, webPage, webIndex, webHistory, flowGraph, flowView, frameGraph, settings, chatThreadId, chatExtra, chatDraft, docs, docId, docSeq, mediaId, mediaPlaying, mediaPos, disabledFrames]);
 
   const addrById = useMemo(() => new Map(addressables.map((a) => [a.item.id, a])), [addressables]);
   const targetItem = targetId ? addrById.get(targetId) : null;
@@ -980,20 +1093,37 @@ export default function FlatApp() {
     if (frame !== "files" && frame !== "sunburst") say(`${it.item.kind} ${it.item.name} — clicked with F`);
     if (frame === "files" || frame === "sunburst") { /* onF already spoke */ }
   };
+  /* Close whatever subview the nav graph's top rung names. The
+     mirror effect pops the rung once the state has closed. */
+  const closeTopView = () => {
+    const top = navTop(navRef.current);
+    const v = top.view;
+    if (frame === "files" && v.startsWith("node:") && tmFocusNode.parent) { const p = tmFocusNode.parent; setTmFocus(p); setTargetId(null); if (p === tmRoot) updateNav((n) => navPop(n)); else pushNav(`node:${nodePath(p, tmAncestors)}`, nodePath(p, tmAncestors)); say(`FILES ▸ ${nodePath(p, tmAncestors)}`); return true; }
+    if (frame === "sunburst" && v.startsWith("node:") && sbFocusNode.parent) { const p = sbFocusNode.parent; setSbFocus(p); setTargetId(null); if (p === sbRoot) updateNav((n) => navPop(n)); else pushNav(`node:${nodePath(p, sbAncestors)}`, nodePath(p, sbAncestors)); say(`SUNBURST ▸ ${nodePath(p, sbAncestors)}`); return true; }
+    if (frame === "mail" && v === "compose") { setComposeOpen(false); updateNav((n) => navPop(n)); say("COMPOSE closed — the draft is kept"); return true; }
+    if (frame === "mail" && v.startsWith("reading:")) { setMailOpenId(null); updateNav((n) => navPop(n)); say("MAIL ▸ back to the list"); return true; }
+    if (frame === "web" && v.startsWith("page:") && webIndex > 0) { const p = webPageById(webHistory[webIndex - 1]); setWebIndex(webIndex - 1); setTargetId(null); if (webIndex - 1 === 0) updateNav((n) => navPop(n)); else pushNav(`page:${p.id}`, p.title); say(`WEB ▸ back — ${p.title}`); return true; }
+    if (frame === "monitor" && v.startsWith("lane:")) { setLaneFocus(null); updateNav((n) => navPop(n)); say("MONITOR — lane released"); return true; }
+    if (frame === "flow" && v.startsWith("flow:")) { backFlow(); return true; }
+    return false;
+  };
+  /* D — back, decided by the nav graph: pop the open subview; at a
+     frame's root, return to the frame the user came from; from
+     there, Home. D always has somewhere true to go. */
   const doBack = () => {
     clearBuffer();
-    if (frame === "files" && tmFocusNode.parent) { setTmFocus(tmFocusNode.parent); setTargetId(null); say(`FILES ▸ ${nodePath(tmFocusNode.parent, tmAncestors)}`); }
-    else if (frame === "sunburst" && sbFocusNode.parent) { setSbFocus(sbFocusNode.parent); setTargetId(null); say(`SUNBURST ▸ ${nodePath(sbFocusNode.parent, sbAncestors)}`); }
-    else if (frame === "mail" && composeOpen) { setComposeOpen(false); say("COMPOSE closed — draft kept in the fields' memory only"); }
-    else if (frame === "mail" && mailOpenId) { setMailOpenId(null); say("MAIL ▸ back to the list"); }
-    else if (frame === "web" && webIndex > 0) { const p = webPageById(webHistory[webIndex - 1]); setWebIndex(webIndex - 1); setTargetId(null); say(`WEB ▸ back — ${p.title}`); }
-    else if (frame === "monitor" && laneFocus !== null) { setLaneFocus(null); say("MONITOR — lane released"); }
-    else say("D — already at this frame's root. Esc leaves the frame.");
+    if (navTop(navRef.current).view !== "root" && closeTopView()) return;
+    const plan = navBackPlan(navRef.current);
+    if (plan.kind === "frame") { openFrame(plan.to); say(`D — back to ${frameById(plan.to).name}`); return; }
+    if (plan.kind === "home") { openFrame("home"); say("D — back to HOME"); return; }
+    say("D — Home is the root of the view graph; nowhere further back");
   };
   const doEsc = () => {
     if (drag) { setCardPos((p) => ({ ...p, [drag.id]: drag.origin })); setDrag(null); say("DRAG cancelled — card restored"); return; }
     if (buffer) { clearBuffer(); say("Buffer cleared"); return; }
+    if (navRef.current.mode === MODE_TEXT) { document.activeElement?.blur(); updateNav((n) => navExitText(n)); say("Text mode left — keys are operators again"); return; }
     if (targetId) { setTargetId(null); say("Target released"); return; }
+    if (navTop(navRef.current).view !== "root" && closeTopView()) return;
     if (frame !== "home") { openFrame("home"); return; }
     say("RELEASED — everything is at rest");
   };
@@ -1003,6 +1133,7 @@ export default function FlatApp() {
     const ids = addressables.map((a) => a.item.id);
     const i = ids.indexOf(targetId);
     const next = addressables[(i + 1) % addressables.length];
+    setHoverId(null);
     setTargetId(next.item.id);
     say(`TARGET ${next.label} — ${next.item.name}`);
   };
@@ -1029,7 +1160,7 @@ export default function FlatApp() {
     if (res.kind === "match") {
       const hit = addressables.find((a) => a.label === res.label);
       bufferRef.current = ""; setBuffer("");
-      if (hit) { setTargetId(hit.item.id); say(`TARGET ${hit.label} — ${hit.item.name}. F clicks it.`); }
+      if (hit) { setHoverId(null); setTargetId(hit.item.id); say(`TARGET ${hit.label} — ${hit.item.name}. F clicks it.`); }
     } else if (res.kind === "pending") {
       bufferRef.current = next; setBuffer(next);
       const token = tokenRef.current;
@@ -1038,7 +1169,7 @@ export default function FlatApp() {
         const cur = bufferRef.current;
         const hit = addressables.find((a) => a.label === cur);
         bufferRef.current = ""; setBuffer("");
-        if (hit) { setTargetId(hit.item.id); say(`TARGET ${hit.label} — ${hit.item.name}. F clicks it.`); }
+        if (hit) { setHoverId(null); setTargetId(hit.item.id); say(`TARGET ${hit.label} — ${hit.item.name}. F clicks it.`); }
       }, 800);
     } else {
       bufferRef.current = ""; setBuffer("");
@@ -1054,9 +1185,14 @@ export default function FlatApp() {
   useEffect(() => {
     const onKey = (e) => {
       const t = e.target;
-      if (t && isTextEntryControl(t.tagName, t instanceof HTMLInputElement ? t.type : "", t.isContentEditable)) {
-        if (e.key === "Escape") { t.blur(); }
-        return; // text mode: keys are text, only Esc is monitored
+      /* Text mode is state (the nav graph), with DOM focus as the
+         backstop: while it lasts, keys are text and only Esc is
+         monitored — Esc leaves the mode, as in KeyPilot. */
+      const inText = (navRef.current && navRef.current.mode === MODE_TEXT)
+        || (t && isTextEntryControl(t.tagName, t instanceof HTMLInputElement ? t.type : "", t.isContentEditable));
+      if (inText) {
+        if (e.key === "Escape") { t.blur(); setNav((n) => { const next = navExitText(n); navRef.current = next; return next; }); }
+        return;
       }
       if (e.metaKey || e.ctrlKey) return;
       if (e.altKey) {
@@ -1065,10 +1201,13 @@ export default function FlatApp() {
       }
       const st = R.current;
       const act = A.current;
-      if (e.key === "Escape") { e.preventDefault(); act.doEsc(); return; }
-      if (e.key === "Tab") { e.preventDefault(); act.cycleTarget(); return; }
-      if (e.key === "Enter") { e.preventDefault(); act.doF(); return; }
-      if (e.key === "`") { openFrame("home"); return; }
+      /* Operators dispatch inside flushSync: the state they change
+         is committed before the next keydown is processed, so a
+         rapid F D Esc sequence never reads a stale closure. */
+      if (e.key === "Escape") { e.preventDefault(); flushSync(() => act.doEsc()); return; }
+      if (e.key === "Tab") { e.preventDefault(); flushSync(() => act.cycleTarget()); return; }
+      if (e.key === "Enter") { e.preventDefault(); flushSync(() => act.doF()); return; }
+      if (e.key === "`") { flushSync(() => openFrame("home")); return; }
       if (e.key === "/") { e.preventDefault(); setSearchOpen(true); return; }
       if (e.key === " ") {
         e.preventDefault();
@@ -1101,33 +1240,24 @@ export default function FlatApp() {
         }
         return;
       }
-      if (e.key === "f" || e.key === "F") { e.preventDefault(); act.doF(); return; }
-      if (e.key === "d" || e.key === "D") { e.preventDefault(); act.doBack(); return; }
-      if (e.key === "v" || e.key === "V") { e.preventDefault(); act.doDolly(1); return; }
-      if (e.key === "c" || e.key === "C") { e.preventDefault(); act.doDolly(-1); return; }
+      if (e.key === "f" || e.key === "F") { e.preventDefault(); flushSync(() => act.doF()); return; }
+      if (e.key === "d" || e.key === "D") { e.preventDefault(); flushSync(() => act.doBack()); return; }
+      if (e.key === "v" || e.key === "V") { e.preventDefault(); flushSync(() => act.doDolly(1)); return; }
+      if (e.key === "c" || e.key === "C") { e.preventDefault(); flushSync(() => act.doDolly(-1)); return; }
       if (st.frame === "monitor" && /^[1-8]$/.test(e.key)) {
         const i = Number(e.key) - 1;
-        setLaneFocus(i);
-        setTargetId(`lane:${monitor[i].lane.id}`);
-        say(`LANE ${monitor[i].lane.label} focused`);
+        flushSync(() => {
+          setLaneFocus(i);
+          setTargetId(`lane:${monitor[i].lane.id}`);
+          pushNav(`lane:${monitor[i].lane.id}`, monitor[i].lane.label);
+          say(`LANE ${monitor[i].lane.label} focused`);
+        });
         return;
       }
-      if (isLabelKey(e.key)) { act.pushLabel(e.key.toUpperCase()); }
+      if (isLabelKey(e.key)) { flushSync(() => act.pushLabel(e.key.toUpperCase())); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  /* text-mode tracking: any focus landing in a text control is text mode */
-  useEffect(() => {
-    const onFocusIn = (e) => {
-      const t = e.target;
-      setTextMode(Boolean(t && isTextEntryControl(t.tagName, t instanceof HTMLInputElement ? t.type : "", t.isContentEditable)));
-    };
-    const onFocusOut = () => setTextMode(false);
-    document.addEventListener("focusin", onFocusIn);
-    document.addEventListener("focusout", onFocusOut);
-    return () => { document.removeEventListener("focusin", onFocusIn); document.removeEventListener("focusout", onFocusOut); };
   }, []);
 
   /* The dolly origin tracks whatever is being looked at. Rects are
@@ -1151,9 +1281,10 @@ export default function FlatApp() {
     });
   }, [targetId, hoverId, frame, dolly]);
 
+  const textMode = nav.mode === MODE_TEXT;
   const scopes = ["shell", frame, ...(textMode ? ["text"] : [])];
   const board = resolveBoard(scopes);
-  const modeName = textMode ? "TEXT" : drag ? "DRAG LOCK" : searchOpen ? "SEARCH" : "KEY-CLICK";
+  const modeName = textMode ? `TEXT — ${nav.textField || "FIELD"}` : drag ? "DRAG LOCK" : searchOpen ? "SEARCH" : "KEY-CLICK";
 
   /* ---------------- render helpers ---------------- */
   const labelOf = (id) => addrById.get(id)?.label || "";
@@ -1196,12 +1327,12 @@ export default function FlatApp() {
 
   const guideText = {
     home: "The bulletin board. Cards are the frames plus the operations stream. Type a card's label to target it, F opens it, Space picks it up and drops it somewhere else on the board.",
-    files: "The Flat UI file navigator: the flare hierarchy as a 2D treemap, laid out by NCTGraphite's treemap module. F on a branch descends; F on a leaf inspects it. D climbs, Esc releases.",
+    files: "The Flat UI file navigator: this machine's filesystem — home, usr, var and all — as a 2D treemap, laid out by NCTGraphite's treemap module. F on a branch descends; F on a leaf inspects it. D climbs, Esc releases.",
     monitor: "Realtime horizon chart — demo-de's first Flat UI frame, hosted here. Keys 1–8 or a lane's label focus and magnify it; Space holds time.",
     sunburst: "The ZUI viewer on the 2D plane: the same hierarchy as FILES, as a sunburst. F descends a branch, D climbs, the centre goes back too.",
     mail: "Folders, list, reading. F opens; COMPOSE's fields are real text mode — while you type, keys are text and only Esc is monitored. SEND lands the message in Sent.",
     web: "The captured web, Detach-style: the page is rebuilt as the environment's furniture and its links are subnodes — type a link's label, F follows it. D is the back button (it is the frame's own back). The address bar takes the captured pages' addresses; the live web rides the local bridge in a later slice.",
-    flow: "The environment drawn as what it is: a user flow graph. Shell → frames → subnodes; edges are the real access operations — F opens and descends, D climbs back, Esc releases to Home, / jumps anywhere. Every usual Linux activity now has a frame — the graph's gap row is empty. Every drawn node here is addressable: F on a node goes to the thing itself.",
+    flow: "The environment drawn as what it is: a user flow graph. Shell → frames → subnodes; edges are the real access operations — F descends, D climbs back, Esc releases to Home, / jumps anywhere. F on a node no longer leaves FLOW: it brings that frame's own graph into this view — its subnodes and their contents, the data itself — and D climbs back out level by level. The frames' graphs live here now. Every usual Linux activity has a frame — the graph's gap row is empty.",
     settings: "The environment's own controls, as app-kit controls: accent, dolly step, label chips, monitor rate. They take effect immediately, everywhere — F on a setting cycles or flips it, or drag the control itself.",
     chat: "Channels and messaging. Pick a channel on the left; write in the field and Enter (or SEND) posts it — the other side answers. The field is real text mode while you type.",
     docs: "Documents and text editing. Pick a document; the editor is a real text area (text mode while you type, Esc leaves it). Words are counted live; everything is kept in the environment's memory.",
@@ -1213,7 +1344,10 @@ export default function FlatApp() {
   const paramsFor = { monitor: monParams, sunburst: sbParams, files: fileParams }[frame];
 
   return (
-    <div className={`fl-page ${settings.chips ? "" : "no-chips"}`} style={{ "--fl-accent": ACCENTS[settings.accent].hex }} onMouseMove={(e) => { mouseRef.current = { x: e.clientX, y: e.clientY }; }}>
+    <div className={`fl-page ${settings.chips ? "" : "no-chips"}`} style={{ "--fl-accent": ACCENTS[settings.accent].hex }} onMouseMove={(e) => { mouseRef.current = { x: e.clientX, y: e.clientY }; }}
+      onFocusCapture={(e) => { const t = e.target; if (isTextEntryControl(t.tagName, t instanceof HTMLInputElement ? t.type : "", t.isContentEditable)) { const g = t.closest("[data-gui-node]"); const labels = { "gui:cmp-to": "COMPOSE · TO", "gui:cmp-subject": "COMPOSE · SUBJECT", "gui:cmp-body": "COMPOSE · MESSAGE", "gui:doc-body": "DOCUMENT · BODY", "gui:chat-in": "CHAT · MESSAGE", "gui:term-in": "TERMINAL · COMMAND", "gui:web-addr": "WEB · ADDRESS" }; setNav((n) => navEnterText(n, (g && labels[g.getAttribute("data-gui-node")]) || "TEXT FIELD")); } }}
+      onBlurCapture={(e) => { const rt = e.relatedTarget; const rtText = rt && isTextEntryControl(rt.tagName, rt instanceof HTMLInputElement ? rt.type : "", rt.isContentEditable); if (!rtText) setNav((n) => (n.mode === MODE_TEXT ? navExitText(n) : n)); }}
+      onClickCapture={(e) => { const b = e.target.closest && e.target.closest("button"); if (b) b.blur(); }}>
       <style>{css}</style>
       <header className="fl-top">
         <strong>FLAT SPACE</strong>
@@ -1265,11 +1399,12 @@ export default function FlatApp() {
             {frame === "sunburst" && sbAncestors(sbFocusNode).map((n, i, arr) => (
               <span key={i}><button onClick={(e) => { setSbFocus(n); setTargetId(null); e.currentTarget.blur(); }}>{n.name}</button>{i < arr.length - 1 ? " ▸ " : ""}</span>
             ))}
-            {frame === "mail" && <span>MAIL ▸ {FOLDERS.find((f) => f.id === mailFolder)?.name}{openMail ? ` ▸ ${openMail.subject}` : ""}{composeOpen ? " ▸ Compose" : ""}</span>}
-            {frame === "monitor" && <span>MONITOR ▸ {laneFocus === null ? "all lanes" : monitor[laneFocus].lane.label}</span>}
+            {nav.stack.length > 1 && frame !== "files" && frame !== "sunburst" && <span>{navCrumbs(nav).join(" ▸ ")}</span>}
+            {frame === "mail" && nav.stack.length === 1 && <span>MAIL ▸ {FOLDERS.find((f) => f.id === mailFolder)?.name}</span>}
+            {frame === "monitor" && nav.stack.length === 1 && <span>MONITOR ▸ all lanes</span>}
             {frame === "home" && <span>HOME ▸ bulletin board{drag ? ` ▸ dragging ${drag.id}` : ""}</span>}
-            {frame === "web" && <span>WEB ▸ {webHistory.slice(0, webIndex + 1).map((h) => webPageById(h).title).join(" ▸ ")}</span>}
-            {frame === "flow" && <span>FLOW ▸ {flowGraph.nodes.length} nodes · {flowGraph.edges.length} access edges · F on a node goes there</span>}
+            {frame === "web" && nav.stack.length === 1 && <span>WEB ▸ {webPage.title}</span>}
+            {frame === "flow" && nav.stack.length === 1 && <span>FLOW ▸ {flowGraph.nodes.length} nodes · {flowGraph.edges.length} access edges · F on a node brings its graph here</span>}
             <span className="fl-buffer">{buffer ? `key buffer: ${buffer}▸` : ""}</span>
           </div>
 
@@ -1525,6 +1660,7 @@ export default function FlatApp() {
                   components={HOST_COMPONENTS} addressing={NO_ADDRESSING}
                   values={{ "gui:host": { surface: (
                     <div className="fl-flow">
+              {flowView.level === 0 || !frameGraph || !frameLayout ? (<>
               <div className="fl-flow-canvas">
                 <svg viewBox={`0 0 ${flowLayout.w} ${flowLayout.h}`} className="fl-flow-svg">
                   {flowGraph.edges.filter((e) => ["OPEN", "F", "ESC", "NOT YET"].includes(e.via)).map((e, i) => {
@@ -1573,6 +1709,58 @@ export default function FlatApp() {
                 </div>
                 <p className="fl-flow-note">Edges drawn: F — open / descend / follow (teal), Esc — release to Home (amber dashed), NOT YET (grey dashed). Tab enters each frame's subnode cycle and / search-jumps straight to any node; those two paths reach everything, so they are stated here rather than drawn. Branch subnodes (FILES, SUNBURST) continue below the ones drawn — subnodes exist by descent, as deep as the data goes. Dolly with V and C into whatever you are looking at.</p>
               </div>
+              </>) : (<>
+              <div className="fl-flow-head">{frameById(flowView.frame).name} — ITS GRAPH, INSIDE FLOW · F opens a node here · D climbs back a level · the view never leaves FLOW</div>
+              <div className="fl-flow-canvas">
+                <svg viewBox={`0 0 ${frameLayout.w} ${frameLayout.h}`} className="fl-flow-svg">
+                  {frameGraph.edges.map((e, i) => {
+                    const a = frameLayout.pos.get(e.from);
+                    const bq = frameLayout.pos.get(e.to);
+                    if (!a || !bq) return null;
+                    return <line key={i} x1={a.x} y1={a.y} x2={bq.x} y2={bq.y} className={`fl-flow-edge ${e.via === "D" ? "esc" : "fwd"}`} />;
+                  })}
+                  {frameGraph.nodes.map((nd) => {
+                    const p = frameLayout.pos.get(nd.id);
+                    if (!p) return null;
+                    const e2 = entry(`graph:${nd.id}`);
+                    const isFrame = nd.kind === "frame";
+                    const isChild = nd.kind === "child";
+                    const w = isFrame ? 150 : isChild ? 250 : 216;
+                    const h = isFrame ? 26 : 22;
+                    return (
+                      <g key={nd.id} data-flow-node={nd.id} {...(e2 ? bind(e2) : {})}>
+                        <rect x={p.x - w / 2} y={p.y - h / 2} width={w} height={h} rx={4}
+                          className={`fl-flow-node ${isFrame ? "frame" : isChild ? "child" : "sub"} ${e2 ? stateCls(e2.item.id) : ""} ${flowView.sub === nd.id ? "selected" : ""}`}
+                          style={isFrame ? { stroke: frameById(nd.frame)?.color } : undefined} />
+                        <text x={p.x + (e2 ? 16 : 0)} y={p.y + 3.5} className={`fl-flow-t ${isFrame ? "frame" : ""}`}>{(nd.name || "").slice(0, isFrame ? 16 : 34)}</text>
+                      </g>
+                    );
+                  })}
+                </svg>
+                {addressables.map((a) => {
+                  const p = frameLayout.pos.get(a.item.graphNode.id);
+                  if (!p) return null;
+                  const w2 = a.item.graphNode.kind === "child" ? 250 : 216;
+                  const left = (p.x - w2 / 2 + 4) / frameLayout.w * 100;
+                  return <span key={a.item.id} className="fl-chip fl-flow-chip" style={{ left: `${left}%`, top: `${(p.y / frameLayout.h) * 100}%` }}>{a.label}</span>;
+                })}
+              </div>
+              {flowView.level === 2 && (() => {
+                const sel = frameGraph.nodes.find((nd) => nd.id === flowView.sub);
+                if (!sel) return null;
+                const kids = sel.kind === "subnode" ? frameGraph.nodes.filter((nd) => nd.kind === "child" && nd.parentSub === sel.id) : [];
+                const parent = sel.kind === "child" ? frameGraph.nodes.find((nd) => nd.id === sel.parentSub) : null;
+                return (
+                  <div className="fl-flow-detail">
+                    <h4>{sel.name}</h4>
+                    {sel.desc ? <p>{sel.desc}</p> : null}
+                    {parent && <p className="dim">inside {parent.name} · {frameById(flowView.frame).name}</p>}
+                    {kids.length > 0 && (<ul>{kids.slice(0, 10).map((k) => <li key={k.id}>{k.name} <span className="dim">— {k.desc}</span></li>)}</ul>)}
+                    {sel.kind === "subnode" && kids.length === 0 && <p className="dim">A leaf of this graph — the living version is in {frameById(flowView.frame).name} itself; D climbs back.</p>}
+                  </div>
+                );
+              })()}
+              </>)}
                     </div>
                   ) } }} />
               )}
@@ -1823,6 +2011,14 @@ const css = `
 .fl-act-chip { font-size:11px; padding:4px 9px; border-radius:4px; border:1px solid rgba(127,212,193,.5); color:#a9f0dd; }
 .fl-act-chip.gap { border-style:dashed; border-color:#546e7a; color:#8fa3ab; }
 .fl-flow-note { font-size:11.5px; line-height:1.65; color:#8fa3ab; margin:11px 0 0; }
+.fl-flow-node.child { fill:#0a1013; stroke:#22303a; stroke-width:1; cursor:pointer; }
+.fl-flow-node.selected { stroke:var(--fl-accent, #ffa726); stroke-width:1.6; }
+.fl-flow-head { font-family:Consolas, monospace; font-size:11px; letter-spacing:1px; color:#a9f0dd; border:1px solid #22303a; border-radius:6px; background:#0d1216; padding:8px 12px; margin-bottom:10px; }
+.fl-flow-detail { margin-top:12px; border:1px solid var(--fl-accent, #ffa726); border-radius:6px; background:#0d1216; padding:12px 14px; max-width:640px; }
+.fl-flow-detail h4 { margin:0 0 6px; font-size:12.5px; color:#e8f3ee; font-family:Consolas, monospace; }
+.fl-flow-detail p { margin:0 0 6px; font-size:12px; line-height:1.6; color:#cfd8dc; }
+.fl-flow-detail p.dim, .fl-flow-detail .dim { color:#8fa3ab; }
+.fl-flow-detail ul { margin:6px 0 0; padding-left:16px; font-size:12px; line-height:1.7; color:#cfd8dc; }
 /* Short viewports: the Navigator overlay compresses — key names stay,
    descriptions move to the keyboard panel (Alt+K) and the guide. */
 @media (max-height: 840px) {
