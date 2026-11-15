@@ -38,17 +38,23 @@ here, separately from the originals:
 
 | Directory | Source repository | Copied at commit |
 | --- | --- | --- |
-| `NCTGraphite/` | https://github.com/noctivagous/NCTGraphite | `d67a5d5` |
-| `paramorphic-components/` | https://github.com/noctivagous/paramorphic-components | `eb2be5f` |
+| `NCTGraphite/` | https://github.com/noctivagous/NCTGraphite | `8cac292` |
+| `paramorphic-components/` | https://github.com/noctivagous/paramorphic-components | `8b4c69a` |
 
 They are ordinary tracked files in this repo — no submodule init is needed
 after cloning. The only omission: paramorphic-components' four
 `web-artifacts/*.tar.gz` archives (78 KB of binary bundles) are not carried,
 because this repo's upload path is text-only; they remain in the source repo.
+(On the development branch both directories are git submodules pinned at
+these same commits; main carries the identical content as plain copies.)
 
-Local additions to the NCTGraphite copy so far: the iGeo panelization
-port (`packages/nctgraphite/src/panelization/`), the data-tree module
-(`packages/nctgraphite/src/datatree/`) — Grasshopper's branch-path data
-model with flatten / graft / simplify — and the tangled-tree layout
-(`packages/nctgraphite/src/tangle/`), a verified port of Abrate's
-`constructTangleLayout`.
+The NCTGraphite copy carries the layout/data modules built in demo-de —
+the iGeo panelization port (`packages/nctgraphite/src/panelization/`), the
+data-tree module (`packages/nctgraphite/src/datatree/`) — Grasshopper's
+branch-path data model with flatten / graft / simplify — the tangled-tree
+layout (`packages/nctgraphite/src/tangle/`), a verified port of Abrate's
+`constructTangleLayout`, and the treemap / sunburst / horizon layout
+modules. All of them are also upstream at the copied commit. The
+paramorphic-components copy carries the app-kit features backwards-derived
+from Flat Space: the AddressedGui key-click addressing layer, the
+text-block control, the onSubmit channel, and the host-renderer seam.

@@ -6,7 +6,8 @@
  * (key handling) — the two can never drift:
  *
  *  1. ADDRESSING. Every targetable thing wears a label from an alphabet
- *     that skips D and F — the operators are not addresses (the house
+ *     that skips the operator letters — C and V (dolly out / in), D
+ *     (back), F (click). The operators are not addresses (the house
  *     rule of every demo-de page). Labels run spreadsheet-style past
  *     the single letters.
  *
@@ -27,7 +28,7 @@
  *     press time and at render time from the same tables.
  */
 
-export const LABEL_ALPHABET = "ABCEGHIJKLMNOPQRSTUVWXYZ"; // no D, no F
+export const LABEL_ALPHABET = "ABEGHIJKLMNOPQRSTUWXYZ"; // no C, D, F, V — the operators
 
 export function labelForIndex(i) {
   const A = LABEL_ALPHABET;
@@ -128,6 +129,8 @@ export const KEY_BINDINGS = {
   shell: {
     KeyF: b("CLICK", "Click the targeted or hovered thing"),
     KeyD: b("BACK", "Go back within the frame's own scope"),
+    KeyV: b("DOLLY IN", "Dolly the view in — into whatever is being looked at (the target, else the hover, else the stage centre)"),
+    KeyC: b("DOLLY OUT", "Dolly the view out — back from whatever is being looked at"),
     Escape: b("RELEASE", "Release: leave the frame, clear the target"),
     Tab: b("NEXT", "Target the next addressable thing"),
     Enter: b("OPEN", "Open the targeted thing (same as F)"),
@@ -152,6 +155,24 @@ export const KEY_BINDINGS = {
   },
   mail: {
     Enter: b("OPEN", "Open the targeted message"),
+  },
+  settings: {
+    Enter: b("APPLY", "Apply the targeted setting (same as F)"),
+  },
+  chat: {
+    Enter: b("SEND", "Send the message written in the field"),
+  },
+  docs: {
+    Enter: b("OPEN", "Open the targeted document"),
+  },
+  terminal: {
+    Enter: b("RUN", "Run the command written in the field"),
+  },
+  media: {
+    Space: b("PLAY / PAUSE", "Play or pause the selected item"),
+  },
+  software: {
+    Enter: b("TOGGLE", "Enable or disable the targeted frame"),
   },
   text: {
     Escape: b("EXIT TEXT", "Leave text mode; keys become clicks again"),

@@ -45,7 +45,10 @@ try {
   const readout = () => page.getByTestId("readout").innerText();
 
   check("page loads: FLAT SPACE top bar", await page.locator(".fl-top strong").innerText().then((t) => t.includes("FLAT SPACE")));
-  check("home: 6 cards on the board", (await page.locator(".fl-card").count()) === 6);
+const cardCount = () => page.locator("[data-gui-node]").evaluateAll((els) => els.filter((e) => /^gui:card:[^:]+$/.test(e.getAttribute("data-gui-node"))).length);
+  check("home: 14 cards on the board", (await cardCount()) === 14);
+  const stageBox = await page.locator(".fl-stage").boundingBox();
+  check("stage fills the whole viewport (panels are overlays)", stageBox && stageBox.x === 0 && stageBox.y === 0 && stageBox.width === 1600 && stageBox.height === 1000, JSON.stringify(stageBox));
 
   // Label targeting: B = FILES card.
   await page.keyboard.press("b");
@@ -90,10 +93,10 @@ try {
   await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
   await page.waitForTimeout(100);
-  check("Esc Esc returns HOME", (await page.locator(".fl-card").count()) === 6);
+  check("Esc Esc returns HOME", (await cardCount()) === 14);
 
-  // Monitor via label C + F.
-  await page.keyboard.press("c");
+  // Monitor via label E + F (alphabet: A B E G H I J K — C is dolly out).
+  await page.keyboard.press("e");
   await page.keyboard.press("f");
   await page.waitForSelector(".fl-lane", { timeout: 3000 });
   check("MONITOR: 8 lanes", (await page.locator(".fl-lane").count()) === 8);
@@ -107,10 +110,10 @@ try {
   await page.keyboard.press("Escape"); // clears the lane target first
   await page.keyboard.press("Escape"); // then leaves the frame
   await page.waitForTimeout(100);
-  check("Esc Esc from monitor returns HOME", (await page.locator(".fl-card").count()) === 6);
+  check("Esc Esc from monitor returns HOME", (await cardCount()) === 14);
 
   // Drag-lock on home: hover FILES card, Space, move, Space drops.
-  const card = page.locator(".fl-card").nth(1);
+  const card = page.locator('[data-gui-node="gui:card:files"]');
   const box = await card.boundingBox();
   const leftBefore = await card.evaluate((el) => el.style.left);
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -145,43 +148,198 @@ try {
   await page.keyboard.press("Escape");
   await page.waitForTimeout(100);
 
-  // Mail: label G is MAIL card on home.
-  check("back HOME for mail", (await page.locator(".fl-card").count()) === 6);
+  // Mail: label H is MAIL card on home.
+  check("back HOME for mail", (await cardCount()) === 14);
   // The cursor is still resting on the FILES card from the drag test,
   // and hover wins for F — move it to neutral chrome so the label
   // target is the addressee here.
   await page.mouse.move(20, 20);
   await page.waitForTimeout(100);
-  await page.keyboard.press("g");
+  await page.keyboard.press("h");
   await page.keyboard.press("f");
-  await page.waitForSelector(".fl-msg", { timeout: 3000 });
-  check("MAIL: inbox messages listed", (await page.locator(".fl-msg").count()) === 3);
-  await page.locator(".fl-msg").first().click();
+  await page.waitForSelector('[data-gui-node^="gui:mail:"]', { timeout: 3000 });
+  check("MAIL: inbox messages listed", (await page.locator("[data-gui-node]").evaluateAll((els) => els.filter((e) => /^gui:mail:[^:]+$/.test(e.getAttribute("data-gui-node"))).length)) === 3);
+  await page.locator('[data-gui-node^="gui:mail:"] .gui-panel-title').first().click();
   await page.waitForTimeout(120);
-  check("click opens message in reading pane", (await page.locator(".fl-mail-read h4").innerText()).includes("KeyPilot"));
+  check("click opens message in reading pane", (await page.locator('[data-gui-node="gui:read"] .gui-panel-title').innerText()).includes("KeyPilot"));
   await page.keyboard.press("d");
   await page.waitForTimeout(100);
-  check("D backs to list (reading pane cleared)", (await page.locator(".fl-mail-read .fl-empty").count()) === 1);
+  check("D backs to list (reading pane cleared)", (await page.locator('[data-gui-node="gui:read:body"]').innerText()).includes("Open a message with F"));
 
   // Compose: real text mode — F typed into a field must not click.
-  await page.locator(".fl-folder.compose").click();
-  await page.waitForSelector("#cmp-to", { timeout: 3000 });
-  await page.click("#cmp-to");
+  await page.locator('[data-gui-node="gui:act:compose"]').click();
+  await page.waitForSelector('[data-gui-node="gui:cmp-to"] input', { timeout: 3000 });
+  await page.click('[data-gui-node="gui:cmp-to"] input');
   await page.keyboard.type("friend@example.com");
   await page.keyboard.type("fff"); // would be clicks outside text mode
-  check("text mode: fff lands in the To field", (await page.inputValue("#cmp-to")) === "friend@example.comfff");
+  check("text mode: fff lands in the To field", (await page.inputValue('[data-gui-node="gui:cmp-to"] input')) === "friend@example.comfff");
   check("mode chip reads TEXT", (await page.locator(".fl-mode").innerText()).includes("TEXT"));
   await page.keyboard.press("Escape"); // exits text mode (blur)
-  await page.click("#cmp-subject");
+  await page.click('[data-gui-node="gui:cmp-subject"] input');
   await page.keyboard.type("Driven test");
-  await page.click("#cmp-body");
+  await page.click('[data-gui-node="gui:cmp-body"] textarea');
   await page.keyboard.type("Sent by the driven-key harness.");
   await page.keyboard.press("Escape");
   // SEND is the first compose action (label A): target + F.
   await page.keyboard.press("a");
   await page.keyboard.press("f");
   await page.waitForTimeout(200);
-  check("SEND lands message in Sent", (await page.locator(".fl-msg h5").first().innerText()).includes("Driven test"));
+  check("SEND lands message in Sent", (await page.locator('[data-gui-node^="gui:mail:"] .gui-panel-title').first().innerText()).includes("Driven test"));
+
+  // OVERLAYS: collapse the Inspector by clicking its overlay button,
+  // then prove the keys still work afterwards (backtick home).
+  await page.locator(".fl-insp .fl-collapse").click();
+  await page.waitForTimeout(250);
+  check("inspector overlay collapses", (await page.locator(".fl-insp").getAttribute("class")).includes("closed"));
+  await page.keyboard.press("`");
+  await page.waitForTimeout(100);
+  check("keys work after overlay click: backtick reaches HOME", (await cardCount()) === 14);
+  await page.locator(".fl-tab.right").click();
+  await page.waitForTimeout(250);
+  check("inspector reopens from its tab", !(await page.locator(".fl-insp").getAttribute("class")).includes("closed"));
+
+  // DOLLY: V dollies into the targeted thing, C dollies back out.
+  await page.mouse.move(20, 20);
+  await page.keyboard.press("b"); // target FILES card
+  await page.keyboard.press("v");
+  await page.waitForTimeout(120);
+  check("V dollies in (readout ×1.25)", (await readout()).includes("DOLLY") && (await readout()).includes("×1.25"));
+  const tf = await page.locator(".fl-dolly").evaluate((el) => el.style.transform);
+  check("dolly transform applied to the stage content", tf.includes("1.25"), tf);
+  await page.keyboard.press("c");
+  await page.waitForTimeout(120);
+  check("C dollies back out to ×1", (await readout()).includes("×1"));
+
+  // WEB: label I is the WEB card. Links are subnodes; D is history back.
+  await page.keyboard.press("i");
+  await page.keyboard.press("f");
+  await page.waitForSelector('[data-gui-node="gui:page"]', { timeout: 3000 });
+  check("WEB: start page renders", (await page.locator('[data-gui-node="gui:page"] .gui-panel-title').innerText()).includes("Start"));
+  await page.keyboard.press("a"); // first link on the page
+  await page.keyboard.press("f");
+  await page.waitForTimeout(200);
+  check("F follows a link to the article", (await page.locator('[data-gui-node="gui:page"] .gui-panel-title').innerText()).includes("Tech Weekly"));
+  await page.keyboard.press("d");
+  await page.waitForTimeout(150);
+  check("D is history back to Start", (await page.locator('[data-gui-node="gui:page"] .gui-panel-title').innerText()).includes("Start"));
+  await page.keyboard.press("Escape"); // leave the frame
+  await page.waitForTimeout(100);
+
+  // FLOW: label J is the FLOW card. The graph renders frames,
+  // subnodes and the six gap nodes; F on a node goes to the thing.
+  await page.keyboard.press("j");
+  await page.keyboard.press("f");
+  await page.waitForSelector(".fl-flow-svg", { timeout: 3000 });
+  const flowNodes = await page.locator(".fl-flow-node").count();
+  check(`FLOW: graph renders frame + subnode nodes (${flowNodes})`, flowNodes > 40);
+  check("FLOW: no gap nodes left — every usual activity has a frame", (await page.locator(".fl-flow-gap").count()) === 0);
+  check("FLOW: availability strip lists 11 activities", (await page.locator(".fl-act-chip").count()) === 11);
+  check("FLOW: no activities marked not yet", (await page.locator(".fl-act-chip.gap").count()) === 0);
+  const jumpLabel = await page.evaluate(() => {
+    const gs = [...document.querySelectorAll(".fl-flow-svg g")];
+    const idx = gs.findIndex((g) => g.querySelector("text")?.textContent === "analytics");
+    return idx > 0 ? document.querySelectorAll(".fl-flow-chip")[idx - 1]?.textContent.trim() : null;
+  });
+  check("found the FILES analytics subnode in the graph", Boolean(jumpLabel), `label=${jumpLabel}`);
+  await page.keyboard.type(jumpLabel.toLowerCase());
+  await page.keyboard.press("f");
+  await page.waitForSelector(".fl-tm", { timeout: 3000 });
+  check("F on the graph node jumps into FILES, descended", (await page.locator(".fl-crumbs").innerText()).includes("analytics"));
+
+  // SETTINGS (card K): F on the ACCENT setting cycles it, live.
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(120);
+  check("back HOME for settings", (await cardCount()) === 14);
+  await page.mouse.move(20, 20);
+  await page.keyboard.press("k");
+  await page.keyboard.press("f");
+  await page.waitForSelector('[data-gui-node="gui:set:accent"]', { timeout: 3000 });
+  await page.keyboard.press("a");
+  await page.keyboard.press("f");
+  await page.waitForTimeout(150);
+  check("SETTINGS: F cycles accent AMBER -> TEAL", (await page.locator('[data-gui-node="gui:set-val-accent"]').innerText()).includes("TEAL"));
+
+  // CHAT (card L): type in the field, Enter sends, the channel answers.
+  await page.keyboard.press("`");
+  await page.waitForTimeout(120);
+  await page.keyboard.press("l");
+  await page.keyboard.press("f");
+  await page.waitForSelector('[data-gui-node="gui:chat-in"] input', { timeout: 3000 });
+  await page.click('[data-gui-node="gui:chat-in"] input');
+  await page.keyboard.type("hello relay");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(200);
+  check("CHAT: Enter sends the message", (await page.locator('[data-gui-node="gui:chat-panel"]').innerText()).includes("hello relay"));
+  await page.waitForTimeout(900);
+  check("CHAT: the channel answers", (await page.locator('[data-gui-node="gui:chat-panel"]').innerText()).includes("Relay copies that."));
+
+  // DOCUMENTS (card M): the editor is a real text area; words count live.
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("`");
+  await page.waitForTimeout(120);
+  await page.keyboard.press("m");
+  await page.keyboard.press("f");
+  await page.waitForSelector('[data-gui-node="gui:doc-body"] textarea', { timeout: 3000 });
+  check("DOCUMENTS: field notes opens at 31 words", (await page.locator('[data-gui-node="gui:doc-meta"]').innerText()).includes("31 words"));
+  await page.click('[data-gui-node="gui:doc-body"] textarea');
+  await page.keyboard.type(" Again.");
+  await page.waitForTimeout(200);
+  check("DOCUMENTS: typing updates the word count", (await page.locator('[data-gui-node="gui:doc-meta"]').innerText()).includes("32 words"));
+
+  // TERMINAL (card N): commands run; open <frame> really jumps.
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("`");
+  await page.waitForTimeout(120);
+  await page.keyboard.press("n");
+  await page.keyboard.press("f");
+  await page.waitForSelector('[data-gui-node="gui:term-in"] input', { timeout: 3000 });
+  await page.click('[data-gui-node="gui:term-in"] input');
+  await page.keyboard.type("graph");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(200);
+  check("TERMINAL: graph reports the flow graph", (await page.locator('[data-gui-node="gui:term-panel"]').innerText()).includes("0 gaps"));
+  await page.keyboard.type("open files");
+  await page.keyboard.press("Enter");
+  await page.waitForSelector(".fl-tm", { timeout: 3000 });
+  check("TERMINAL: open files jumps to FILES", true);
+
+  // MEDIA (card O): F on an item plays it; Space pauses.
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("`");
+  await page.waitForTimeout(120);
+  await page.keyboard.press("o");
+  await page.keyboard.press("f");
+  await page.waitForSelector('[data-gui-node="gui:media-panel"]', { timeout: 3000 });
+  await page.keyboard.press("a");
+  await page.keyboard.press("f");
+  await page.waitForTimeout(200);
+  check("MEDIA: F plays the first item", (await page.locator('[data-gui-node="gui:media-title"]').innerText()).includes("Horizon Suite"));
+  await page.keyboard.press(" ");
+  await page.waitForTimeout(150);
+  check("MEDIA: Space pauses", (await page.locator('[data-gui-node="gui:media-title"]').innerText()).includes("paused"));
+
+  // SOFTWARE (card P): disabling FILES removes its card and rail entry.
+  await page.keyboard.press("`");
+  await page.waitForTimeout(120);
+  await page.keyboard.press("p");
+  await page.keyboard.press("f");
+  await page.waitForSelector('[data-gui-node="gui:soft:files"]', { timeout: 3000 });
+  const filesLabel = await page.evaluate(() => {
+    const chips = [...document.querySelectorAll(".gui-addressed .gui-chip")];
+    const rows = [...document.querySelectorAll('[data-gui-node^="gui:soft-row-"]')];
+    const idx = rows.findIndex((r) => r.getAttribute("data-gui-node") === "gui:soft-row-files");
+    return idx >= 0 ? document.querySelectorAll(".fl-app .gui-chip")[idx]?.textContent.trim() : null;
+  });
+  check("found the FILES row in SOFTWARE", Boolean(filesLabel), `label=${filesLabel}`);
+  await page.keyboard.type(filesLabel.toLowerCase());
+  await page.keyboard.press("f");
+  await page.waitForTimeout(200);
+  check("SOFTWARE: F disables FILES", (await page.locator('[data-gui-node="gui:soft-desc-files"]').innerText()).includes("DISABLED"));
+  await page.keyboard.press("`");
+  await page.waitForTimeout(150);
+  check("SOFTWARE: the FILES card leaves HOME", (await cardCount()) === 13);
+  check("SOFTWARE: the FILES rail entry leaves too", (await page.locator(".fl-rail-btn", { hasText: "FILES" }).count()) === 0);
 
   check("zero console/page errors in Flat Space", errors.length === 0, errors.slice(0, 3).join(" | "));
   errors.length = 0;

@@ -14,17 +14,19 @@ const ok = (v, m) => { assert.ok(v, m); n++; };
 // Alphabet: operators are not addresses.
 ok(!LABEL_ALPHABET.includes("D"), "D is not an address");
 ok(!LABEL_ALPHABET.includes("F"), "F is not an address");
-eq(LABEL_ALPHABET.length, 24, "24 address letters");
+ok(!LABEL_ALPHABET.includes("C"), "C (dolly out) is not an address");
+ok(!LABEL_ALPHABET.includes("V"), "V (dolly in) is not an address");
+eq(LABEL_ALPHABET.length, 22, "22 address letters");
 
 // Labels: single letters, then spreadsheet order (house rule).
 eq(labelForIndex(0), "A");
 eq(labelForIndex(1), "B");
-eq(labelForIndex(2), "C");
-eq(labelForIndex(3), "E", "index 3 skips D");
-eq(labelForIndex(23), "Z");
-eq(labelForIndex(24), "AA");
-eq(labelForIndex(25), "AB");
-eq(labelForIndex(24 + 24), "BA");
+eq(labelForIndex(2), "E", "index 2 skips C");
+eq(labelForIndex(3), "G", "index 3 skips D and F");
+eq(labelForIndex(21), "Z");
+eq(labelForIndex(22), "AA");
+eq(labelForIndex(23), "AB");
+eq(labelForIndex(22 + 22), "BA");
 
 // assignLabels pairs in order.
 deep(assignLabels(["x", "y"]).map((p) => p.label), ["A", "B"]);
@@ -39,6 +41,7 @@ deep(resolveBuffer("", ["A"]), { kind: "dead" });
 // Label keys.
 ok(isLabelKey("a") && isLabelKey("Z"), "letters are label keys");
 ok(!isLabelKey("d") && !isLabelKey("f"), "operators are not label keys");
+ok(!isLabelKey("c") && !isLabelKey("v"), "dolly keys are not label keys");
 ok(!isLabelKey("1"), "digits are not label keys");
 
 // Text-entry guard: text controls keep keys; sliders/selects do not.
