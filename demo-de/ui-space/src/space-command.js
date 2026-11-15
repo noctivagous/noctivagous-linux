@@ -80,9 +80,10 @@ export const CMD_CATEGORIES = {
     key: "v", name: "view", color: CAT_COLORS.view,
     hint: "the camera — named plane views and the dolly, runs on the letter",
     actions: {
-      t: { key: "t", name: "top", arg: null, run: "view", view: "top", hint: "TOP — above, looking down at XZ — runs now" },
+      t: { key: "t", name: "top", arg: null, run: "view", view: "top", hint: "PLAN — above, looking down at XZ — runs now" },
       f: { key: "f", name: "front", arg: null, run: "view", view: "front", hint: "FRONT — square-on to the XY wall — runs now" },
-      s: { key: "s", name: "side", arg: null, run: "view", view: "side", hint: "SIDE — square-on to the YZ plane — runs now" },
+      l: { key: "l", name: "left", arg: null, run: "view", view: "left", hint: "ELEVATION L — square-on to the YZ plane from the left — runs now" },
+      r: { key: "r", name: "right", arg: null, run: "view", view: "right", hint: "ELEVATION R — square-on to the YZ plane from the right — runs now" },
       h: { key: "h", name: "home", arg: null, run: "view", view: "home", hint: "HOME — the parametric seat, and release — runs now" },
       i: { key: "i", name: "dolly in", arg: null, run: "zoom", dir: 1, hint: "dolly in (the V key) — runs now" },
       o: { key: "o", name: "dolly out", arg: null, run: "zoom", dir: -1, hint: "dolly out (the C key) — runs now" },

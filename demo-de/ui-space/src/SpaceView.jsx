@@ -55,7 +55,9 @@ import {
   GROUND_Y,
   PLATTER_WELL_R,
   PROTECTIVE_CLEARANCE,
+  PROTECTIVE_R,
   CENTRE_Y,
+  placeInfoCard,
   socketCircles,
   clampGround,
   glowLevel,
@@ -80,6 +82,12 @@ import {
 import { buildPlatterSolid } from "./platter-top.js";
 import { subnodeById, subnodeRootOf, hierarchyDataOf, hierarchyRoot, tangleLevels } from "./subnodes.js";
 import { isMarked, marksFor } from "./subnode-marks.js";
+import {
+  subTransformOf,
+  hasSubTransform,
+  subTransformKey,
+  subTransformEuler,
+} from "./sub-transforms.js";
 import { bookTable, bookSpreads, bookNodeById, BOOK_TOTALS, SPREAD_COUNT } from "./book.js";
 import {
   makeTrack,
@@ -748,6 +756,32 @@ const marksKeyOf = (st, citizenId) => {
 const NO_RAYCAST = () => null;
 
 /**
+ * Slice 13-5 (item 3): a sub-node's TRANSFORM wrapper — a group
+ * standing at the node's own anchor in its citizen's local
+ * frame, carrying the node's stored transform (sub-transforms
+ * .js, resolved through subTransformEuler for the family's
+ * plane axis): rotation about the anchor, scale about the
+ * anchor. The inner group offsets by −anchor, so children keep
+ * their citizen-frame coordinates and positions untouched —
+ * the wrapper is a pure pivot. With no record stored it is the
+ * identity, and the node renders exactly as it always has.
+ * (The instanced families — tangle figures, tree branches —
+ * cannot wrap; they compose the same transform into their
+ * instance matrices instead, in their own loops below.)
+ */
+function SubNodeGroup({ store, citizenId, nodeId, anchor, planeAxis = "y", children }) {
+  const e = subTransformEuler(subTransformOf(store, citizenId, nodeId), planeAxis);
+  return (
+    <group position={anchor} scale={e.scale}
+      ref={(g) => {
+        if (g) g.rotation.set(e.rotation[0], e.rotation[1], e.rotation[2], "YXZ");
+      }}>
+      <group position={[-anchor[0], -anchor[1], -anchor[2]]}>{children}</group>
+    </group>
+  );
+}
+
+/**
  * Slice 12 — the sunbursts' wedges, shared by the mesa and the
  * drum (one hierarchy, two forms; the geometry differs, the
  * sub-node machinery is one). At rest the set is the library's;
@@ -761,7 +795,7 @@ const NO_RAYCAST = () => null;
  * top) is published in the citizen's local frame for the Rig's
  * seats and the in-space info card.
  */
-function SunburstWedges({ kind, lib, matFor, ctx, descentRootId, mesaTerrace, mesaGap }) {
+function SunburstWedges({ kind, lib, matFor, ctx, descentRootId, mesaTerrace, mesaGap, subTransforms }) {
   // Slice 13-3 (item 4): every set is built here now, at rest
   // and under descent alike — the mesa's terrace/gap parameters
   // must rebuild the REST set too, so the geometry library's
@@ -894,26 +928,42 @@ function SunburstWedges({ kind, lib, matFor, ctx, descentRootId, mesaTerrace, me
   const clear = () => { if (st().onSubHover) st().onSubHover(kind, null); };
   return (
     <group ref={groupRef}>
-      {wedges.map((w) => (
-        <mesh key={w.id} geometry={w.geo}
-          position={kind === "drum" ? [0, 1.6, 0] : undefined}
-          material={owned.get(w.id).mat}
-          onPointerOver={() => report(w.id)}
-          onPointerMove={() => report(w.id)}
-          onPointerOut={clear}>
-          <lineSegments geometry={edgeGeos.get(w.id)} material={lineMats.get(w.id)}
-            visible={false} raycast={NO_RAYCAST}
-            ref={(el) => {
-              if (el) lineRefs.current.set(w.id, el);
-              else lineRefs.current.delete(w.id);
-            }} />
-        </mesh>
-      ))}
+      {wedges.map((w) => {
+        // Slice 13-5 (item 3): each wedge pivots on its own
+        // centre — mid-angle, mid-radius, half its height (the
+        // drum's blocks centre at 11.6 with their 1.6 lift) —
+        // the anchor the transform keys turn it about.
+        const a = (w.node.x0 + w.node.x1) / 2;
+        const r = ((w.node.y0 + w.node.y1) / 2) * 8.5;
+        const pivot = [
+          Math.cos(a) * r,
+          kind === "mesa" ? mesaWedgeHeight(w.node.depth, mesaTerrace) / 2 : 11.6,
+          Math.sin(a) * r,
+        ];
+        return (
+          <SubNodeGroup key={w.id} store={subTransforms} citizenId={kind} nodeId={w.id}
+            anchor={pivot} planeAxis="y">
+            <mesh geometry={w.geo}
+              position={kind === "drum" ? [0, 1.6, 0] : undefined}
+              material={owned.get(w.id).mat}
+              onPointerOver={() => report(w.id)}
+              onPointerMove={() => report(w.id)}
+              onPointerOut={clear}>
+              <lineSegments geometry={edgeGeos.get(w.id)} material={lineMats.get(w.id)}
+                visible={false} raycast={NO_RAYCAST}
+                ref={(el) => {
+                  if (el) lineRefs.current.set(w.id, el);
+                  else lineRefs.current.delete(w.id);
+                }} />
+            </mesh>
+          </SubNodeGroup>
+        );
+      })}
     </group>
   );
 }
 
-function MiniMesa({ lib, matFor, ctx, descentRootId, mesaTerrace, mesaGap }) {
+function MiniMesa({ lib, matFor, ctx, descentRootId, mesaTerrace, mesaGap, subTransforms }) {
   const sweep = useRef(null);
   const amp = useRef(1);
   useFrame((_, dt) => {
@@ -967,7 +1017,7 @@ function MiniMesa({ lib, matFor, ctx, descentRootId, mesaTerrace, mesaGap }) {
           visible={false} raycast={NO_RAYCAST} />
       </mesh>
       <SunburstWedges kind="mesa" lib={lib} matFor={matFor} ctx={ctx} descentRootId={descentRootId}
-        mesaTerrace={mesaTerrace} mesaGap={mesaGap} />
+        mesaTerrace={mesaTerrace} mesaGap={mesaGap} subTransforms={subTransforms} />
       {/* A light sweep travels the rings — the disc itself never turns. */}
       <group ref={sweep}>
         <mesh position={[0, 12.7, 0]} rotation-x={-Math.PI / 2}>
@@ -980,7 +1030,7 @@ function MiniMesa({ lib, matFor, ctx, descentRootId, mesaTerrace, mesaGap }) {
   );
 }
 
-function MiniDrum({ lib, matFor, ctx, descentRootId }) {
+function MiniDrum({ lib, matFor, ctx, descentRootId, subTransforms }) {
   const band = useRef(null);
   const amp = useRef(1);
   useFrame((_, dt) => {
@@ -1000,7 +1050,8 @@ function MiniDrum({ lib, matFor, ctx, descentRootId }) {
         <cylinderGeometry args={[8.1, 8.6, 20, 40]} />
         <primitive object={matFor(0x39434b, { rough: 0.7 })} attach="material" />
       </mesh>
-      <SunburstWedges kind="drum" lib={lib} matFor={matFor} ctx={ctx} descentRootId={descentRootId} />
+      <SunburstWedges kind="drum" lib={lib} matFor={matFor} ctx={ctx} descentRootId={descentRootId}
+        subTransforms={subTransforms} />
       {/* A light band circles inside the glass, past the blocks. */}
       <group ref={band}>
         <mesh position={[9.4, 11.4, 0]} rotation-y={Math.PI / 2}>
@@ -1022,7 +1073,7 @@ function MiniDrum({ lib, matFor, ctx, descentRootId }) {
   );
 }
 
-function MiniTray({ lib, matFor, ctx }) {
+function MiniTray({ lib, matFor, ctx, subTransforms }) {
   const W = 54, H = 46;
   const rect = (n) => ({
     cx: ((n.x0 + n.x1) / 2 - 0.5) * W, cz: ((n.y0 + n.y1) / 2 - 0.5) * H,
@@ -1142,35 +1193,47 @@ function MiniTray({ lib, matFor, ctx }) {
       {lib.trayPlates.map(({ node }, i) => {
         const r = rect(node);
         return (
-          <mesh key={`p${i}`} geometry={lib.unitBox} position={[r.cx, 1.7, r.cz]}
-            ref={(el) => { plateRefs.current[i] = el; }}
-            scale={[Math.max(0.4, r.w - 0.7), 1, Math.max(0.4, r.d - 0.7)]}
-            material={owned.plates[i].mat}
-            onPointerOver={() => report(owned.plates[i].id)}
-            onPointerMove={() => report(owned.plates[i].id)}
-            onPointerOut={clear}>
-            <lineSegments geometry={lib.unitBoxEdges} material={owned.plates[i].lineMat}
-              scale={[1.04, 1.3, 1.04]} visible={false} raycast={NO_RAYCAST}
-              ref={(el) => { plateLineRefs.current[i] = el; }} />
-          </mesh>
+          // Slice 13-5 (item 3): the plate pivots on its own
+          // centre (its rect centre at its standing height).
+          <SubNodeGroup key={`p${i}`} store={subTransforms} citizenId="tray"
+            nodeId={owned.plates[i].id} anchor={[r.cx, 1.7, r.cz]} planeAxis="y">
+            <mesh geometry={lib.unitBox} position={[r.cx, 1.7, r.cz]}
+              ref={(el) => { plateRefs.current[i] = el; }}
+              scale={[Math.max(0.4, r.w - 0.7), 1, Math.max(0.4, r.d - 0.7)]}
+              material={owned.plates[i].mat}
+              onPointerOver={() => report(owned.plates[i].id)}
+              onPointerMove={() => report(owned.plates[i].id)}
+              onPointerOut={clear}>
+              <lineSegments geometry={lib.unitBoxEdges} material={owned.plates[i].lineMat}
+                scale={[1.04, 1.3, 1.04]} visible={false} raycast={NO_RAYCAST}
+                ref={(el) => { plateLineRefs.current[i] = el; }} />
+            </mesh>
+          </SubNodeGroup>
         );
       })}
       {lib.trayCuboids.map(({ node }, i) => {
         const r = rect(node);
         return (
-          <mesh key={`c${i}`} geometry={lib.unitBox} position={[r.cx, 2.2 + 3, r.cz]}
-            ref={(el) => { cuboidRefs.current[i] = el; }}
-            scale={[Math.max(0.4, r.w - 1.4), 6, Math.max(0.4, r.d - 1.4)]}
-            material={owned.cuboids[i].mat}
-            onPointerOver={() => report(owned.cuboids[i].id)}
-            onPointerMove={() => report(owned.cuboids[i].id)}
-            onPointerOut={clear}>
-            {/* The outline rides inside the mesh, so the
-                breathing cuboids carry it with them. */}
-            <lineSegments geometry={lib.unitBoxEdges} material={owned.cuboids[i].lineMat}
-              scale={[1.05, 1.03, 1.05]} visible={false} raycast={NO_RAYCAST}
-              ref={(el) => { cuboidLineRefs.current[i] = el; }} />
-          </mesh>
+          // Slice 13-5 (item 3): the cuboid pivots on its own
+          // centre — the breathing (the mesh's own scale.y /
+          // position.y, written by the frame loop) rides
+          // inside the pivot untouched.
+          <SubNodeGroup key={`c${i}`} store={subTransforms} citizenId="tray"
+            nodeId={owned.cuboids[i].id} anchor={[r.cx, 5.2, r.cz]} planeAxis="y">
+            <mesh geometry={lib.unitBox} position={[r.cx, 2.2 + 3, r.cz]}
+              ref={(el) => { cuboidRefs.current[i] = el; }}
+              scale={[Math.max(0.4, r.w - 1.4), 6, Math.max(0.4, r.d - 1.4)]}
+              material={owned.cuboids[i].mat}
+              onPointerOver={() => report(owned.cuboids[i].id)}
+              onPointerMove={() => report(owned.cuboids[i].id)}
+              onPointerOut={clear}>
+              {/* The outline rides inside the mesh, so the
+                  breathing cuboids carry it with them. */}
+              <lineSegments geometry={lib.unitBoxEdges} material={owned.cuboids[i].lineMat}
+                scale={[1.05, 1.03, 1.05]} visible={false} raycast={NO_RAYCAST}
+                ref={(el) => { cuboidLineRefs.current[i] = el; }} />
+            </mesh>
+          </SubNodeGroup>
         );
       })}
     </group>
@@ -1267,17 +1330,40 @@ function MiniTangle({ lib, matFor, ctx, tangleDataset }) {
     });
     attr.needsUpdate = true;
   });
+  // Slice 13-5 (item 3): the figures' instance matrices, with
+  // each figure's SUB-TRANSFORM composed in — a figure's base
+  // matrix is a pure translation to its own position, so its
+  // transform about its own centre is exactly compose(pos,
+  // euler, scale). Rewritten when the tangle's records change
+  // (the highlight loop below watches the signature).
+  const writeFigureMatrices = () => {
+    const m = ref.current;
+    if (!m) return;
+    const store = ctx.stateRef.current.subTransforms;
+    const M = new THREE.Matrix4();
+    const Q = new THREE.Quaternion();
+    const E = new THREE.Euler();
+    const P = new THREE.Vector3();
+    const S = new THREE.Vector3();
+    tg.nodes.forEach((p, i) => {
+      const e = subTransformEuler(subTransformOf(store, "tangle", p.id), PLANE_AXIS.tangle);
+      E.set(e.rotation[0], e.rotation[1], e.rotation[2], "YXZ");
+      Q.setFromEuler(E);
+      P.set(p.x, p.y, p.z);
+      S.setScalar(e.scale);
+      M.compose(P, Q, S);
+      m.setMatrixAt(i, M);
+    });
+    m.instanceMatrix.needsUpdate = true;
+  };
   useLayoutEffect(() => {
     const m = ref.current;
     if (!m) return;
-    const M = new THREE.Matrix4();
+    writeFigureMatrices();
     const C = new THREE.Color();
     tg.nodes.forEach((p, i) => {
-      M.makeTranslation(p.x, p.y, p.z);
-      m.setMatrixAt(i, M);
       m.setColorAt(i, C.set(TANGLE_PALETTE[p.level % TANGLE_PALETTE.length]));
     });
-    m.instanceMatrix.needsUpdate = true;
     if (m.instanceColor) m.instanceColor.needsUpdate = true;
   }, [tg]);
   // Slice 12: the figures are sub-nodes. The instanced mesh picks
@@ -1307,8 +1393,16 @@ function MiniTangle({ lib, matFor, ctx, tangleDataset }) {
   const hovCageRef = useRef(null);
   const markCageRef = useRef(null);
   const lastHi = useRef(undefined);
+  const lastTrKey = useRef(undefined);
   useFrame(() => {
     const st = ctx.stateRef.current;
+    // Slice 13-5 (item 3): the figures' matrices follow their
+    // transform records, rewritten on the signature's change.
+    const trKey = subTransformKey(st.subTransforms, "tangle");
+    if (trKey !== lastTrKey.current) {
+      lastTrKey.current = trKey;
+      writeFigureMatrices();
+    }
     const hov = st.currentId === "tangle" && st.subHover && st.subHover.objectId === "tangle"
       ? st.subHover.nodeId : null;
     const foc = st.partFocus && st.partFocus.objectId === "tangle" ? st.partFocus.partId : null;
@@ -1711,6 +1805,12 @@ function knotPartBlend(tau) {
  * being current).
  */
 function MiniKnot({ lib, matFor, ctx }) {
+  // Slice 13-5 (item 3): the knot's parts take NO sub-node
+  // transforms — they are one continuous GLE sweep (slice 9)
+  // with no per-part geometry; a part's transform would need
+  // a re-sweep of the tube. The transform keys therefore keep
+  // landing on the knot citizen itself (resolveSubTransform
+  // Target in sub-transforms.js never reads the part channel).
   const spin = useRef(null);
   const lastHi = useRef(undefined);
   const data = useMemo(() => {
@@ -2361,6 +2461,7 @@ function MiniTree({ lib, matFor, ctx }) {
   const amp = useRef(1);
   const grown = useRef(0);
   const lastHi = useRef("__init");
+  const lastTrKey = useRef(undefined);
   const data = useMemo(() => ({
     segMat: matFor(0xffffff, { rough: 0.85 }),
     budMat: matFor(0xffffff, { rough: 0.35, glowScale: 1.2 }),
@@ -2393,10 +2494,33 @@ function MiniTree({ lib, matFor, ctx }) {
   const writeInstances = (t) => {
     const M = new THREE.Matrix4(), Q = new THREE.Quaternion();
     const P = new THREE.Vector3(), S = new THREE.Vector3(), D = new THREE.Vector3();
+    // Slice 13-5 (item 3): each BRANCH's sub-transform as an
+    // about-centre matrix — T(centre) · R · S · T(−centre),
+    // the centre being the branch's bounding-sphere centre —
+    // premultiplied onto every segment and bud the branch
+    // owns. Branches without a record are absent from the map
+    // and their instances write exactly as they always have.
+    const store = ctx.stateRef.current.subTransforms;
+    const trMap = new Map();
+    if (store && store.tree) {
+      for (const b of lib.dataTree.branches) {
+        if (!hasSubTransform(store, "tree", b.id)) continue;
+        const e = subTransformEuler(subTransformOf(store, "tree", b.id), PLANE_AXIS.tree);
+        const q = new THREE.Quaternion().setFromEuler(
+          new THREE.Euler(e.rotation[0], e.rotation[1], e.rotation[2], "YXZ"));
+        const c = new THREE.Vector3(...b.sphere.centre);
+        const m = new THREE.Matrix4().compose(c, q, new THREE.Vector3().setScalar(e.scale));
+        m.multiply(new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z));
+        trMap.set(b.id, m);
+      }
+    }
+    const prod = new THREE.Matrix4();
     const sm = segRef.current;
     if (sm) {
       lib.treeSegs.forEach((s, i) => {
-        sm.setMatrixAt(i, segMatrix(s, growthFor(s.depth, t), M, Q, P, S, D));
+        const base = segMatrix(s, growthFor(s.depth, t), M, Q, P, S, D);
+        const tm = trMap.get(s.branchId);
+        sm.setMatrixAt(i, tm ? prod.multiplyMatrices(tm, base) : base);
       });
       sm.instanceMatrix.needsUpdate = true;
     }
@@ -2408,7 +2532,8 @@ function MiniTree({ lib, matFor, ctx }) {
         Q.identity();
         S.setScalar(Math.max(0.02, b.r * g));
         M.compose(P, Q, S);
-        bm.setMatrixAt(i, M);
+        const tm = trMap.get(b.branchId);
+        bm.setMatrixAt(i, tm ? prod.multiplyMatrices(tm, M) : M);
       });
       bm.instanceMatrix.needsUpdate = true;
     }
@@ -2491,6 +2616,13 @@ function MiniTree({ lib, matFor, ctx }) {
       writeInstances(grown.current);
     }
     const st = ctx.stateRef.current;
+    // Slice 13-5 (item 3): the branches' matrices follow their
+    // transform records — a full-growth rewrite on the change.
+    const trKey = subTransformKey(st.subTransforms, "tree");
+    if (trKey !== lastTrKey.current) {
+      lastTrKey.current = trKey;
+      writeInstances(Math.max(2.2, grown.current));
+    }
     const hov = st.currentId === "tree" ? st.branchHoverId : null;
     const foc = st.partFocus && st.partFocus.objectId === "tree" ? st.partFocus.partId : null;
     const hi = hov || foc || null;
@@ -2621,7 +2753,7 @@ function bookTierFactor(node, hi, accCh, accSec) {
  * the wrapper's local frame, turn and slide applied, so the
  * in-space card rides the node it names.
  */
-function BookCylinder({ ctx, matFor, anchors }) {
+function BookCylinder({ ctx, matFor, anchors, subTransforms }) {
   const table = BOOK_VIEW;
   const owned = useMemo(() => {
     const map = new Map();
@@ -2783,32 +2915,41 @@ function BookCylinder({ ctx, matFor, anchors }) {
           <primitive object={matFor(0x8a97a0, { rough: 0.45 })} attach="material" />
         </mesh>
         {table.root.children.map((ch) => (
-          <mesh key={ch.id} geometry={bandGeos.get(ch.id)} position={[0, BK.chBandY, 0]}
-            material={owned.get(ch.id).mat}
-            onPointerOver={() => report(ch.id)}
-            onPointerMove={() => report(ch.id)}
-            onPointerOut={clear}>
-            <lineSegments geometry={bandEdges.get(ch.id)} material={lineMats.get(ch.id)}
-              visible={false} raycast={NO_RAYCAST}
-              ref={(el) => {
-                if (el) lineRefs.current.set(ch.id, el);
-                else lineRefs.current.delete(ch.id);
-              }} />
-          </mesh>
+          // Slice 13-5 (item 3): a band segment pivots on its
+          // own anchor — its arc midpoint on the band's circle,
+          // at the band's height (the published anchor's place).
+          <SubNodeGroup key={ch.id} store={subTransforms} citizenId="book" nodeId={ch.id}
+            anchor={[Math.sin(ch.mid) * 14.6, BK.chBandY, Math.cos(ch.mid) * 14.6]} planeAxis="y">
+            <mesh geometry={bandGeos.get(ch.id)} position={[0, BK.chBandY, 0]}
+              material={owned.get(ch.id).mat}
+              onPointerOver={() => report(ch.id)}
+              onPointerMove={() => report(ch.id)}
+              onPointerOut={clear}>
+              <lineSegments geometry={bandEdges.get(ch.id)} material={lineMats.get(ch.id)}
+                visible={false} raycast={NO_RAYCAST}
+                ref={(el) => {
+                  if (el) lineRefs.current.set(ch.id, el);
+                  else lineRefs.current.delete(ch.id);
+                }} />
+            </mesh>
+          </SubNodeGroup>
         ))}
         {table.all.filter((n) => n.kind === "section").map((sec) => (
-          <mesh key={sec.id} geometry={bandGeos.get(sec.id)} position={[0, BK.secBandY, 0]}
-            material={owned.get(sec.id).mat}
-            onPointerOver={() => report(sec.id)}
-            onPointerMove={() => report(sec.id)}
-            onPointerOut={clear}>
-            <lineSegments geometry={bandEdges.get(sec.id)} material={lineMats.get(sec.id)}
-              visible={false} raycast={NO_RAYCAST}
-              ref={(el) => {
-                if (el) lineRefs.current.set(sec.id, el);
-                else lineRefs.current.delete(sec.id);
-              }} />
-          </mesh>
+          <SubNodeGroup key={sec.id} store={subTransforms} citizenId="book" nodeId={sec.id}
+            anchor={[Math.sin(sec.mid) * 14.6, BK.secBandY, Math.cos(sec.mid) * 14.6]} planeAxis="y">
+            <mesh geometry={bandGeos.get(sec.id)} position={[0, BK.secBandY, 0]}
+              material={owned.get(sec.id).mat}
+              onPointerOver={() => report(sec.id)}
+              onPointerMove={() => report(sec.id)}
+              onPointerOut={clear}>
+              <lineSegments geometry={bandEdges.get(sec.id)} material={lineMats.get(sec.id)}
+                visible={false} raycast={NO_RAYCAST}
+                ref={(el) => {
+                  if (el) lineRefs.current.set(sec.id, el);
+                  else lineRefs.current.delete(sec.id);
+                }} />
+            </mesh>
+          </SubNodeGroup>
         ))}
         {table.pages.map((p) => (
           <group key={p.id} rotation-y={p.mid}>
@@ -2816,23 +2957,30 @@ function BookCylinder({ ctx, matFor, anchors }) {
               if (el) slideRefs.current.set(p.id, el);
               else slideRefs.current.delete(p.id);
             }}>
-              <mesh geometry={leafGeo} position={[0, BK.leafY, BK.leafMidR]}
-                material={owned.get(p.id).mat}
-                onPointerOver={() => report(p.id)}
-                onPointerMove={() => report(p.id)}
-                onPointerOut={clear}>
-                <lineSegments geometry={leafEdges} material={lineMats.get(p.id)}
-                  scale={[1.6, 1.01, 1.01]} visible={false} raycast={NO_RAYCAST}
-                  ref={(el) => {
-                    if (el) lineRefs.current.set(p.id, el);
-                    else lineRefs.current.delete(p.id);
-                  }} />
-              </mesh>
-              {[-1, 1].map((f) => BK_BAR_Y.map((y, i) => (
-                <mesh key={`${f}:${i}`} geometry={barGeo}
-                  position={[f * 0.28, y, BK.leafMidR]}
-                  material={owned.get(p.id).barMat} />
-              )))}
+              {/* Slice 13-5 (item 3): the leaf pivots on its own
+                  centre (its standing place in the slide frame);
+                  the page-out slide rides outside the pivot, so
+                  a turned leaf still slides home cleanly. */}
+              <SubNodeGroup store={subTransforms} citizenId="book" nodeId={p.id}
+                anchor={[0, BK.leafY, BK.leafMidR]} planeAxis="y">
+                <mesh geometry={leafGeo} position={[0, BK.leafY, BK.leafMidR]}
+                  material={owned.get(p.id).mat}
+                  onPointerOver={() => report(p.id)}
+                  onPointerMove={() => report(p.id)}
+                  onPointerOut={clear}>
+                  <lineSegments geometry={leafEdges} material={lineMats.get(p.id)}
+                    scale={[1.6, 1.01, 1.01]} visible={false} raycast={NO_RAYCAST}
+                    ref={(el) => {
+                      if (el) lineRefs.current.set(p.id, el);
+                      else lineRefs.current.delete(p.id);
+                    }} />
+                </mesh>
+                {[-1, 1].map((f) => BK_BAR_Y.map((y, i) => (
+                  <mesh key={`${f}:${i}`} geometry={barGeo}
+                    position={[f * 0.28, y, BK.leafMidR]}
+                    material={owned.get(p.id).barMat} />
+                )))}
+              </SubNodeGroup>
             </group>
           </group>
         ))}
@@ -2849,9 +2997,19 @@ const SPREAD_LEAF_EDGES = new THREE.EdgesGeometry(new THREE.BoxGeometry(16.5, 23
  *  front face (the first, shorter and amber, is the title), its
  *  page number at its foot — or, for a blank side, a plain leaf
  *  that only clears the hover. */
-function SpreadLeaf({ side, page, owned, blankMat, report, clear, lineMat, lineRef }) {
+function SpreadLeaf({ side, page, owned, blankMat, report, clear, lineMat, lineRef, subTr }) {
   const x = side === "verso" ? -8.4 : 8.4;
   const ry = side === "verso" ? 0.3 : -0.3;
+  // Slice 13-5 (item 3): the standing leaf's own transform
+  // (subTr, an euler + scale from sub-transforms.js) composes
+  // onto its lean — the leaf turns about its own centre, the
+  // group it already stands in.
+  const applySub = (g) => {
+    if (!g) return;
+    const e = subTr || { rotation: [0, 0, 0], scale: 1 };
+    g.rotation.set(-0.1 + e.rotation[0], e.rotation[1], e.rotation[2], "YXZ");
+    g.scale.setScalar(e.scale);
+  };
   if (!page) {
     return (
       <group position={[x, 0, 0]} rotation-y={ry}>
@@ -2866,7 +3024,7 @@ function SpreadLeaf({ side, page, owned, blankMat, report, clear, lineMat, lineR
   const bars = [8, 12.4, 11.2, 12.6, 10.8, 12.2, 9.4];
   return (
     <group position={[x, 0, 0]} rotation-y={ry}>
-      <group position={[0, 13.1, 0]} rotation-x={-0.1}>
+      <group position={[0, 13.1, 0]} ref={applySub}>
         <mesh material={owned.mat}
           onPointerOver={() => report(page.id)}
           onPointerMove={() => report(page.id)}
@@ -2906,7 +3064,7 @@ function SpreadLeaf({ side, page, owned, blankMat, report, clear, lineMat, lineR
  * the presentation stands); F on a standing leaf turns to its
  * page's spread.
  */
-function BookSpread({ ctx, matFor, anchors, spreadIndex }) {
+function BookSpread({ ctx, matFor, anchors, spreadIndex, subTransforms }) {
   const spread = BOOK_SPREADS_VIEW[
     Math.max(0, Math.min(SPREAD_COUNT - 1, spreadIndex || 0))
   ] || { verso: null, recto: null };
@@ -3000,6 +3158,9 @@ function BookSpread({ ctx, matFor, anchors, spreadIndex }) {
       </mesh>
       <SpreadLeaf side="verso" page={spread.verso}
         owned={spread.verso ? owned.get(spread.verso.id) : null}
+        subTr={spread.verso
+          ? subTransformEuler(subTransformOf(subTransforms, "book", spread.verso.id), PLANE_AXIS.book)
+          : null}
         blankMat={blankMat} report={report} clear={clear}
         lineMat={spread.verso ? lineMats.get(spread.verso.id) : null}
         lineRef={(el) => {
@@ -3009,6 +3170,9 @@ function BookSpread({ ctx, matFor, anchors, spreadIndex }) {
         }} />
       <SpreadLeaf side="recto" page={spread.recto}
         owned={spread.recto ? owned.get(spread.recto.id) : null}
+        subTr={spread.recto
+          ? subTransformEuler(subTransformOf(subTransforms, "book", spread.recto.id), PLANE_AXIS.book)
+          : null}
         blankMat={blankMat} report={report} clear={clear}
         lineMat={spread.recto ? lineMats.get(spread.recto.id) : null}
         lineRef={(el) => {
@@ -3030,7 +3194,7 @@ function BookSpread({ ctx, matFor, anchors, spreadIndex }) {
  * the access and the transform live outside, untouched by the
  * switch, as everywhere in the space.
  */
-function MiniBook({ lib, matFor, ctx, bookStyle, bookSpread }) {
+function MiniBook({ lib, matFor, ctx, bookStyle, bookSpread, subTransforms }) {
   const wrapRef = useRef(null);
   const anchors = useMemo(() => new Map(), []);
   useEffect(() => {
@@ -3045,9 +3209,10 @@ function MiniBook({ lib, matFor, ctx, bookStyle, bookSpread }) {
   return (
     <group ref={wrapRef}>
       {bookStyle === "spread" ? (
-        <BookSpread ctx={ctx} matFor={matFor} anchors={anchors} spreadIndex={bookSpread} />
+        <BookSpread ctx={ctx} matFor={matFor} anchors={anchors} spreadIndex={bookSpread}
+          subTransforms={subTransforms} />
       ) : (
-        <BookCylinder ctx={ctx} matFor={matFor} anchors={anchors} />
+        <BookCylinder ctx={ctx} matFor={matFor} anchors={anchors} subTransforms={subTransforms} />
       )}
     </group>
   );
@@ -3112,7 +3277,7 @@ function netArcCurve(pa, pb) {
  * other sub-node's. The hub's top is published each frame in
  * world-group coordinates (frame.netHubLocal) for the cables.
  */
-function MiniDevices({ lib, matFor, ctx }) {
+function MiniDevices({ lib, matFor, ctx, subTransforms }) {
   const wrapRef = useRef(null);
   const hubTopRef = useRef(null);
   const keysRef = useRef(null);
@@ -3327,6 +3492,8 @@ function MiniDevices({ lib, matFor, ctx }) {
         <primitive object={matFor(0x27313a, { rough: 0.85 })} attach="material" />
       </mesh>
       {printer ? (
+        <SubNodeGroup store={subTransforms} citizenId="devices" nodeId="devices/printer"
+          anchor={[-10.5, 4.3, -1.5]} planeAxis="y">
         <group position={[-10.5, 1.6, -1.5]}>
           <mesh position={[0, 2.1, 0]} material={owned.mats.printerBody} {...hoverProps("devices/printer")}>
             <boxGeometry args={[11, 4.2, 8]} />
@@ -3356,8 +3523,11 @@ function MiniDevices({ lib, matFor, ctx }) {
             </mesh>
           ) : null}
         </group>
+        </SubNodeGroup>
       ) : null}
       {kb ? (
+        <SubNodeGroup store={subTransforms} citizenId="devices" nodeId={`devices/${kb.slug}`}
+          anchor={[2.5, 2.6, 7.5]} planeAxis="y">
         <group position={[2.5, 1.6, 7.5]}>
           <mesh position={[0, 0.4, 0]} material={owned.mats.keyboardBody} {...hoverProps(`devices/${kb.slug}`)}>
             <boxGeometry args={[13, 0.8, 5]} />
@@ -3370,16 +3540,22 @@ function MiniDevices({ lib, matFor, ctx }) {
             <boxGeometry args={[0.95, 0.35, 0.95]} />
           </instancedMesh>
         </group>
+        </SubNodeGroup>
       ) : null}
       {ptr ? (
+        <SubNodeGroup store={subTransforms} citizenId="devices" nodeId={`devices/${ptr.slug}`}
+          anchor={[12, 3.2, 7.5]} planeAxis="y">
         <group position={[12, 1.6, 7.5]}>
           <mesh position={[0, 1.05, 0]} scale={[1.3, 0.62, 1.8]}
             material={owned.mats.pointer} {...hoverProps(`devices/${ptr.slug}`)}>
             <sphereGeometry args={[1.9, 20, 14]} />
           </mesh>
         </group>
+        </SubNodeGroup>
       ) : null}
       {disp ? (
+        <SubNodeGroup store={subTransforms} citizenId="devices" nodeId={`devices/${disp.slug}`}
+          anchor={[6.5, 7.2, -8]} planeAxis="y">
         <group position={[6.5, 1.6, -8]}>
           <mesh position={[0, 0.3, 0.8]} material={owned.mats.displayFrame} {...hoverProps(`devices/${disp.slug}`)}>
             <boxGeometry args={[6, 0.6, 3]} />
@@ -3396,22 +3572,28 @@ function MiniDevices({ lib, matFor, ctx }) {
             </mesh>
           </group>
         </group>
+        </SubNodeGroup>
       ) : null}
       {devices.filter((d) => d.kind === "storage").map((d) => {
         const p = plots.get(d.slug);
         if (!p) return null;
         return (
-          <group key={d.slug} position={[p.x, 1.6, p.z]}>
-            <mesh position={[0, 1.2, 0]} material={owned.mats[`vol-${d.slug}`]} {...hoverProps(`devices/${d.slug}`)}>
-              <boxGeometry args={[6.5, 2.4, 8.5]} />
-            </mesh>
-            <mesh position={[0, 2.6, 0]} material={owned.mats[`volStripe-${d.slug}`]} {...hoverProps(`devices/${d.slug}`)}>
-              <boxGeometry args={[6.5, 0.45, 8.5]} />
-            </mesh>
-          </group>
+          <SubNodeGroup key={d.slug} store={subTransforms} citizenId="devices"
+            nodeId={`devices/${d.slug}`} anchor={[p.x, 3.4, p.z]} planeAxis="y">
+            <group position={[p.x, 1.6, p.z]}>
+              <mesh position={[0, 1.2, 0]} material={owned.mats[`vol-${d.slug}`]} {...hoverProps(`devices/${d.slug}`)}>
+                <boxGeometry args={[6.5, 2.4, 8.5]} />
+              </mesh>
+              <mesh position={[0, 2.6, 0]} material={owned.mats[`volStripe-${d.slug}`]} {...hoverProps(`devices/${d.slug}`)}>
+                <boxGeometry args={[6.5, 0.45, 8.5]} />
+              </mesh>
+            </group>
+          </SubNodeGroup>
         );
       })}
       {conns.length ? (
+        <SubNodeGroup store={subTransforms} citizenId="devices" nodeId="devices/net"
+          anchor={[14.5, 3.4, -3]} planeAxis="y">
         <group position={[14.5, 1.6, -3]}>
           <mesh position={[0, 1.3, 0]} material={owned.mats.hubBody} {...hoverProps("devices/net")}>
             <boxGeometry args={[7, 2.6, 4.5]} />
@@ -3428,6 +3610,7 @@ function MiniDevices({ lib, matFor, ctx }) {
               publishes for NetworkLayer. */}
           <group ref={hubTopRef} position={[0, 3.2, 0]} />
         </group>
+        </SubNodeGroup>
       ) : null}
       {/* The forms' outline cages (item C), toggled by the
           highlight loop; they never take the pointer. */}
@@ -3488,7 +3671,7 @@ export function postSlot(i) {
  * are (token world → group local), and the Rig's sub-node pass
  * turns them back into world for their cards.
  */
-function MiniMail({ lib, matFor, ctx }) {
+function MiniMail({ lib, matFor, ctx, subTransforms }) {
   const wrapRef = useRef(null);
   const anchors = useMemo(() => new Map(), []);
   const cells = useMemo(() => folderCells(32, 17), []);
@@ -3656,7 +3839,12 @@ function MiniMail({ lib, matFor, ctx }) {
         const cx = -16 + c.x + c.w / 2;
         const cy = 3.4 + c.y + c.h / 2;
         return (
-          <group key={c.id}>
+          // Slice 13-5 (item 3): the compartment pivots on its
+          // own centre (its cell centre at its face) — the
+          // cabinet's plane axis is Z, like its citizen's.
+          <SubNodeGroup key={c.id} store={subTransforms} citizenId="mail" nodeId={c.id}
+            anchor={[cx, cy, 2.65]} planeAxis="z">
+          <group>
             <mesh position={[cx, cy, 2.3]} {...hoverProps(c.id)}>
               <boxGeometry args={[c.w, c.h, 1]} />
               <primitive object={sharedMats.recess} attach="material" />
@@ -3672,11 +3860,15 @@ function MiniMail({ lib, matFor, ctx }) {
               </mesh>
             ) : null}
           </group>
+          </SubNodeGroup>
         );
       })}
       {/* Projects' frame: its subfolders' cells read as one
           compartment, outlined in the parent's colour. */}
       {projectsCell ? (
+        <SubNodeGroup store={subTransforms} citizenId="mail" nodeId="mail/projects"
+          anchor={[-16 + projectsCell.x + projectsCell.w / 2, 3.4 + projectsCell.y + projectsCell.h / 2, 3.05]}
+          planeAxis="z">
         <group>
           {[
             { p: [-16 + projectsCell.x + projectsCell.w / 2, 3.4 + projectsCell.y + projectsCell.h - 0.3, 3.05], s: [projectsCell.w + 0.6, 0.6, 0.3] },
@@ -3689,19 +3881,29 @@ function MiniMail({ lib, matFor, ctx }) {
             </mesh>
           ))}
         </group>
+        </SubNodeGroup>
       ) : null}
       {/* The compartments' outline frames (item C), toggled by
           the highlight loop; they never take the pointer. */}
       {cellFrames.map((f) => (
-        <lineSegments key={f.id} position={[f.cx, f.cy, 3.35]} scale={[f.w + 0.4, f.h + 0.4, 0.3]}
-          geometry={lib.unitBoxEdges} material={frameMats.teal}
-          visible={false} raycast={NO_RAYCAST}
-          ref={(el) => {
-            if (el) frameRefs.current.set(f.id, el);
-            else frameRefs.current.delete(f.id);
-          }} />
+        // Slice 13-5 (item 3): the outline frame rides its
+        // compartment's transform — the same pivot, so a turned
+        // compartment keeps its frame.
+        <SubNodeGroup key={f.id} store={subTransforms} citizenId="mail" nodeId={f.id}
+          anchor={[f.cx, f.cy, 2.65]} planeAxis="z">
+          <lineSegments position={[f.cx, f.cy, 3.35]} scale={[f.w + 0.4, f.h + 0.4, 0.3]}
+            geometry={lib.unitBoxEdges} material={frameMats.teal}
+            visible={false} raycast={NO_RAYCAST}
+            ref={(el) => {
+              if (el) frameRefs.current.set(f.id, el);
+              else frameRefs.current.delete(f.id);
+            }} />
+        </SubNodeGroup>
       ))}
       {projectsCell ? (
+        <SubNodeGroup store={subTransforms} citizenId="mail" nodeId="mail/projects"
+          anchor={[-16 + projectsCell.x + projectsCell.w / 2, 3.4 + projectsCell.y + projectsCell.h / 2, 3.05]}
+          planeAxis="z">
         <lineSegments position={[-16 + projectsCell.x + projectsCell.w / 2, 3.4 + projectsCell.y + projectsCell.h / 2, 3.35]}
           scale={[projectsCell.w + 1, projectsCell.h + 1, 0.3]}
           geometry={lib.unitBoxEdges} material={frameMats.teal}
@@ -3710,6 +3912,7 @@ function MiniMail({ lib, matFor, ctx }) {
             if (el) frameRefs.current.set("mail/projects", el);
             else frameRefs.current.delete("mail/projects");
           }} />
+        </SubNodeGroup>
       ) : null}
       {/* The top board: an envelope slot, and a small stack of
           letters waiting to be sorted. */}
@@ -3861,7 +4064,7 @@ const MINIATURES = {
 
 /* ---------- one citizen of the space ---------- */
 
-function SpaceObject({ def, ctx, lib, descentRootId, tangleDataset, bookStyle, bookAccess, bookSpread, mesaTerrace, mesaGap }) {
+function SpaceObject({ def, ctx, lib, descentRootId, tangleDataset, bookStyle, bookAccess, bookSpread, mesaTerrace, mesaGap, subTransforms }) {
   const outer = useRef(null);
   const inner = useRef(null);
   const spin = useRef(null);
@@ -3961,7 +4164,7 @@ function SpaceObject({ def, ctx, lib, descentRootId, tangleDataset, bookStyle, b
           <group position={[0, -(CENTRE_Y[def.id] || 0), 0]}>
             <Mini lib={lib} matFor={mats.matFor} ctx={ctx} descentRootId={descentRootId} tangleDataset={tangleDataset}
               bookStyle={bookStyle} bookAccess={bookAccess} bookSpread={bookSpread}
-              mesaTerrace={mesaTerrace} mesaGap={mesaGap} />
+              mesaTerrace={mesaTerrace} mesaGap={mesaGap} subTransforms={subTransforms} />
           </group>
         </group>
       </group>
@@ -5454,7 +5657,22 @@ function Rig({ ctx, cameras }) {
       // §7's platterYaw/platterTilt states were dropped for the
       // quaternion — this composition replaces them whole.
       _qPlatter.fromArray(st.platterQuat || [0, 0, 0, 1]);
-      _qSpin.setFromAxisAngle(_Y_AXIS, (st.rotation || 0) * DEG + frame.turntableAngle);
+      // Slice 13-5 (item 4): the rotation PARAMETER is DAMPED
+      // now — until this slice it applied instantly, so [ / ]
+      // stepped the disc in hard 6° jumps. frame.spinDamped
+      // eases toward the parameter along the WRAPPED delta (the
+      // short way round, so the Backquote's wrapping quarter
+      // turn glides instead of spinning 270°), at the citizens'
+      // own position rate; the turntable's yaw still adds on
+      // top, undamped, as it always has.
+      {
+        const target = (st.rotation || 0) * DEG;
+        if (frame.spinDamped == null) frame.spinDamped = target;
+        let d = target - frame.spinDamped;
+        d = Math.atan2(Math.sin(d), Math.cos(d));
+        frame.spinDamped += d * (1 - Math.exp(-5.5 * dt));
+      }
+      _qSpin.setFromAxisAngle(_Y_AXIS, frame.spinDamped + frame.turntableAngle);
       wg.quaternion.copy(_qPlatter).multiply(_qSpin);
       // The world frame's effective yaw, for the inspection
       // facing correction (inspectTargetFor): the composed
@@ -5739,12 +5957,19 @@ function Rig({ ctx, cameras }) {
     // distance — so when the transform keys turn the knot while a
     // part is focused, the seat tracks and the part stays framed.
     let seat, look;
-    const partW = st.partFocus && st.partFocus.partId && st.partFocus.objectId === "knot"
-      ? frame.partWorld.get(st.partFocus.partId) : null;
-    const branchW = st.partFocus && st.partFocus.partId && st.partFocus.objectId === "tree"
-      ? frame.branchWorld.get(st.partFocus.partId) : null;
-    const subW = st.partFocus && st.partFocus.partId
-      ? frame.subWorld.get(`${st.partFocus.objectId}:${st.partFocus.partId}`) || null : null;
+    // Slice 13-5 (item 1): a part focus seats the camera only
+    // while it is SEATED (G's focus). F's focus is the same
+    // state unseated — highlight, card and readout all read it
+    // below and in the overlay loop, but no seat branch here
+    // may take it: the camera stays where it is.
+    const seatedFocus = st.partFocus && st.partFocus.partId && st.partFocus.seated
+      ? st.partFocus : null;
+    const partW = seatedFocus && seatedFocus.objectId === "knot"
+      ? frame.partWorld.get(seatedFocus.partId) : null;
+    const branchW = seatedFocus && seatedFocus.objectId === "tree"
+      ? frame.branchWorld.get(seatedFocus.partId) : null;
+    const subW = seatedFocus
+      ? frame.subWorld.get(`${seatedFocus.objectId}:${seatedFocus.partId}`) || null : null;
     const cardBase = st.cardId ? frame.baseWorld.get(st.cardId) : null;
     // The entered-card seat and the DOLLY seat are the same seat
     // (slice 11, §4): out from the citizen's base along its
@@ -5777,7 +6002,23 @@ function Rig({ ctx, cameras }) {
         look: base.clone().add(new THREE.Vector3(0, ANCHOR_H[id] * 0.55 * sc, 0)),
       };
     };
-    if (st.partFocus && st.partFocus.partId && branchW) {
+    // Slice 13-3 (item 2): a POINT dolly seat — off the focus
+    // point along the camera's CURRENT view direction (from its
+    // eased look target), at the point seat's distance for the
+    // dolly multiplier, looking at the point. Factored out in
+    // slice 13-5 (item 5): the card branch below composes it
+    // too, so there is exactly one point-seat computation.
+    const pointSeat = () => {
+      const p = new THREE.Vector3(...st.zoomFocusPoint);
+      const fwd = A.look.clone().sub(camera.position);
+      if (fwd.lengthSq() < 0.01) fwd.set(0, 0, 1);
+      fwd.normalize();
+      return {
+        seat: p.clone().addScaledVector(fwd, -pointSeatDistance(st.zoomMul)),
+        look: p,
+      };
+    };
+    if (seatedFocus && branchW) {
       // Branch focus: seat off the subtree's bounding sphere —
       // centre + outward (from the tree's own base) by the sphere
       // radius and a reading margin, looking at the centre.
@@ -5790,7 +6031,7 @@ function Rig({ ctx, cameras }) {
         .add(new THREE.Vector3(0, 12, 0));
       look = branchW.centre.clone();
       if (camera === cameras.ortho) { camera.zoom = 1.5 / st.zoomMul; camera.updateProjectionMatrix(); }
-    } else if (st.partFocus && st.partFocus.partId && subW) {
+    } else if (seatedFocus && subW) {
       // Sub-node focus (slice 12): the branch seat's shape — off
       // the node's world anchor, outward from the citizen's own
       // base by the node's radius and a reading margin.
@@ -5803,7 +6044,7 @@ function Rig({ ctx, cameras }) {
         .add(new THREE.Vector3(0, 10, 0));
       look = subW.centre.clone();
       if (camera === cameras.ortho) { camera.zoom = 1.5 / st.zoomMul; camera.updateProjectionMatrix(); }
-    } else if (st.partFocus && st.partFocus.partId && partW) {
+    } else if (seatedFocus && partW) {
       const centre = frame.partWorld.get("__centre") || partW;
       const dir = partW.clone().sub(centre);
       if (dir.lengthSq() < 1) dir.set(0, 0, 1);
@@ -5847,10 +6088,11 @@ function Rig({ ctx, cameras }) {
       // the camera seats around the ENTERED citizen (the state
       // is live only while its card stands; goView sets it, the
       // backs clear it). FRONT is the entered seat itself, so
-      // this branch computes only PLAN and SIDE, through the
-      // pure citizenViewSeat; ELEVATION falls to the card
-      // branch below, which is that seat. The dolly scaling of
-      // the offsets follows the card seat's rule.
+      // this branch computes only PLAN and ELEVATION L / R
+      // (slice 13-5's split of the old SIDE), through the pure
+      // citizenViewSeat; FRONT falls to the card branch below,
+      // which is that seat. The dolly scaling of the offsets
+      // follows the card seat's rule.
       const id = st.citizenView.id;
       const base = frame.baseWorld.get(id);
       if (st.citizenView.view === "front") {
@@ -5875,9 +6117,31 @@ function Rig({ ctx, cameras }) {
       }
       if (camera === cameras.ortho) { camera.zoom = 1.35 / st.zoomMul; camera.updateProjectionMatrix(); }
     } else if (st.cardId && cardBase) {
-      const cs = citizenSeat(st.cardId, cardBase, st.zoomFocusId === st.cardId);
-      seat = cs.seat;
-      look = cs.look;
+      // Slice 13-5 (item 5) — THE TREEMAP DOLLY FIX. A POINT
+      // dolly focus stored while this citizen stands ENTERED
+      // (its card open and it current) wins over the card seat:
+      // the focus was resolved under the entered narrowing
+      // (slice 13-4), so it names THIS citizen's own element —
+      // a hovered cuboid of the tray, a wedge of the mesa or
+      // drum, a page, a device, a folder — and the dolly must
+      // travel to it. Before this slice the card branch sat
+      // above the point branch and honoured only CITIZEN foci
+      // (through its offsets' scaling), so C/V with a sub-node
+      // hovered on the entered citizen resolved and stored a
+      // point focus the seat chain never applied: in
+      // perspective the keys were simply inert (in ortho only
+      // the lens factor moved). The resolution was never wrong
+      // — the seat application shadowed it, for every
+      // per-node-mesh citizen alike.
+      if (st.zoomFocusPoint && st.currentId === st.cardId) {
+        const ps = pointSeat();
+        seat = ps.seat;
+        look = ps.look;
+      } else {
+        const cs = citizenSeat(st.cardId, cardBase, st.zoomFocusId === st.cardId);
+        seat = cs.seat;
+        look = cs.look;
+      }
       if (camera === cameras.ortho) { camera.zoom = 1.35 / st.zoomMul; camera.updateProjectionMatrix(); }
     } else if (st.zoomFocusId && frame.baseWorld.get(st.zoomFocusId)) {
       // THE DOLLY SEAT: C/V with a dolly focus — the camera
@@ -5891,20 +6155,14 @@ function Rig({ ctx, cameras }) {
       if (camera === cameras.ortho) { camera.zoom = 1.35 / st.zoomMul; camera.updateProjectionMatrix(); }
     } else if (st.zoomFocusPoint) {
       // Slice 13-3 (item 2): a POINT dolly focus — a hovered
-      // element's anchor, or the raw cursor point. The seat
-      // stands off the point along the camera's CURRENT view
-      // direction (from its eased look target), at the point
-      // seat's distance for the dolly multiplier — deepened by
-      // the citizen seat's curve, floored at the minimum
-      // stand-off (pointSeatDistance) — looking at the point.
+      // element's anchor, or the raw cursor point, with no card
+      // standing over it (the entered case composes the same
+      // seat inside the card branch above — slice 13-5, item 5).
       // As the camera eases in, the direction settles onto the
       // point and the seat holds.
-      const p = new THREE.Vector3(...st.zoomFocusPoint);
-      const fwd = A.look.clone().sub(camera.position);
-      if (fwd.lengthSq() < 0.01) fwd.set(0, 0, 1);
-      fwd.normalize();
-      seat = p.clone().addScaledVector(fwd, -pointSeatDistance(st.zoomMul));
-      look = p;
+      const ps = pointSeat();
+      seat = ps.seat;
+      look = ps.look;
       if (camera === cameras.ortho) { camera.zoom = 1.35 / st.zoomMul; camera.updateProjectionMatrix(); }
     } else if (st.viewName && st.viewName !== "home" && viewSeat(st.viewName, st.zoomMul)
       && !(st.openApp && st.openApp.appId)) {
@@ -6069,7 +6327,7 @@ export default function SpaceView(props) {
   const {
     space, currentId, hoverId, cardId, pendingId,
     projection, rotation, elevation, zoomMul,
-    zoomFocusId, zoomFocusPoint, entrySeat, marks, citizenView, platterQuat, ringSpinDeg, fieldIndex,
+    zoomFocusId, zoomFocusPoint, entrySeat, marks, subTransforms, citizenView, platterQuat, ringSpinDeg, fieldIndex,
     turntableOn, pulsesOn, ambientOn, labelsOn, sharedRef,
     libraryOpen, clipHeld, clipSummoned, inspectedId, inspectRot, pastes, inspectPanel,
     partFocus, partHoverId, branchHoverId, subHover, descents,
@@ -6090,7 +6348,7 @@ export default function SpaceView(props) {
   stateRef.current = {
     space, currentId, hoverId, cardId, pendingId,
     projection, rotation, elevation, zoomMul,
-    zoomFocusId, zoomFocusPoint, entrySeat, marks, citizenView, platterQuat, ringSpinDeg, fieldIndex,
+    zoomFocusId, zoomFocusPoint, entrySeat, marks, subTransforms, citizenView, platterQuat, ringSpinDeg, fieldIndex,
     turntableOn, pulsesOn, ambientOn, labelsOn,
     libraryOpen, clipSummoned, inspectedId, inspectRot,
     partFocus, partHoverId, branchHoverId, subHover, descents,
@@ -6114,6 +6372,10 @@ export default function SpaceView(props) {
       disp: new Map(), outerRefs: new Map(), innerRefs: new Map(),
       spinRefs: new Map(), ringRefs: new Map(), matsMap: new Map(),
       turntableAngle: 0, worldYaw: 0,
+      // Slice 13-5 (item 4): the platter's DAMPED plane spin
+      // (radians) — the rotation parameter's eased shadow, so
+      // [ / ] steps and the Backquote quarter turn GLIDE.
+      spinDamped: null,
       anchorWorld: new Map(), anchorLocal: new Map(), baseWorld: new Map(), partWorld: new Map(),
       branchWorld: new Map(), branchLocal: null, treeGroupRef: null,
       subLocal: new Map(), subWorld: new Map(), subGroupRefs: new Map(),
@@ -6324,6 +6586,40 @@ export default function SpaceView(props) {
           }
         } else branchEl.style.display = "none";
       }
+      // Slice 13-5 (item 6): the INFO CARDS' placement — a
+      // citizen's protective sphere as a screen circle (centre
+      // = its pivot, the inner group's world position: plot +
+      // CENTRE_Y through the assembly; radius = PROTECTIVE_R ×
+      // its display scale — the same sphere the sockets are cut
+      // from), projected along the camera's right vector. The
+      // pure placeInfoCard then stands the card clear of it.
+      const sphereScreen = (id) => {
+        const inner = frame.innerRefs.get(id);
+        const d = frame.disp.get(id);
+        const R = PROTECTIVE_R[id];
+        if (!inner || !d || !R) return null;
+        const c = new THREE.Vector3();
+        inner.getWorldPosition(c);
+        const ce = camera.matrixWorld.elements;
+        const edge = c.clone().addScaledVector(
+          new THREE.Vector3(ce[0], ce[1], ce[2]), R * d.scale);
+        const [cx, cy, front] = project(c);
+        if (!front) return null;
+        const [ex, ey] = project(edge);
+        return { x: cx, y: cy, r: Math.hypot(ex - cx, ey - cy) };
+      };
+      const placeCard = (el, anchorV, citizenId) => {
+        const [sx, sy, front] = project(anchorV);
+        if (!front) return false;
+        const pos = placeInfoCard({
+          anchor: { x: sx, y: sy },
+          sphere: sphereScreen(citizenId),
+          card: { w: el.offsetWidth || 0, h: el.offsetHeight || 0 },
+          viewport: { w: W, h: H },
+        });
+        el.style.transform = `translate(${pos.x.toFixed(1)}px, ${pos.y.toFixed(1)}px)`;
+        return true;
+      };
       const subEl = subRef.current;
       if (subEl) {
         // Slice 12: the sub-node info card — it stands in the
@@ -6444,12 +6740,13 @@ export default function SpaceView(props) {
           if (isMarked(st.marks, oid, nid)) lines.push("marked — Enter unmarks it");
           const txt = lines.join("\n");
           if (subEl.textContent !== txt) subEl.textContent = txt;
-          const [sx, sy, front] = project(sw.centre);
-          if (!front) subEl.style.display = "none";
-          else {
-            subEl.style.display = "";
-            subEl.style.transform = `translate(-50%, -135%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
-          }
+          // Slice 13-5 (item 6): the card stands CLEAR of its
+          // citizen's protective sphere — placed by placeCard
+          // (above the sphere, then its sides), never on top of
+          // the citizen it describes. Its content and its anchor
+          // (the sub-node's own centre) are unchanged.
+          subEl.style.display = "";
+          if (!placeCard(subEl, sw.centre, oid)) subEl.style.display = "none";
         } else subEl.style.display = "none";
       }
       // Label mode: the depth-1 branches name themselves at their
@@ -6543,9 +6840,14 @@ export default function SpaceView(props) {
       if (cardEl) {
         const anchor = st.cardId ? frame.anchorWorld.get(st.cardId) : null;
         if (st.cardId && anchor) {
+          // Slice 13-5 (item 6): the entered citizen's card
+          // stands clear of its own protective sphere too (it
+          // used to sit 16px right of the anchor, inside the
+          // sphere's projection, covering the citizen's right
+          // side). Content and anchor unchanged; placement is
+          // placeInfoCard's.
           cardEl.style.display = "";
-          const [sx, sy] = project(anchor);
-          cardEl.style.transform = `translate(16px, -50%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
+          if (!placeCard(cardEl, anchor, st.cardId)) cardEl.style.display = "none";
         } else cardEl.style.display = "none";
         // The living crystal's entered card lists its faces live.
         const facesEl = cardFacesRef.current;
@@ -6739,7 +7041,7 @@ export default function SpaceView(props) {
                   descentRootId={descents ? displayRootOf(descents[def.id], def.id) : null}
                   tangleDataset={tangleDataset}
                   bookStyle={bookStyle} bookAccess={bookAccess} bookSpread={bookSpread}
-                  mesaTerrace={mesaTerrace} mesaGap={mesaGap} />
+                  mesaTerrace={mesaTerrace} mesaGap={mesaGap} subTransforms={subTransforms} />
               ))}
               {space.cables.map(([a, b], i) => (
                 <Cable key={`${a}|${b}`} a={a} b={b} offset={(i * 0.37) % 1} ctx={ctx} />

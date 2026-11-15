@@ -407,6 +407,20 @@ export function platterSpinOpFor(key) {
   return PLATTER_SPIN_KEYS[key] || null;
 }
 
+/**
+ * Slice 13-5 (item 4): the BACKQUOTE key — a QUARTER TURN of
+ * the platter's plane, 90° per press in the ] direction
+ * (counter-clockwise seen from overhead). Unlike the fine
+ * steps, which clamp at the parameter's ends, the quarter
+ * WRAPS: the parameter is an angle, and 170° + 90° is −100°,
+ * the same heading — the Rig's new damped spin glides the
+ * short way round to it either way.
+ */
+export function stepPlatterQuarter(rotation) {
+  const cur = Number(rotation) || 0;
+  return ((cur + 90 + 180) % 360 + 360) % 360 - 180;
+}
+
 /* ---------------- the platter's camera-space orientation (§12) ---------------- */
 
 /**
@@ -1039,21 +1053,110 @@ export function socketCircles(positions) {
   return out;
 }
 
+/* ---------------- slice 13-5 (item 6): the info card stands clear ---------------- */
+
+/**
+ * THE INFO CARD'S PLACEMENT. The in-space info card (.us-info —
+ * the citizen's entered card and the sub-node card) is a
+ * projected overlay, and left to its anchor it can land ON TOP
+ * of the citizen it describes. The rule: the card's rectangle
+ * must not intersect the citizen's PROTECTIVE SPHERE projected
+ * to screen space (centre = the citizen's pivot — plot +
+ * CENTRE_Y — radius = PROTECTIVE_R × its scale, the same sphere
+ * the sockets are cut from). The card is displaced OUTWARD from
+ * the sphere: above it first, then its right, then its left,
+ * then below — each candidate clamped inside the viewport —
+ * and the first candidate that clears the circle wins. If the
+ * sphere covers so much of the screen that no candidate clears
+ * it, the candidate with the most clearance is used, still
+ * clamped on-screen: the card never leaves the viewport.
+ * Pure: (anchor point, sphere screen circle, card size,
+ * viewport) → the card's top-left { x, y }. The anchor is the
+ * card's subject point (the citizen's anchor, the sub-node's
+ * centre) — candidates centre on it horizontally (above/below)
+ * or vertically (the sides), so the card still reads as
+ * belonging to its anchor; only its placement changes.
+ */
+export function rectCircleIntersects(rect, circle) {
+  const nx = Math.max(rect.x, Math.min(circle.x, rect.x + rect.w));
+  const ny = Math.max(rect.y, Math.min(circle.y, rect.y + rect.h));
+  const dx = circle.x - nx;
+  const dy = circle.y - ny;
+  return dx * dx + dy * dy < circle.r * circle.r;
+}
+
+/** How far a rect stands clear of a circle (negative = overlap depth). */
+export function rectCircleClearance(rect, circle) {
+  const nx = Math.max(rect.x, Math.min(circle.x, rect.x + rect.w));
+  const ny = Math.max(rect.y, Math.min(circle.y, rect.y + rect.h));
+  return Math.hypot(circle.x - nx, circle.y - ny) - circle.r;
+}
+
+export function placeInfoCard({ anchor, sphere, card, viewport, gap = 10, margin = 8 } = {}) {
+  const w = Math.max(0, card ? card.w : 0);
+  const h = Math.max(0, card ? card.h : 0);
+  const vw = viewport ? viewport.w : 0;
+  const vh = viewport ? viewport.h : 0;
+  const clampX = (x) => Math.max(margin, Math.min(Math.max(margin, vw - margin - w), x));
+  const clampY = (y) => Math.max(margin, Math.min(Math.max(margin, vh - margin - h), y));
+  const ax = anchor ? anchor.x : vw / 2;
+  const ay = anchor ? anchor.y : vh / 2;
+  if (!sphere || !(sphere.r > 0)) {
+    // No sphere to clear: the standing placement — above the
+    // anchor, centred on it, clamped on-screen.
+    return { x: clampX(ax - w / 2), y: clampY(ay - h - gap) };
+  }
+  const candidates = [
+    // Above the sphere, centred on the anchor.
+    { x: clampX(ax - w / 2), y: clampY(sphere.y - sphere.r - gap - h) },
+    // Right of the sphere, centred on the anchor's height.
+    { x: clampX(sphere.x + sphere.r + gap), y: clampY(ay - h / 2) },
+    // Left of the sphere.
+    { x: clampX(sphere.x - sphere.r - gap - w), y: clampY(ay - h / 2) },
+    // Below the sphere.
+    { x: clampX(ax - w / 2), y: clampY(sphere.y + sphere.r + gap) },
+  ];
+  let best = null;
+  let bestClear = -Infinity;
+  for (const c of candidates) {
+    const rect = { x: c.x, y: c.y, w, h };
+    const clear = rectCircleClearance(rect, sphere);
+    if (clear >= 0) return c;
+    if (clear > bestClear) { bestClear = clear; best = c; }
+  }
+  return best || candidates[0];
+}
+
 /* ---------------- the dolly (C/V) and the focal zoom (5/6) ---------------- */
 
 export const ZOOM_MIN = 0.5;
 export const ZOOM_MAX = 2.0;
+/**
+ * Slice 13-5 (item 2): the dolly has TWO step sizes now. The
+ * COARSE step (1.15, the historical ZOOM_STEP) is the SWEEP —
+ * it lives on Shift+C / Shift+V. The FINE step (1.045) is the
+ * bare keys': a small proportional nudge the Rig's damping
+ * eases to, with the rotate keys' feel — at the world range a
+ * press moves the seat ~4.5% of its distance, and at the
+ * entered seat's range the same proportion, so the control
+ * reads as fine in both. Both steps clamp to the same range.
+ */
 export const ZOOM_STEP = 1.15;
+export const DOLLY_COARSE_STEP = ZOOM_STEP;
+export const DOLLY_FINE_STEP = 1.045;
 
 /**
  * One DOLLY step of the camera distance multiplier (C/V — the
  * camera itself moves; §14 separated this from the focal zoom
  * and named it honestly). dir +1 dollies IN (key V, distance
- * shrinks), dir -1 dollies OUT (key C). Clamped. (The function's
- * name predates the film-terms scheme; it is internal.)
+ * shrinks), dir -1 dollies OUT (key C). Clamped. `coarse`
+ * selects the sweep step (Shift+C/V); the default is the fine
+ * step of the bare keys. (The function's name predates the
+ * film-terms scheme; it is internal.)
  */
-export function zoomStep(mul, dir) {
-  const next = dir > 0 ? mul / ZOOM_STEP : mul * ZOOM_STEP;
+export function zoomStep(mul, dir, coarse = false) {
+  const step = coarse ? DOLLY_COARSE_STEP : DOLLY_FINE_STEP;
+  const next = dir > 0 ? mul / step : mul * step;
   return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, next));
 }
 
@@ -1456,28 +1559,35 @@ export function glowLevel(flags) {
 /* ---------------- named plane views (command line: v › t/f/s/h) ---------------- */
 
 /**
- * The view keys (§14): digits 1–4 call the same goView() as the
+ * The view keys (§14): digits call the same goView() as the
  * VIEW fieldset buttons and the command line, in the fieldset's
- * order — 1 PLAN, 2 ELEVATION, 3 SIDE, 4 HOME. Space-scope
- * only: in app scope digits stay bare (the camera is parked
- * while an app holds the stage).
+ * order. Slice 13-5 (item 4) REORDERED them: 1 FRONT,
+ * 2 ELEVATION L, 3 ELEVATION R, 4 PLAN, 0 HOME — the old single
+ * SIDE split into the two side elevations, and HOME moved to 0
+ * (bare 0; Alt+0 stays the clipboard chord, a different press).
+ * Space-scope only: in app scope digits stay bare (the camera
+ * is parked while an app holds the stage).
  */
-export const VIEW_KEYS = { "1": "top", "2": "front", "3": "side", "4": "home" };
+export const VIEW_KEYS = { "1": "front", "2": "left", "3": "right", "4": "top", "0": "home" };
 
 /**
  * Named views are pure camera moves — a seat and a look target,
- * nothing else changes. TOP is above, looking down at the XZ
- * ground plane (a hair of z offset keeps the camera's up vector
- * stable); FRONT is square-on to the XY wall; SIDE is square-on
- * to the YZ plane; HOME is the parametric seat the parameters
- * describe (no fixed seat — the Rig computes it). The C/V dolly
- * scales a named seat toward its look target.
+ * nothing else changes. PLAN (top) is above, looking down at
+ * the XZ ground plane (a hair of z offset keeps the camera's
+ * up vector stable); FRONT is square-on to the XY wall;
+ * ELEVATION L / R are square-on to the YZ plane from −X / +X
+ * (azimuths −90° / +90° at the standing elevation profile —
+ * R keeps the old SIDE's seat); HOME is the parametric seat
+ * the parameters describe (no fixed seat — the Rig computes
+ * it). The C/V dolly scales a named seat toward its look
+ * target. The space still OPENS in plan — viewName "top".
  */
 export const VIEWS = {
   home: { name: "HOME", seat: null, look: null },
-  top: { name: "TOP", seat: [0, 560, 28], look: [0, 0, 0] },
+  top: { name: "PLAN", seat: [0, 560, 28], look: [0, 0, 0] },
   front: { name: "FRONT", seat: [0, 80, 330], look: [0, 80, -196] },
-  side: { name: "SIDE", seat: [330, 80, 0], look: [196, 80, 0] },
+  left: { name: "ELEVATION L", seat: [-330, 80, 0], look: [-196, 80, 0] },
+  right: { name: "ELEVATION R", seat: [330, 80, 0], look: [196, 80, 0] },
 };
 
 export function viewSeat(name, zoomMul = 1) {
@@ -1490,22 +1600,23 @@ export function viewSeat(name, zoomMul = 1) {
 /**
  * Slice 13-3 (item 1): CITIZEN-RELATIVE named views. When a
  * citizen view is ENTERED — a citizen stands open, its card up
- * (cardId === currentId, a citizen id) — PLAN / ELEVATION /
- * SIDE stop naming seats around the whole space and name seats
- * around THE ENTERED CITIZEN instead: plan above it looking
- * down, elevation in front of it, side beside it, all at the
- * citizen's own seat distance (the citizenSeat offsets). HOME
- * stays the space's global home view, and with no citizen
- * entered every view is global, exactly as before. The
- * resolution is pure: entered citizen + view name → a citizen
- * seat spec; anything else → the global view. The App's one
- * goView transition serves the fieldset buttons, the digit
- * keys and the command line alike, so all three doors resolve
- * here.
+ * (cardId === currentId, a citizen id) — FRONT / ELEVATION L /
+ * ELEVATION R / PLAN stop naming seats around the whole space
+ * and name seats around THE ENTERED CITIZEN instead: plan
+ * above it looking down, front before it, the elevations
+ * beside it left and right, all at the citizen's own seat
+ * distance (the citizenSeat offsets). HOME stays the space's
+ * global home view, and with no citizen entered every view is
+ * global, exactly as before. The resolution is pure: entered
+ * citizen + view name → a citizen seat spec; anything else →
+ * the global view. The App's one goView transition serves the
+ * fieldset buttons, the digit keys and the command line alike,
+ * so all three doors resolve here. (Slice 13-5 split the old
+ * "side" into "left" and "right"; both are citizen-relative.)
  */
 export function resolveViewTarget({ view = null, enteredId = null } = {}) {
   if (enteredId && OBJECT_IDS.includes(enteredId)
-    && (view === "top" || view === "front" || view === "side")) {
+    && (view === "top" || view === "front" || view === "left" || view === "right")) {
     return { kind: "citizen", view, id: enteredId };
   }
   return { kind: "global", view };
@@ -1519,11 +1630,14 @@ export function resolveViewTarget({ view = null, enteredId = null } = {}) {
  * card's seat uses (ANCHOR_H × 0.55 × scale, the View's table).
  * FRONT is the entered seat itself — out along the citizen's
  * radial, raised, looking at the anchor height — the same
- * composition the Rig's card branch makes, so ELEVATION while
- * entered is the seat F flew to. SIDE is that seat turned a
- * quarter-turn about the citizen: out along the TANGENT at the
- * same offsets, the same look. PLAN is above: up the seat
- * distance (the offsets' length) with a hair of the radial
+ * composition the Rig's card branch makes, so FRONT while
+ * entered is the seat F flew to. ELEVATION L / R are that seat
+ * turned a quarter-turn about the citizen: out along the
+ * TANGENT at the same offsets, the same look — L along the
+ * tangent (−rz, rx) (for a citizen on the +Z radial, the seat
+ * at its −X, matching the global ELEVATION L's −X seat), R
+ * along the mirrored tangent (rz, −rx). PLAN is above: up the
+ * seat distance (the offsets' length) with a hair of the radial
  * kept — the global top view's own trick, keeping the camera's
  * up vector stable — looking down at the citizen's heart.
  * A citizen standing on the platter's axis has no radial; the
@@ -1536,10 +1650,18 @@ export function citizenViewSeat(view, base, offsets, anchorY) {
   const rl = Math.hypot(rx, rz);
   if (rl < 1) { rx = 0; rz = 1; } else { rx /= rl; rz /= rl; }
   const look = [bx, by + anchorY, bz];
-  if (view === "side") {
+  if (view === "left" || view === "side") {
     // The tangent: the radial turned a quarter-turn in the plane.
+    // ("side" is the pre-13-5 name of this seat; it read as L.)
     return {
       seat: [bx + -rz * offsets.radial, by + offsets.up, bz + rx * offsets.radial],
+      look,
+    };
+  }
+  if (view === "right") {
+    // The mirrored tangent: the quarter-turn the other way.
+    return {
+      seat: [bx + rz * offsets.radial, by + offsets.up, bz + -rx * offsets.radial],
       look,
     };
   }
@@ -1726,14 +1848,22 @@ export function inspectScaleFor(kind) {
  * object's data, at this part". The release chain backs out
  * part → knot → release, so ending a focus returns to the knot
  * simply being current, exactly where it was.
+ *
+ * Slice 13-5 (item 1): the focus carries a SEATED flag. F focuses
+ * a sub-node WITHOUT moving the camera (seated false): the focus
+ * state — highlight, card, readout — is exactly as it always was,
+ * but the Rig does not take the part seat. G flies to it (seated
+ * true): the same focus, with the seat. G on an already-focused
+ * node seats it; F on a seated node unseats it. The back chain's
+ * partFocus level pops the same either way (it counts partId).
  */
 export function createPartFocus() {
-  return { objectId: null, partId: null };
+  return { objectId: null, partId: null, seated: false };
 }
 
-export function beginPartFocus(focus, objectId, partId) {
+export function beginPartFocus(focus, objectId, partId, seated = true) {
   if (!objectId || !partId) return focus;
-  return { objectId, partId };
+  return { objectId, partId, seated: Boolean(seated) };
 }
 
 export function endPartFocus() {

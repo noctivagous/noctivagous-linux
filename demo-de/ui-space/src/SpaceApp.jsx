@@ -53,6 +53,7 @@ import {
   IDENTITY_QUAT,
   stepPlatterQuat,
   stepPlatterSpin,
+  stepPlatterQuarter,
   platterSpinOpFor,
   resolveScaleTarget,
   resolveDollyTarget,
@@ -128,6 +129,14 @@ import {
   marksFor,
   countMarks,
 } from "./subnode-marks.js";
+import {
+  createSubTransforms,
+  subTransformOf,
+  hasSubTransform,
+  applySubTransformOp,
+  resetSubTransform,
+  resolveSubTransformTarget,
+} from "./sub-transforms.js";
 import { BOOK_TOTALS, SPREAD_COUNT, spreadIndexForPage } from "./book.js";
 import { HIERARCHY } from "./hierarchy.js";
 import {
@@ -341,7 +350,8 @@ const KEY_GROUPS = [
     rows: [
       ["hover", "the object under the cursor is the addressee"],
       ["Tab", "cycle everything addressable (Shift+Tab back)"],
-      ["F", "open the addressed object — its card stands in space"],
+      ["F", "open the addressed object — its card stands in space. On a sub-node, F FOCUSES it instead: highlight, card and readout, and the camera stays exactly where it is"],
+      ["G", "GO TO — the flight F used to make: fly to the addressed sub-node and focus it there; G on an already-focused node seats it. On a citizen, G enters it, exactly as F does. (In label mode G stays an address — the tangled tree's)"],
       ["F on the ring", "opens the addressed app — Waveform, or the captured Web page — onto the centre stage"],
       ["E on the ring", "open the addressed app across the whole platter, citizens hidden — on a citizen, E is yaw"],
       ["Alt+L", "label mode — letter chips appear, bare letters target"],
@@ -366,8 +376,9 @@ const KEY_GROUPS = [
       ["T Y", "roll it"],
       ["B N", "rotate plane — turn it in its own plane, about its own normal; no other axis changes"],
       ["Z X", "magnify it — enlarge one thing for examination while the rest of the space stays in place"],
-      ["H", "RESET the examined citizen — its yaw, pitch, roll, plane spin and magnify return to the build defaults (identity, 0, 1×); its place, descent, book access, part focus and marks all stand. The reset is eased by the view's own damping"],
-      ["targets", "rotate lands under the cursor: a hovered citizen first, then the ring (E R B N only spin it), then the current citizen — else the platter, which the cluster turns as the camera sees it, and which cannot be magnified"],
+      ["H", "RESET the examined citizen — its yaw, pitch, roll, plane spin and magnify return to the build defaults (identity, 0, 1×); its place, descent, book access, part focus and marks all stand. The reset is eased by the view's own damping. With a sub-node hovered, H resets THAT node's transform instead — the same hierarchy the transform keys climb"],
+      ["targets", "rotate lands under the cursor: a hovered SUB-NODE of the current citizen first — the keys turn the node about its own centre, B N spin it in its own plane, Z X scale it about its anchor — then a hovered citizen, then the ring (E R B N only spin it), then the current citizen — else the platter, which the cluster turns as the camera sees it, and which cannot be magnified"],
+      ["sub-node turns", "the knot's parts take no turns of their own: they are one continuous sweep with no per-part geometry to turn, so with a knot part hovered the keys keep landing on the knot itself"],
       ["Space", "pick the addressed object up / press again to drop"],
       ["X / Z", "in a drag: lock movement to that world axis — the drag scope owns them while a carry is live"],
     ],
@@ -381,20 +392,21 @@ const KEY_GROUPS = [
   {
     title: "Camera",
     rows: [
-      ["C", "dolly out — the camera itself pulls back; there is no scroll-wheel zoom"],
-      ["V", "dolly in — and no mouse orbit; the dolly runs toward what the hand is on: a hovered element (a wedge, a page, a host), the hovered or opened citizen, or the point under the cursor"],
+      ["C", "dolly out — a FINE step of the camera itself, eased like the rotate keys; Shift+C is the long pull. There is no scroll-wheel zoom"],
+      ["V", "dolly in — a fine step; Shift+V is the long sweep — and no mouse orbit; the dolly runs toward what the hand is on: a hovered element (a wedge, a page, a host), the hovered or opened citizen, or the point under the cursor"],
       ["entered seat", "while a citizen stands entered, the camera seats from the ENTRY — the seat as it stood when the card opened, from the citizen as it then was. MAGNIFY grows the citizen, the camera does not reframe; C/V dolly along the entry seat's line, and only toward the entered citizen's own elements — a focus on another citizen is never stored up to land when the card closes"],
       ["[ ]", "the platter's plane spin: ] counter-clockwise seen from overhead, [ clockwise — always the platter, never a citizen (citizens keep B N)"],
+      ["`", "the platter's QUARTER TURN — 90° a press in the ] direction, gliding on the platter's damped spin (the fine steps glide on it too)"],
       ["5", "field − — one field size wider (the zoom: the lens changes, the camera stays)"],
       ["6", "field + — one field size narrower: LONG · MEDIUM LONG · MEDIUM · MEDIUM CLOSE · CLOSE"],
-      ["1 2 3 4", "the named views: PLAN · ELEVATION · SIDE · HOME — the VIEW fieldset's order, the same goView. With a citizen entered, PLAN · ELEVATION · SIDE seat around THAT citizen; HOME stays the whole space's"],
-      ["v › t/f/s/h", "the same views on the command line — a global view levels the platter's camera turns; a citizen's view leaves them as they stand"],
+      ["1 2 3 4 0", "the named views: FRONT · ELEVATION L · ELEVATION R · PLAN · HOME — the VIEW fieldset's order, the same goView; the named views keep their sweeping fly-to (the fine dolly never applies to them). With a citizen entered, FRONT · ELEVATION L · ELEVATION R · PLAN seat around THAT citizen; HOME stays the whole space's. Bare 0 is HOME — Alt+0 stays the clipboard chord, a different press"],
+      ["v › t/f/l/r/h", "the same views on the command line — a global view levels the platter's camera turns; a citizen's view leaves them as they stand"],
     ],
   },
   {
     title: "Patch, media & clipboard",
     rows: [
-      ["G", "start a patch from the addressed object; G / F / A / click lands it"],
+      ["U", "start a patch from the addressed object; U / F / A / click lands it (the patch key moved here from G, which flies now). The one precedence: while the book is current AND addressed, U is its BOOK STYLE toggle instead"],
       ["J", "strip every cable touching the addressed object"],
       ["M", "open / close the media library on the XY wall"],
       ["L", "copy the addressed thing to the clipboard"],
@@ -412,20 +424,21 @@ const KEY_GROUPS = [
       ["L / I", "here I inspects and L copies — KeyPilot's stock I-copy lives on L in this layout"],
       ["marks", "a marked sub-node wears an AMBER outline and glow, held — a per-citizen index that persists while you move around the space; the readout's MARKS line counts the current citizen's, and its card names them. Enter on a marked node unmarks it. Marking is not focusing: F's part focus neither marks nor is cleared by marking. No operation consumes the marks yet — the convention, its display and its storage are the deliverable"],
       ["F on a card / tray", "inspects it, like I"],
-      ["knot parts", "with the knot current, hover a part — F flies into it, D (GO BACK II) backs out to the knot"],
-      ["tree branches", "with the tree current, hover a depth-1 branch — F flies to the subtree, D backs out to the tree"],
-      ["treemap nodes", "with the tray current, hover a plate or a cuboid — it lights, its card stands in the space, and F flies into the node"],
-      ["tangled figures", "with the tangled tree current, hover a figure — its card names the figure and its line; F flies into it. PARAMETERS switches the tree's course: the Greek genealogy, or demo-de's own module import graph"],
-      ["sunburst wedges", "with the mesa or the drum current, hover a wedge to read it — F on a leaf wedge flies into it; F on a branch wedge descends"],
+      ["knot parts", "with the knot current, hover a part — F focuses it (the camera stays), G flies into it, D (GO BACK II) backs out to the knot"],
+      ["tree branches", "with the tree current, hover a depth-1 branch — F focuses the subtree, G flies to it, D backs out to the tree"],
+      ["treemap nodes", "with the tray current, hover a plate or a cuboid — it lights, its card stands in the space, F focuses it and G flies into the node"],
+      ["tangled figures", "with the tangled tree current, hover a figure — its card names the figure and its line; F focuses it, G flies into it. PARAMETERS switches the tree's course: the Greek genealogy, or demo-de's own module import graph"],
+      ["sunburst wedges", "with the mesa or the drum current, hover a wedge to read it — F on a leaf wedge focuses it (G flies into it); F on a branch wedge descends"],
       ["the mesa's terraces", "the mesa is terraced like its own page (sunburst.html): each ring stands a step below the ring inside it, with a gap between rings — PARAMETERS · Mesa terrace and Mesa ring gap set the relief. Its centre disc names the whole (the repository, and its total); hover it to read the root, F there does nothing — F descends into a wedge. In label mode the mesa's wedges name themselves where their spans have room"],
       ["sunburst descent", "F on a branch wedge re-roots the sunburst at that wedge — values and shares are of the new root, and the readout shows the path from the repository root. The backs climb out, one root per level, until the true root stands again. Descent is a display state only: rotation, plane spin and MAGNIFY are exactly as you left them, on the way down and on the way back up"],
       ["the book's tiers", "with the sample book current, its tiers are sub-addresses: hover a CHAPTER band segment (the drum's upper band), a SECTION segment (the lower band) or a PAGE leaf at the rim — it lights, its card stands in the space, and the readout's NODE line follows"],
       ["book access", "F on a chapter or section ACCESSES it: the drum turns so the accessed arc faces the front, and the tiers outside it ghost. F on a page slides the page OUT of the drum to be read in full. The backs climb page → section → chapter → whole book, one tier per level — access is a display state, never a transform"],
       ["book style", "U (or PARAMETERS · Sample Book style) stands the book open instead: two pages at a time, verso left and recto right. The title page stands alone as the first spread's recto, with a blank verso; the pages then pair in reading order"],
       ["spread flipping", "in the spread presentation B and N flip the spread (they read SPREAD − / SPREAD + on the keyboard panel) instead of plane-spinning the book; F on a standing leaf turns to that page's spread. In the cylinder presentation B and N plane-spin as usual"],
-      ["devices & hosts", "with Devices current, hover a device on its shelf, the hub, or a host token standing on the ring's back arc — it lights, its card stands in the space, and F flies into it. The printer's card lists its queue: a sheet stands in its tray per job, the printing job's sheet half-fed"],
+      ["devices & hosts", "with Devices current, hover a device on its shelf, the hub, or a host token standing on the ring's back arc — it lights, its card stands in the space, F focuses it and G flies into it. The printer's card lists its queue: a sheet stands in its tray per job, the printing job's sheet half-fed"],
       ["net lanes", "the horizon citizens' last two lanes are NETWORK IN and NETWORK OUT, driven by the environment snapshot's captured strip of interface rates; the other six lanes keep the tempered walk"],
-      ["mail folders", "with Mail current, its folders are sub-addresses in the pigeonhole cabinet: hover a compartment to read its count and unread, F flies into it. Projects' subfolders nest inside its cell"],
+      ["mail folders", "with Mail current, its folders are sub-addresses in the pigeonhole cabinet: hover a compartment to read its count and unread, F focuses it and G flies into it. Projects' subfolders nest inside its cell"],
+      ["the info card", "the card that stands in the space beside a citizen — its own card, or a sub-node's — never covers the citizen it describes: it is placed clear of the citizen's protective sphere (the sphere its socket is cut from), above it or to a side, and always inside the viewport"],
       ["the post shelf", "beside the media library on the XY wall stands the POST SHELF: the recent letters as standing cards, sender and subject on their faces. With Mail current, hover a letter to read it; F opens it on the centre stage, and the backs close it like an app — one level, at the app's own tier"],
       ["the web frame", "the ring's second item is WEB: a captured page (Wikipedia's Snow globe), its structure — title, sections, links — laid out as a document on a sheet. It is a capture, not a live page: live pages need the local bridge, a later slice"],
     ],
@@ -785,7 +798,8 @@ export default function SpaceApp() {
   const [viewName, setViewName] = useState("top");
   // Slice 13-3 (item 1): a CITIZEN-RELATIVE named view, set by
   // goView while a citizen stands entered — { id, view } with
-  // view "top" | "front" | "side". The Rig seats the camera
+  // view "top" | "front" | "left" | "right" (13-5's split of
+  // the old "side"). The Rig seats the camera
   // around that citizen while its card stands; the state is
   // inert the moment the card closes (the Rig checks it
   // against cardId), and the back events clear it like the
@@ -905,6 +919,11 @@ export default function SpaceApp() {
   const [marks, setMarks] = useState(() => createMarks());
   const [entrySeat, setEntrySeat] = useState(null);
   const [enteredOnce, setEnteredOnce] = useState([]);
+  // Slice 13-5 (item 3): the SUB-NODE TRANSFORM store
+  // (sub-transforms.js: per (citizen, subId) transform records
+  // the rotate/magnify keys step while a sub-node is hovered,
+  // session-lived like the marks).
+  const [subTransforms, setSubTransforms] = useState(() => createSubTransforms());
 
   // The layers, as the PARAMETERS panel holds them.
   const layers = layersFromValues(values);
@@ -1357,12 +1376,25 @@ export default function SpaceApp() {
     else setCurrentId("mail");
   };
 
-  const doF = () => {
+  /**
+   * The F/G action resolution, shared (slice 13-5, item 1):
+   * F and G resolve the SAME action on the addressed thing;
+   * they differ only in the part focus's SEATED flag. F focuses
+   * a sub-node WITHOUT moving the camera (fly false — the focus
+   * state is set, the card stands as it stood, the Rig takes no
+   * part seat); G flies to it (fly true — the focus WITH the
+   * seat, F's pre-13-5 behaviour, and on a citizen the same
+   * entry F makes). A live patch keeps its F (it completes onto
+   * the addressed target, as it always has) but is not G's
+   * business: G's resolution runs with no patch pending, so it
+   * never completes one — patching lives on U now (doPatch).
+   */
+  const doFAction = ({ fly = false } = {}) => {
     // Slice 8 first: an app-bearing thing (the ring's Waveform)
     // OPENS instead of entering — F takes it to the centre stage.
     // A live patch keeps its F: the patch completes onto the
     // addressed target, as it always has.
-    if (!pendingId) {
+    if (fly || !pendingId) {
       const open = resolveOpenAction({
         targetId: addressedId(hoverId, currentId), key: "f", labelMode: uiMode.labelMode,
       });
@@ -1386,7 +1418,7 @@ export default function SpaceApp() {
         ? subnodeById(addressed, subHover.nodeId, displayRootOf(descents[addressed], addressed), tangleDataset)
         : null;
     const action = resolveFAction({
-      pendingId,
+      pendingId: fly ? null : pendingId,
       hoverId,
       currentId,
       partId: partHoverId && partById(partHoverId) ? partHoverId : null,
@@ -1402,15 +1434,25 @@ export default function SpaceApp() {
       case "completePatch":
         completePatch(pendingId, action.targetId);
         return;
-      case "partFocus":
+      case "partFocus": {
         // F on a hovered part of the knot zooms INTO the part —
         // the part focus, one level deeper than entering the knot.
         // Slice 12: the tray's, tangle's and sunbursts' sub-nodes
         // take the same seat through the same case.
+        // Slice 13-5 (item 1): the seat is G's now. F sets the
+        // focus UNSEATED — highlight, card and readout exactly
+        // as they were, but the card is left as it stands and
+        // the Rig takes no part seat, so the camera stays where
+        // it is; G sets it SEATED (and closes the card, as the
+        // seated focus always did — the seat replaces it).
         setCurrentId(action.targetId);
-        setPartFocus(beginPartFocus(partFocus, action.targetId, action.partId));
-        setCardId(null);
+        setPartFocus(beginPartFocus(partFocus, action.targetId, action.partId, fly));
+        if (fly) setCardId(null);
+        const nm = subNode ? subNode.name
+          : (partById(action.partId)?.name || action.partId);
+        showDyn(fly ? `WENT TO — ${nm}` : `FOCUSED — ${nm}`);
         return;
+      }
       case "descend": {
         // F on a sunburst BRANCH wedge descends: the wedge's node
         // becomes the citizen's display root and the miniature
@@ -1507,14 +1549,19 @@ export default function SpaceApp() {
         openMessageSheet(action.messageId);
         return;
       }
-      case "branchFocus":
+      case "branchFocus": {
         // F on a hovered depth-1 branch of the tree zooms INTO
         // the subtree — the same focus state and the same level
         // of the release chain as the knot's part focus.
+        // Slice 13-5 (item 1): the same seated split as
+        // partFocus — F focuses unseated, G flies.
         setCurrentId(action.targetId);
-        setPartFocus(beginPartFocus(partFocus, action.targetId, action.partId));
-        setCardId(null);
+        setPartFocus(beginPartFocus(partFocus, action.targetId, action.partId, fly));
+        if (fly) setCardId(null);
+        const nm = dataBranchById(DATA_TREE, action.partId)?.name || action.partId;
+        showDyn(fly ? `WENT TO — ${nm}` : `FOCUSED — ${nm}`);
         return;
+      }
       case "inspect":
         // Cards and the tray are small: for them, F-enter IS inspect.
         beginInspectThing(action.targetId);
@@ -1540,6 +1587,9 @@ export default function SpaceApp() {
         return;
     }
   };
+
+  /** F: the action above, unseated — focus without flight. */
+  const doF = () => doFAction({ fly: false });
   /* ----- slice 11: the event layer, dispatched ----- */
 
   // The release stack's occupancy, as data for the resolver.
@@ -1728,9 +1778,18 @@ export default function SpaceApp() {
    * The zoomFocus clears when the step lands back on 1.0, and
    * by the standing rules — selection change, back events,
    * layout change.
+   *
+   * Slice 13-5 (item 2): the step is FINE by default — the bare
+   * keys nudge the multiplier by DOLLY_FINE_STEP and the Rig's
+   * damping eases the camera to it, the rotate keys' feel,
+   * everywhere and especially while a citizen is open. The
+   * SWEEP (the old coarse step) rides Shift+C / Shift+V and
+   * arrives here as `coarse`. The focus resolution is the same
+   * for both — only the step's size differs. (The named-view
+   * keys are exempt from all of this: they keep their fly-to.)
    */
-  const pressZoom = (dir) => {
-    const next = zoomStep(zoomMul, dir);
+  const pressZoom = (dir, coarse = false) => {
+    const next = zoomStep(zoomMul, dir, coarse);
     const published = sharedRef.current.subAnchor;
     const subAnchor = published && subHover
       && published.key === `${subHover.objectId}:${subHover.nodeId}` ? published : null;
@@ -1772,6 +1831,19 @@ export default function SpaceApp() {
   };
 
   /**
+   * Slice 13-5 (item 4): the BACKQUOTE key — the platter's
+   * QUARTER TURN. It steps the same rotation parameter by 90°
+   * in the ] direction (wrapping, where the fine steps clamp),
+   * and the Rig's damped spin glides the platter to it.
+   */
+  const pressPlatterQuarter = () => {
+    const next = stepPlatterQuarter(values.rotation);
+    setValue("rotation", next);
+    showDyn(`PLATTER PLANE ${next > 0 ? `+${next}` : `${next}`}° — QUARTER TURN`);
+    touch();
+  };
+
+  /**
    * 5/6: the focal ZOOM (§15) — one rung along the field-size
    * ladder. The camera does not move; the lens changes. The
    * step names the new field through the dynamic-input channel,
@@ -1794,7 +1866,30 @@ export default function SpaceApp() {
    * do not apply), platter (the cluster premultiplies the
    * platter's orientation about the CAMERA's axes; plane steps
    * the rotation parameter, innermost in the composition).
+   * Slice 13-5 (item 3): a hovered SUB-NODE of the current
+   * citizen resolves above every one of these — the
+   * interception inside steps the node's own transform record.
    */
+  /**
+   * Slice 13-5 (item 3): the transform keys' finest target,
+   * resolved once for both the keys and H: a sub-node hovered
+   * on the current citizen (resolveSubTransformTarget), minus
+   * one honest exception — the sunbursts' CENTRE DISC, the
+   * display root, has no wedge of its own to turn (it IS the
+   * whole the wedges belong to), so its hover falls through to
+   * the citizen, whose keys already turn that.
+   */
+  const subTransformTargetNow = () => {
+    const t = resolveSubTransformTarget({ currentId, subHover, branchHoverId });
+    if (!t) return null;
+    if (t.citizenId === "mesa" || t.citizenId === "drum") {
+      const root = subnodeRootOf(
+        t.citizenId, displayRootOf(descents[t.citizenId], t.citizenId), tangleDataset);
+      if (root && t.nodeId === root.id) return null;
+    }
+    return t;
+  };
+
   const handleTransformKey = (tk) => {
     const op = transformOpOf(tk);
     if (!op) return;
@@ -1809,6 +1904,32 @@ export default function SpaceApp() {
       setBookSpread(next);
       showDyn(`SPREAD ${next + 1} / ${SPREAD_COUNT}`);
       touch();
+      return;
+    }
+    // Slice 13-5 (item 3): the hierarchy's new top level — a
+    // sub-node hovered on the CURRENT citizen takes the key
+    // before its citizen does (resolveSubTransformTarget, in
+    // sub-transforms.js): the op steps THAT node's own
+    // transform record — rotation about its own anchor, B/N
+    // its in-plane spin, Z/X its scale about its anchor — and
+    // the dyn line names the node, in the citizens' wording.
+    // (The book's spread flip above keeps its precedence for
+    // B/N in the spread presentation: flipping is how spreads
+    // are navigated at all. The knot's parts never resolve —
+    // no per-part geometry — so the knot citizen keeps its
+    // keys, as do citizens without sub-node providers.)
+    const subTarget = subTransformTargetNow();
+    if (subTarget) {
+      const next = applySubTransformOp(subTransforms, subTarget.citizenId, subTarget.nodeId, op);
+      setSubTransforms(next);
+      const tr = subTransformOf(next, subTarget.citizenId, subTarget.nodeId);
+      const nm = markNodeName(subTarget.citizenId, subTarget.nodeId);
+      const sgn = (v) => (v > 0 ? `+${v}` : `${v}`);
+      if (op.startsWith("scale")) showDyn(`MAGNIFY ${nm} ${tr.scale.toFixed(2)}×`);
+      else if (op.startsWith("yaw")) showDyn(`YAW ${nm} ${sgn(Math.round(tr.yaw))}°`);
+      else if (op.startsWith("pitch")) showDyn(`PITCH ${nm} ${sgn(Math.round(tr.pitch))}°`);
+      else if (op.startsWith("roll")) showDyn(`ROLL ${nm} ${sgn(Math.round(tr.roll))}°`);
+      else if (op.startsWith("spin")) showDyn(`PLANE ${nm} ${sgn(Math.round(tr.spin || 0))}°`);
       return;
     }
     if (op === "scale-" || op === "scale+") {
@@ -1875,20 +1996,37 @@ export default function SpaceApp() {
   };
   const doG = () => {
     // G's precedence is modal, plainly: INSIDE label mode letters
-    // are pure addresses, so G is the tangled tree. OUTSIDE it, G
-    // is purely the patch operator and addresses nothing.
+    // are pure addresses, so G is the tangled tree. OUTSIDE it,
+    // G is GO TO (slice 13-5, item 1): the flight half of the
+    // F/G split — the shared action resolution with the seat
+    // taken (doFAction, fly). On a sub-node it sets the part
+    // focus SEATED — an already-focused node is seated by the
+    // press — and on a citizen it enters, exactly as F does.
+    // Patching is no longer G's: it lives on U (doPatch).
     if (uiMode.labelMode) {
       const obj = objectForLabel("G");
       if (obj) setCurrentId(obj.id);
       return;
     }
+    doFAction({ fly: true });
+  };
+
+  const doPatch = () => {
+    // U (slice 13-5, item 1): the PATCH operator, moved from G —
+    // everything G did for patching lives here now: with a patch
+    // live, U completes it onto the addressed target; with none,
+    // U starts a cable from the ADDRESSED object (hover wins, as
+    // it did for G) and the source becomes current. FINISH (A)
+    // still completes a live patch, F and a click still land it.
+    // The one precedence stands in the key handler, above this:
+    // while the book is current AND addressed, U is BOOK STYLE
+    // and never reaches here. In label mode U is an address and
+    // never reaches here either (the handler's gate).
     if (pendingId) {
       const target = addressedId(hoverId, currentId);
       if (target && target !== pendingId) completePatch(pendingId, target);
       return;
     }
-    // No patch live: G starts from the ADDRESSED object — hover
-    // wins, as it does for F — and the source becomes current.
     const source = addressedId(hoverId, currentId);
     if (source && ringItemById(source)) {
       setEcho({ text: `${thingName(source)} opens — F centre-stage, E full platter; it does not patch`, error: true });
@@ -2013,7 +2151,7 @@ export default function SpaceApp() {
         return n ? `stripped ${n} cable${n === 1 ? "" : "s"} from ${objectById(currentId).name}` : `${objectById(currentId).name} has no cables`;
       }
       case "connect": {
-        // The resolver already applied the G rules (no self, no
+        // The resolver already applied the patch rules (no self, no
         // duplicate); addCable applies them again at the state.
         const res = addCable(space, currentId, intent.id);
         if (!res.ok) return { error: `patch refused — ${res.reason}` };
@@ -2027,7 +2165,9 @@ export default function SpaceApp() {
         setCitizenView(null);
         return `layout ${LAYOUTS[intent.layout].name}`;
       case "zoom":
-        setZoomMul((m) => zoomStep(m, intent.dir));
+        // The command line's dolly keeps the SWEEP step (a typed
+        // command travels; the keys nudge — slice 13-5, item 2).
+        setZoomMul((m) => zoomStep(m, intent.dir, true));
         return intent.dir > 0 ? "dolly in" : "dolly out";
       case "view": {
         // goView is the one transition, shared with the VIEW
@@ -2048,7 +2188,7 @@ export default function SpaceApp() {
   };
 
   // The named views are pure camera moves. The command line's
-  // v › t/f/s/h intents, the VIEW fieldset's buttons and the
+  // v › t/f/l/r/h intents, the VIEW fieldset's buttons and the
   // digit keys are three doors to this one transition, which
   // returns its own echo text (the doors display it).
   // Slice 11 (§12): loading a GLOBAL named view also RESETS
@@ -2056,13 +2196,16 @@ export default function SpaceApp() {
   // view is an absolute camera position, and leftover world
   // turns would fight it.
   // Slice 13-3 (item 1): with a citizen ENTERED (its card
-  // stands and it is current), PLAN / ELEVATION / SIDE resolve
-  // to THAT citizen instead (resolveViewTarget): the camera
-  // seats around it at its own seat distance, and the citizen
-  // view is NOT exited — card, selection and the platter's
-  // turns all stand (a relative view has no absolute position
-  // for the turns to fight). HOME stays global, and releases.
-  const VIEW_TITLES = { top: "PLAN", front: "ELEVATION", side: "SIDE", home: "HOME" };
+  // stands and it is current), FRONT / ELEVATION L / ELEVATION
+  // R / PLAN resolve to THAT citizen instead
+  // (resolveViewTarget): the camera seats around it at its own
+  // seat distance, and the citizen view is NOT exited — card,
+  // selection and the platter's turns all stand (a relative
+  // view has no absolute position for the turns to fight).
+  // HOME stays global, and releases. (Slice 13-5 reordered the
+  // keys — 1 FRONT · 2 ELEVATION L · 3 ELEVATION R · 4 PLAN ·
+  // 0 HOME — and split the old SIDE into the two elevations.)
+  const VIEW_TITLES = { front: "FRONT", left: "ELEVATION L", right: "ELEVATION R", top: "PLAN", home: "HOME" };
   const goView = (view) => {
     const enteredId = cardId && cardId === currentId && objectById(cardId) ? cardId : null;
     const target = resolveViewTarget({ view, enteredId });
@@ -2162,6 +2305,17 @@ export default function SpaceApp() {
    * is no citizen to reset, and the echo says so.
    */
   const resetExamined = () => {
+    // Slice 13-5 (item 3): H follows the transform keys'
+    // hierarchy — with a sub-node hovered on the current
+    // citizen, H resets THAT node's transform record; the
+    // citizen's own reset below is untouched otherwise.
+    const subTarget = subTransformTargetNow();
+    if (subTarget && hasSubTransform(subTransforms, subTarget.citizenId, subTarget.nodeId)) {
+      setSubTransforms((s) => resetSubTransform(s, subTarget.citizenId, subTarget.nodeId));
+      setEcho({ text: `RESET — ${markNodeName(subTarget.citizenId, subTarget.nodeId)}`, error: false });
+      touch();
+      return;
+    }
     const target = resolveRotateTarget({
       hoverId, currentId, ringAddressed: ringAddressedNow(),
     });
@@ -2362,8 +2516,13 @@ export default function SpaceApp() {
       // address, like every letter), never mid-drag, and it
       // writes the same bookStyle parameter the PARAMETERS
       // select holds, so the two never disagree.
+      // Slice 13-5 (item 1): the precedence narrowed — U is the
+      // PATCH key now, and keeps BOOK STYLE only while the book
+      // is current AND the addressed thing (hovered, or current
+      // with nothing else hovered). Every other U falls through
+      // to the space scope's patch dispatch below.
       if ((e.key === "u" || e.key === "U") && !uiMode.labelMode && !e.repeat
-        && !lockRef.current && currentId === "book") {
+        && !lockRef.current && currentId === "book" && addressedId(hoverId, currentId) === "book") {
         e.preventDefault();
         const next = bookStyle === "spread" ? "cylinder" : "spread";
         onParam("bookStyle", next);
@@ -2575,8 +2734,11 @@ export default function SpaceApp() {
       // C/V dolly (slice 11, named §14): OUTSIDE label mode
       // only — inside it, C and V are addresses (the tray's, a
       // card's) and fall through to letter targeting below.
-      if (!uiMode.labelMode && (e.key === "c" || e.key === "C")) { e.preventDefault(); pressZoom(-1); return; }
-      if (!uiMode.labelMode && (e.key === "v" || e.key === "V")) { e.preventDefault(); pressZoom(1); return; }
+      // Slice 13-5 (item 2): the bare keys step FINE; Shift+C /
+      // Shift+V make the SWEEP (e.shiftKey carries it — the
+      // shifted key already reads "C" / "V" in e.key).
+      if (!uiMode.labelMode && (e.key === "c" || e.key === "C")) { e.preventDefault(); pressZoom(-1, e.shiftKey); return; }
+      if (!uiMode.labelMode && (e.key === "v" || e.key === "V")) { e.preventDefault(); pressZoom(1, e.shiftKey); return; }
       // The number row (§14/§15): digits are not letters, so
       // they work in label mode too — 1–4 the named views (the
       // same goView as the buttons), 5/6 the field sizes, 7/8/9
@@ -2600,6 +2762,13 @@ export default function SpaceApp() {
         const spinOp = platterSpinOpFor(e.key);
         if (spinOp) { e.preventDefault(); pressPlatterSpin(spinOp); return; }
       }
+      // Slice 13-5 (item 4): the BACKQUOTE — the platter's
+      // QUARTER TURN, standing with [ and ] and sharing their
+      // scope exactly (not a letter, so label mode keeps it;
+      // the scopes above have already claimed the armed line,
+      // an open app or message, and a drag lock). Shift+` reads
+      // "~" in e.key — the same key, the same turn.
+      if (e.key === "`" || e.key === "~") { e.preventDefault(); pressPlatterQuarter(); return; }
       if (LAYOUT_KEYS[e.key]) {
         e.preventDefault();
         setSpace((s) => applyLayout(s, LAYOUT_KEYS[e.key]));
@@ -2628,6 +2797,19 @@ export default function SpaceApp() {
       if ((e.key === "s" || e.key === "S") && !uiMode.labelMode) { e.preventDefault(); dispatchBack(EVENTS.GO_BACK_I); return; }
       if ((e.key === "a" || e.key === "A") && !uiMode.labelMode) { e.preventDefault(); doFinish(); return; }
       if (e.key === "g" || e.key === "G") { e.preventDefault(); doG(); return; }
+      // U (slice 13-5, item 1): the PATCH key — start a cable
+      // from the addressed citizen, or complete a live one onto
+      // it (doPatch). Outside label mode only: inside it U is
+      // an address and falls through to letter targeting. The
+      // BOOK STYLE precedence stands above (the book current
+      // and addressed) and claims its U presses — including
+      // repeats, which the style branch itself declines: a
+      // held U on the addressed book must not leak into a
+      // patch, so the addressed-book case is excluded here too.
+      if ((e.key === "u" || e.key === "U") && !uiMode.labelMode
+        && !(currentId === "book" && addressedId(hoverId, currentId) === "book")) {
+        e.preventDefault(); doPatch(); return;
+      }
       if ((e.key === "j" || e.key === "J") && !uiMode.labelMode) {
         // J strips cables — outside label mode only; inside it,
         // J is the arch's address and falls through.
@@ -2980,6 +3162,10 @@ export default function SpaceApp() {
     // Slice 13-4: Enter's cap reads MARK while a sub-node is
     // hovered (the press toggles its mark, it does not arm).
     markAvailable: Boolean(markTargetNow()),
+    // Slice 13-5 (item 1): F's cap reads FOCUS while a sub-node
+    // (or knot part, or tree branch — the mark channels) is
+    // hovered: the press focuses it and the camera stays.
+    focusAvailable: Boolean(markTargetNow()),
     fieldName: FIELD_SIZES[fieldIndex].name,
     cardLabels: libraryOpen
       ? labeledMedia().map(({ item, label }) => ({ label, title: item.title, id: item.id }))
@@ -2987,7 +3173,10 @@ export default function SpaceApp() {
     // Slice 13-2: the book's caps — U is BOOK STYLE only while
     // the book is current, and in its spread presentation B/N
     // read SPREAD − / SPREAD +.
-    bookStyle: currentId === "book" ? bookStyle : null,
+    // Slice 13-5 (item 1): narrowed to the ADDRESSED book —
+    // current, and hovered or current with nothing else
+    // hovered; everywhere else U's cap reads PATCH.
+    bookStyle: currentId === "book" && addressedId(hoverId, currentId) === "book" ? bookStyle : null,
     bookFlip: currentId === "book" && bookStyle === "spread",
     lastKey: lastKey?.code || null,
   });
@@ -3020,6 +3209,7 @@ export default function SpaceApp() {
             zoomFocusPoint={zoomFocus?.kind === "point" ? zoomFocus.point : null}
             entrySeat={entrySeat}
             marks={marks}
+            subTransforms={subTransforms}
             citizenView={citizenView}
             platterQuat={platterQuat}
             ringSpinDeg={ringSpin}
@@ -3271,10 +3461,12 @@ export default function SpaceApp() {
                       turn the addressed object with <b>E</b>/<b>R</b> (yaw), <b>Q</b>/<b>W</b>{" "}
                       (pitch), <b>T</b>/<b>Y</b> (roll) and <b>B</b>/<b>N</b> (in its own plane),
                       magnify it with <b>Z</b>/<b>X</b> — every turn pivoting at the centre of
-                      the object's bounds — patch it to another with <b>G</b>, pick it up with a{" "}
+                      the object's bounds, and a hovered sub-node takes those keys before its
+                      citizen does, turning about its own centre — patch it to another with <b>U</b>, pick it up with a{" "}
                       <b>Space</b> press (press again to drop), and rearrange the whole space
                       with the layouts on <b>7</b> <b>8</b> <b>9</b>. <b>C</b> and <b>V</b> dolly
-                      the camera out and in — toward the citizen under the cursor, when there
+                      the camera out and in — fine steps now, with <b>Shift+C</b>/<b>Shift+V</b>{" "}
+                      for the long sweep — toward the citizen under the cursor, when there
                       is one — and <b>5</b> and <b>6</b> change the field: the zoom, the lens
                       rather than the camera.
                     </p>
@@ -3301,13 +3493,15 @@ export default function SpaceApp() {
                       seat: opening-in-plan and HOME are deliberately not the same. The
                       PARAMETERS gather the camera into a <b>VIEW</b> fieldset — projection,
                       rotation, elevation — with the named seats on buttons beside them:
-                      <b> PLAN</b> (top), <b>ELEVATION</b> (front, square-on to the XY wall),
-                      <b>SIDE</b> and <b>HOME</b>, the same views the command line speaks as
-                      v › t/f/s/h. And the named views are relative to where you stand:
-                      with a citizen <b>entered</b> (its card up), PLAN, ELEVATION and SIDE
-                      seat around <b>that citizen</b> — above it, before it, beside it, at
-                      its own seat distance — and the citizen view is not exited; HOME
-                      alone stays the whole space's. The first time a citizen is entered
+                      <b>FRONT</b> (square-on to the XY wall), <b>ELEVATION L</b> and{" "}
+                      <b>ELEVATION R</b> (from the sides), <b>PLAN</b> (top) and <b>HOME</b>,
+                      the same views the command line speaks as v › t/f/l/r/h and the digit
+                      keys as 1–4 and 0. And the named views are relative to where you stand:
+                      with a citizen <b>entered</b> (its card up), FRONT, ELEVATION L,
+                      ELEVATION R and PLAN seat around <b>that citizen</b> — before it,
+                      beside it left and right, above it, at its own seat distance — and
+                      the citizen view is not exited; HOME alone stays the whole space's.
+                      The first time a citizen is entered
                       in a session it turns to <b>face the entry camera</b> — its front
                       meets the seat; later entries leave its turn as you left it. And
                       while a citizen stands entered, its seat is the one it was entered
@@ -3852,7 +4046,7 @@ export default function SpaceApp() {
               <fieldset className="us-view-fieldset">
                 <legend>VIEW</legend>
                 <div className="us-view-btns">
-                  {[["top", "PLAN"], ["front", "ELEVATION"], ["side", "SIDE"], ["home", "HOME"]].map(([view, label]) => (
+                  {[["front", "FRONT"], ["left", "ELEVATION L"], ["right", "ELEVATION R"], ["top", "PLAN"], ["home", "HOME"]].map(([view, label]) => (
                     <button
                       key={view}
                       type="button"

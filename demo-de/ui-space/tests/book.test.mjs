@@ -300,7 +300,13 @@ test("spreads: stepping clamps at the book's ends", () => {
 test("keyboard: U is BOOK STYLE only while the book is current; B/N flip in spread", () => {
   const capOf = (kb, code) => kb.caps.find((c) => c.code === code);
   const plain = resolveKeyboard({ scope: "space" });
-  assert.equal(capOf(plain, "KeyU").binding, null, "no book, no BOOK STYLE cap");
+  // Slice 13-5 (item 1): U is the PATCH key now — with no book
+  // addressed its cap reads PATCH, not bare. BOOK STYLE keeps
+  // its precedence exactly while ctx.bookStyle is carried
+  // (the App passes it only for the current AND addressed
+  // book — the narrowing is the App's half, stated in
+  // keyboard.js; the derivation's half is unchanged).
+  assert.equal(capOf(plain, "KeyU").binding.label, "PATCH", "no book addressed: U is PATCH");
   const cyl = resolveKeyboard({ scope: "space", bookStyle: "cylinder" });
   assert.equal(capOf(cyl, "KeyU").binding.label, "BOOK STYLE");
   assert.equal(capOf(cyl, "KeyU").binding.operator, true);

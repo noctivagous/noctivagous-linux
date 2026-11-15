@@ -82,8 +82,10 @@ test("keyboard: [ and ] light as PLATTER PLANE in space and label scopes only", 
 
 /* ---------------- item 1: citizen-relative named views ---------------- */
 
-test("resolveViewTarget: entered citizen + PLAN/ELEVATION/SIDE resolves to the citizen", () => {
-  for (const view of ["top", "front", "side"]) {
+test("resolveViewTarget: entered citizen + PLAN/ELEVATION resolves to the citizen", () => {
+  // Slice 13-5 (item 4): the single SIDE view split into the two
+  // elevations — both resolve citizen-relative while entered.
+  for (const view of ["top", "front", "left", "right"]) {
     assert.deepEqual(resolveViewTarget({ view, enteredId: "mesa" }),
       { kind: "citizen", view, id: "mesa" });
   }
@@ -91,7 +93,7 @@ test("resolveViewTarget: entered citizen + PLAN/ELEVATION/SIDE resolves to the c
   assert.deepEqual(resolveViewTarget({ view: "home", enteredId: "mesa" }),
     { kind: "global", view: "home" });
   // No citizen entered: everything is global, as before.
-  for (const view of ["top", "front", "side", "home"]) {
+  for (const view of ["top", "front", "left", "right", "home"]) {
     assert.deepEqual(resolveViewTarget({ view, enteredId: null }), { kind: "global", view });
   }
   // A ring item or a card is not an entered citizen.
@@ -99,18 +101,23 @@ test("resolveViewTarget: entered citizen + PLAN/ELEVATION/SIDE resolves to the c
   assert.deepEqual(resolveViewTarget({ view: "top", enteredId: "clipboard" }), { kind: "global", view: "top" });
 });
 
-test("citizenViewSeat: front is the entered seat, side its quarter-turn, plan above", () => {
+test("citizenViewSeat: front is the entered seat, the elevations its quarter-turns, plan above", () => {
   const off = citizenSeatOffsets(1, 1); // { radial: 72, up: 34 }
   const anchorY = 16 * 0.55;
   const base = [130, 0, 0]; // a citizen due east of the centre: radial = +X
   const front = citizenViewSeat("front", base, off, anchorY);
   assert.deepEqual(front.seat, [202, 34, 0], "out along the radial, raised — the card seat's composition");
   assert.deepEqual(front.look, [130, anchorY, 0]);
-  const side = citizenViewSeat("side", base, off, anchorY);
+  // Slice 13-5 (item 4): ELEVATION L keeps the old side's seat
+  // (the tangent (−rz, rx)); ELEVATION R mirrors it.
+  const side = citizenViewSeat("left", base, off, anchorY);
   assert.deepEqual(side.seat, [130, 34, 72], "out along the tangent at the same offsets");
   const sideOffset = [side.seat[0] - 130, side.seat[2] - 0];
   assert.ok(Math.abs(sideOffset[0] * 1 + sideOffset[1] * 0) < 1e-9, "the side offset is perpendicular to the radial");
   assert.deepEqual(side.look, front.look, "side looks where front looks");
+  const right = citizenViewSeat("right", base, off, anchorY);
+  assert.deepEqual(right.seat, [130, 34, -72], "ELEVATION R mirrors L about the radial");
+  assert.deepEqual(right.look, front.look, "both elevations look where front looks");
   const top = citizenViewSeat("top", base, off, anchorY);
   const dist = Math.hypot(off.radial, off.up);
   assert.ok(Math.abs(top.seat[1] - dist) < 1e-9, "plan stands the seat distance above");
@@ -120,11 +127,13 @@ test("citizenViewSeat: front is the entered seat, side its quarter-turn, plan ab
   // A citizen on the axis has no radial: the fallback faces it from the south.
   const centred = citizenViewSeat("front", [0, 0, 0], off, anchorY);
   assert.deepEqual(centred.seat, [0, 34, 72]);
-  // Every variant stands at the seat distance (side/front) — the
-  // citizen's own scale of framing, never the global seats'.
+  // Every variant stands at the seat distance (front/elevations)
+  // — the citizen's own scale of framing, never the global
+  // seats'.
   const d = (s) => Math.hypot(s[0] - 130, s[1] - 0, s[2] - 0);
   assert.ok(Math.abs(d(front.seat) - dist) < 1e-9);
   assert.ok(Math.abs(d(side.seat) - dist) < 1e-9);
+  assert.ok(Math.abs(d(right.seat) - dist) < 1e-9);
 });
 
 /* ---------------- item 2: the generalised dolly ---------------- */

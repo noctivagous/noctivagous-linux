@@ -103,19 +103,37 @@ test("dolly in from the opened seat: V steps move the seat monotonically inward 
 });
 
 test("dolly out restores: C steps move the seat monotonically back out through the same range", () => {
+  // Slice 13-5 (item 2): this loop measures the SWEEP's travel,
+  // so it steps with the COARSE step explicitly (Shift+C) — the
+  // unshifted step is fine now (1.045) and needs more than the
+  // old 12 presses to cross the same range (asserted below).
   const rest = citizenSeatDistance(1, 1);
   let mul = ZOOM_MIN;
   let prev = citizenSeatDistance(1, mul);
   let steps = 0;
   while (mul < 1 && steps < 12) {
-    mul = zoomStep(mul, -1);
+    mul = zoomStep(mul, -1, true);
     steps += 1;
     const d = citizenSeatDistance(1, mul);
     assert.ok(d > prev, `step ${steps}: the seat moves back out (${d} > ${prev})`);
     prev = d;
   }
-  assert.ok(mul >= 1, "C steps return the multiplier to rest");
+  assert.ok(mul >= 1, "Shift+C steps return the multiplier to rest");
   assert.ok(prev >= rest * 0.999, "and the seat distance with it");
+  // The fine step crosses the same range monotonically, in
+  // strictly more presses than the sweep.
+  let fineMul = ZOOM_MIN;
+  let fineSteps = 0;
+  let finePrev = citizenSeatDistance(1, fineMul);
+  while (fineMul < 1 && fineSteps < 40) {
+    fineMul = zoomStep(fineMul, -1);
+    fineSteps += 1;
+    const d = citizenSeatDistance(1, fineMul);
+    assert.ok(d > finePrev, `fine step ${fineSteps}: the seat moves back out`);
+    finePrev = d;
+  }
+  assert.ok(fineMul >= 1, "fine C steps still reach rest");
+  assert.ok(fineSteps > steps, `fine takes more presses (${fineSteps} > ${steps})`);
 });
 
 test("citizen seat: the floor factor is the same at any citizen scale", () => {

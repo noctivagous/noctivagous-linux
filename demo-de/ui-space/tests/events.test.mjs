@@ -59,9 +59,11 @@ test("TRANSFORM_KEYS is exactly the slice-11 map, with slice 13-4's E/R yaw swap
   assert.equal(transformOpOf("?"), null);
 });
 
-test("the number row maps (§14): layouts on 7/8/9, views on 1–4", () => {
+test("the number row maps (§14): layouts on 7/8/9, views on 1–4 and 0", () => {
   assert.deepEqual(LAYOUT_KEYS, { "7": "ring", "8": "districts", "9": "theatre" });
-  assert.deepEqual(VIEW_KEYS, { "1": "top", "2": "front", "3": "side", "4": "home" });
+  // Slice 13-5 (item 4) reordered the views: 1 FRONT, 2 ELEVATION
+  // L, 3 ELEVATION R, 4 PLAN, 0 HOME (the old SIDE split in two).
+  assert.deepEqual(VIEW_KEYS, { "1": "front", "2": "left", "3": "right", "4": "top", "0": "home" });
 });
 
 test("FIELD_SIZES (§15): the ladder, exact — widest to narrowest", () => {
@@ -355,9 +357,17 @@ test("applyTransformOp with a spin op on a state without the field starts from 0
 
 /* ---------------- zoom ---------------- */
 
-test("zoomStep is unchanged: V in, C out, clamped", () => {
-  assert.equal(zoomStep(1, 1), 1 / 1.15);
-  assert.equal(zoomStep(1, -1), 1.15);
+test("zoomStep: V in, C out, clamped — fine unshifted, coarse on Shift (13-5)", () => {
+  // Slice 13-5 (item 2) changed the DEFAULT step: unshifted C/V
+  // is the FINE step now (1.045); the old 1.15 sweep survives
+  // as the explicit coarse step (Shift+C/V, and the typed
+  // command). The clamps are unchanged.
+  assert.equal(zoomStep(1, 1), 1 / 1.045);
+  assert.equal(zoomStep(1, -1), 1.045);
+  assert.equal(zoomStep(1, 1, true), 1 / 1.15);
+  assert.equal(zoomStep(1, -1, true), 1.15);
   assert.equal(zoomStep(0.5, 1), 0.5); // at MIN, in stays
   assert.equal(zoomStep(2.0, -1), 2.0); // at MAX, out stays
+  assert.equal(zoomStep(0.5, 1, true), 0.5);
+  assert.equal(zoomStep(2.0, -1, true), 2.0);
 });

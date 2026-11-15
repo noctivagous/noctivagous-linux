@@ -56,6 +56,21 @@
  * dynamic too (ctx.markAvailable): MARK while a sub-node is
  * hovered in space scope — the press toggles its mark instead
  * of arming the command line — COMMAND LINE otherwise.
+ *
+ * Slice 13-5: F and G split the focus from the flight — F's cap
+ * reads FOCUS while a sub-node is hovered (ctx.focusAvailable:
+ * the press focuses it, the camera stays), OPEN otherwise; G
+ * is GO TO (the flight: the same focus WITH the camera seat;
+ * on a citizen, enter). PATCH moves G → U: U's cap reads PATCH
+ * (COMPLETE PATCH while one is live) except under the one
+ * precedence — the book current AND addressed — where it keeps
+ * BOOK STYLE (ctx.bookStyle carries the presentation only
+ * then). The dolly is a fine control now: C/V's hints name
+ * Shift+C/V as the long sweep. The view digits reorder (1
+ * FRONT, 2 ELEVATION L, 3 ELEVATION R, 4 PLAN, 0 HOME —
+ * derived from VIEW_KEYS like always), and a Backquote cap
+ * joins the number row (Escape narrows to make room): the
+ * platter's quarter turn.
  */
 
 import {
@@ -85,7 +100,8 @@ const digitCap = (d) => cap(`Digit${d}`, d);
  */
 export const KEYBOARD_ROWS = [
   [
-    cap("Escape", "ESC", 1.5),
+    cap("Escape", "ESC", 1),
+    cap("Backquote", "`", 0.5),
     ...["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"].map(digitCap),
     cap("Minus", "-"),
     cap("Equal", "="),
@@ -198,6 +214,13 @@ function platterSpinBindings() {
       hint: "the platter's plane spin — the rotation parameter; citizens keep B/N for their own plane",
     });
   }
+  // Slice 13-5 (item 4): the Backquote cap — the platter's
+  // QUARTER TURN, 90° a press in the ] direction, gliding on
+  // the Rig's damped spin. It stands with [ and ] (platter-
+  // scoped, space and label scopes alike).
+  out.Backquote = op("PLATTER TURN 90°", {
+    hint: "quarter-turn the platter's plane, counter-clockwise from overhead — [ and ] step it finely",
+  });
   return out;
 }
 
@@ -216,7 +239,7 @@ function layoutBindings() {
 }
 
 /* The view digits (§14): the fieldset's names, the fieldset's order. */
-const VIEW_CAP_NAMES = { top: "PLAN", front: "ELEVATION", side: "SIDE", home: "HOME" };
+const VIEW_CAP_NAMES = { front: "FRONT", left: "ELEVATION L", right: "ELEVATION R", top: "PLAN", home: "HOME" };
 function viewBindings() {
   const out = {};
   for (const [digit, view] of Object.entries(VIEW_KEYS)) {
@@ -274,8 +297,20 @@ function spaceBindings(ctx) {
     KeyA: op("FINISH"),
     KeyS: op("GO BACK I"),
     KeyD: op("GO BACK II"),
-    KeyF: op(ctx.pending ? "COMPLETE PATCH" : "OPEN"),
-    KeyG: op(ctx.pending ? "COMPLETE PATCH" : "PATCH"),
+    // Slice 13-5 (item 1): F and G split focus from flight.
+    // F's cap reads FOCUS while a sub-node is hovered (the
+    // press focuses it — highlight, card, readout — and the
+    // camera stays), OPEN on a citizen, COMPLETE PATCH while
+    // a patch is live. G is GO TO: the same focus WITH the
+    // camera seat, or a citizen's entry.
+    KeyF: op(ctx.pending ? "COMPLETE PATCH" : ctx.focusAvailable ? "FOCUS" : "OPEN", {
+      hint: ctx.focusAvailable
+        ? "focus the hovered sub-node — the camera stays; G flies to it"
+        : undefined,
+    }),
+    KeyG: op("GO TO", {
+      hint: "fly to the hovered sub-node and focus it there; on a citizen, enter it — patch lives on U now",
+    }),
     KeyM: bind("LIBRARY"),
     // Slice 13-4: copy lives on L (in label scope L stays the
     // knot's address — the U bargain); H is RESET, the examined
@@ -284,19 +319,30 @@ function spaceBindings(ctx) {
     KeyH: bind("RESET"),
     KeyI: bind("INSPECT"),
     KeyJ: bind("STRIP CABLES"),
-    KeyC: bind("DOLLY OUT"),
-    KeyV: bind("DOLLY IN"),
+    // Slice 13-5 (item 2): the dolly is a FINE control — the
+    // caps' hints name the sweep on the shifted keys.
+    KeyC: bind("DOLLY OUT", { hint: "a fine step back — Shift+C is the long pull" }),
+    KeyV: bind("DOLLY IN", { hint: "a fine step in — Shift+V is the long sweep" }),
     KeyK: bind("KEYBOARD", { hint: "hide or show this panel" }),
-    // Slice 13-2: U is BOOK STYLE only while the book is current
-    // (ctx.bookStyle carries its presentation then, else null) —
-    // in label scope U stays an address, as every letter does.
+    // Slice 13-5 (item 1): PATCH lives on U now (it was G's) —
+    // start a cable from the addressed citizen, or complete a
+    // live one onto it. The one precedence: while the book is
+    // current AND addressed, U keeps its BOOK STYLE toggle
+    // (ctx.bookStyle carries its presentation only then, the
+    // slice 13-2 conditional registration narrowed to the
+    // addressed book) — in label scope U stays an address, as
+    // every letter does.
     ...(ctx.bookStyle ? {
       KeyU: op("BOOK STYLE", {
         hint: ctx.bookStyle === "spread"
           ? "stand the book as a cylinder again"
           : "stand the book open, two pages at a time",
       }),
-    } : {}),
+    } : {
+      KeyU: op(ctx.pending ? "COMPLETE PATCH" : "PATCH", {
+        hint: "patch from the addressed citizen — U again, F or A lands it on the next",
+      }),
+    }),
     Space: op("DRAG LOCK"),
     // Slice 13-4: with a sub-node hovered, Enter toggles its
     // MARK in the current citizen's index instead of arming
@@ -449,11 +495,15 @@ const SCOPE_TABLES = {
  *         eKey: "yaw+" | "expand" | null,
  *         markAvailable: a sub-node is hovered in space scope,
  *           so Enter reads MARK (slice 13-4),
+ *         focusAvailable: a sub-node (or knot part, or tree
+ *           branch) is hovered in space scope, so F reads
+ *           FOCUS instead of OPEN (slice 13-5),
  *         fieldName: the current field size's name (§15),
  *         cardLabels: [{ label, title, id }],
  *         bookStyle: the book's presentation ("cylinder" |
- *           "spread") while the book is current, else null —
- *           U is BOOK STYLE only then (slice 13-2),
+ *           "spread") while the book is current AND addressed,
+ *           else null — U is BOOK STYLE only then, PATCH
+ *           otherwise (slice 13-2, narrowed by slice 13-5),
  *         bookFlip: the book current in SPREAD presentation —
  *           B and N read SPREAD − / SPREAD + (they flip),
  *         lastKey }

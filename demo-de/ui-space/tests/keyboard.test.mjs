@@ -41,7 +41,11 @@ test("the grid covers every code the scheme needs", () => {
   for (const code of ["Space", "Tab", "Escape", "Enter"]) {
     assert.ok(codes.has(code), `missing ${code}`);
   }
-  assert.equal(KEYBOARD_CAP_COUNT, 53);
+  // Slice 13-5 (item 4): 54 — the Backquote cap joined the
+  // number row (Escape narrowed 1.5 → 1.0 to make room; the
+  // row-width assertion below still holds at 13.5).
+  assert.equal(KEYBOARD_CAP_COUNT, 54);
+  assert.ok(codes.has("Backquote"), "missing Backquote");
   // Every row is the same total width, so the board is a rectangle.
   for (const row of KEYBOARD_ROWS) {
     const w = row.reduce((n, c) => n + c.width, 0);
@@ -56,14 +60,15 @@ test("the database is sparse: a binding exists only where a scope binds the key"
   assert.ok(cmdBound < cmd.caps.length / 2, `${cmdBound} of ${cmd.caps.length} bound`);
   // In space scope the slice-11 letter cluster binds many caps —
   // but the unbound remainder still stands bare: ordinary letters
-  // with no operator, digit 0, and the punctuation row — except
-  // [ and ], which slice 13-3 bound to the platter's plane spin
+  // with no operator and the punctuation row — except [ and ],
+  // which slice 13-3 bound to the platter's plane spin
   // (asserted in slice-13-3.test.mjs).
   const kb = resolveKeyboard({ scope: "space" });
-  assert.equal(labelOf(kb, "KeyU"), null);
+  // Slice 13-5: U binds now (item 1: PATCH moved G → U) and
+  // Digit0 binds (item 4: HOME moved to 0) — both asserted in
+  // their own tests below; the rest of the bare set stands.
   assert.equal(labelOf(kb, "KeyP"), null);
   assert.equal(labelOf(kb, "KeyO"), null);
-  assert.equal(labelOf(kb, "Digit0"), null);
   assert.equal(labelOf(kb, "Minus"), null);
   assert.equal(labelOf(kb, "Equal"), null);
   assert.equal(labelOf(kb, "Semicolon"), null);
@@ -96,7 +101,9 @@ test("the transform and layout caps are derived from the real tables", () => {
 test("space scope: the operators read as the handler works them", () => {
   const kb = resolveKeyboard({ scope: "space" });
   assert.equal(labelOf(kb, "KeyF"), "OPEN");
-  assert.equal(labelOf(kb, "KeyG"), "PATCH");
+  // Slice 13-5 (item 1): G is GO TO (the flight), U is PATCH.
+  assert.equal(labelOf(kb, "KeyG"), "GO TO");
+  assert.equal(labelOf(kb, "KeyU"), "PATCH");
   assert.equal(labelOf(kb, "KeyM"), "LIBRARY");
   assert.equal(labelOf(kb, "KeyI"), "INSPECT");
   assert.equal(labelOf(kb, "KeyK"), "KEYBOARD");
@@ -152,25 +159,30 @@ test("space scope: E's cap and the rotate caps follow the resolved target", () =
 
 test("the number row (§14/§15): views, field sizes, object layouts", () => {
   const kb = resolveKeyboard({ scope: "space", fieldName: "MEDIUM CLOSE" });
-  // 1–4: the named views in the VIEW fieldset's order.
-  assert.equal(labelOf(kb, "Digit1"), "PLAN");
-  assert.equal(labelOf(kb, "Digit2"), "ELEVATION");
-  assert.equal(labelOf(kb, "Digit3"), "SIDE");
-  assert.equal(labelOf(kb, "Digit4"), "HOME");
+  // Slice 13-5 (item 4) reordered the named views: 1 FRONT,
+  // 2 ELEVATION L, 3 ELEVATION R, 4 PLAN, 0 HOME — the VIEW
+  // fieldset's new order (the old SIDE split in two).
+  assert.equal(labelOf(kb, "Digit1"), "FRONT");
+  assert.equal(labelOf(kb, "Digit2"), "ELEVATION L");
+  assert.equal(labelOf(kb, "Digit3"), "ELEVATION R");
+  assert.equal(labelOf(kb, "Digit4"), "PLAN");
+  assert.equal(labelOf(kb, "Digit0"), "HOME");
   // 5/6: the focal zoom — FIELD − / +, current field in the hint.
   assert.equal(labelOf(kb, "Digit5"), "FIELD -");
   assert.equal(labelOf(kb, "Digit6"), "FIELD +");
   assert.ok(capOf(kb, "Digit5").binding.hint.includes("MEDIUM CLOSE"));
   assert.ok(capOf(kb, "Digit6").binding.hint.includes("MEDIUM CLOSE"));
-  // 7–9: the object layouts. 0 stays bare.
+  // 7–9: the object layouts.
   assert.equal(labelOf(kb, "Digit7"), "OBJECT LAYOUT · RING");
   assert.equal(labelOf(kb, "Digit9"), "OBJECT LAYOUT · THEATRE");
-  assert.equal(labelOf(kb, "Digit0"), null);
 });
 
-test("dynamic labels: G with a patch live, Space under the drag lock", () => {
+test("dynamic labels: U with a patch live, Space under the drag lock", () => {
   const pending = resolveKeyboard({ scope: "space", pending: true });
-  assert.equal(labelOf(pending, "KeyG"), "COMPLETE PATCH");
+  // Slice 13-5 (item 1): patch lives on U — its cap completes
+  // a live patch; G's cap is GO TO in both states now.
+  assert.equal(labelOf(pending, "KeyU"), "COMPLETE PATCH");
+  assert.equal(labelOf(pending, "KeyG"), "GO TO");
   assert.equal(labelOf(pending, "KeyF"), "COMPLETE PATCH");
 
   const locked = resolveKeyboard({ scope: "space", dragLocked: true });
@@ -224,11 +236,12 @@ test("label scope: the slice-11 operator letters are addresses here", () => {
   // X is no longer an operator at all: with no card holding it, bare.
   assert.equal(labelOf(kb, "KeyX"), null);
   // Digits are not addresses: the number row keeps its camera /
-  // room meanings in label mode too (§14), and 0 stays bare.
-  assert.equal(labelOf(kb, "Digit1"), "PLAN");
+  // room meanings in label mode too (§14) — slice 13-5's order:
+  // 1 FRONT, and 0 is HOME now (bare 0; Alt+0 stays the clipboard).
+  assert.equal(labelOf(kb, "Digit1"), "FRONT");
   assert.equal(labelOf(kb, "Digit5"), "FIELD -");
   assert.equal(labelOf(kb, "Digit7"), "OBJECT LAYOUT · RING");
-  assert.equal(labelOf(kb, "Digit0"), null);
+  assert.equal(labelOf(kb, "Digit0"), "HOME");
 });
 
 test("label scope: D and F stay operators, not addresses", () => {
@@ -313,7 +326,8 @@ test("active marks exactly ctx.lastKey's cap; the echo reads the resolution", ()
   assert.equal(actives[0].code, "KeyF");
   assert.equal(lastKeyEcho(kb, "KeyF"), "F — OPEN");
   assert.equal(lastKeyEcho(kb, "KeyA"), "A — FINISH");
-  assert.equal(lastKeyEcho(kb, "KeyU"), "U —");
+  // Slice 13-5 (item 1): U is PATCH now, so its echo names it.
+  assert.equal(lastKeyEcho(kb, "KeyU"), "U — PATCH");
   assert.equal(lastKeyEcho(kb, null), "");
   const none = resolveKeyboard({ scope: "space" });
   assert.equal(none.caps.some((c) => c.active), false);
