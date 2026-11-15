@@ -4,9 +4,13 @@ import { fileURLToPath } from 'node:url';
 
 // demo-de is a multi-page lab served by ONE Vite server:
 //
-//  - index.html      — the original vanilla key-clicks demo (sim.js /
-//                      style.css). Left untouched; the dev server
-//                      serves it as a plain page at `/`.
+//  - index.html      — FLAT SPACE, the 2D environment view
+//                      (src/flat-main.jsx): stationary panels + key-click
+//                      frames. The original vanilla key-clicks demo that
+//                      used to live here moved, untouched, to
+//                      index_fragment.html (sim.js / style.css) — a
+//                      source file the dev server serves as a plain
+//                      page, not a build input.
 //  - react.html      — the React shell (src/main.jsx): grid-systems
 //                      foundation + the panelization view.
 //  - definition.html — the Grasshopper-style definition strip
@@ -14,15 +18,14 @@ import { fileURLToPath } from 'node:url';
 //
 // Pages are separate explorations in different directions; the ones
 // that prove out get promoted into the main file later. `appType:
-// 'mpa'` keeps each page at its own URL with no SPA fallback, and
-// the build emits the two React pages (index.html stays a source
-// file served by the dev server / any static host of the repo).
+// 'mpa'` keeps each page at its own URL with no SPA fallback.
 export default defineConfig({
   plugins: [react()],
   appType: 'mpa',
   build: {
     rollupOptions: {
       input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
         react: fileURLToPath(new URL('./react.html', import.meta.url)),
         definition: fileURLToPath(new URL('./definition.html', import.meta.url)),
         tangled: fileURLToPath(new URL('./tangled.html', import.meta.url)),
