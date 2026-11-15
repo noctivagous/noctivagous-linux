@@ -21,6 +21,7 @@ import {
 } from "../src/subnodes.js";
 import {
   OBJECTS,
+  objectById,
   LAYOUTS,
   labeledObjects,
   EVENTS,
@@ -151,15 +152,15 @@ test("the provider: the book reads like every sub-node citizen", () => {
 /* ---------------- the citizen registration ---------------- */
 
 test("the citizen: the book is registered, plotted in every layout, labelled O", () => {
-  const def = OBJECTS[OBJECTS.length - 1];
+  const def = objectById("book");
   assert.equal(def.id, "book");
   assert.equal(def.name, "Sample Book");
   for (const layout of Object.values(LAYOUTS)) {
     assert.ok(Array.isArray(layout.positions.book), "a plot in every layout");
   }
   const labeled = labeledObjects();
-  assert.equal(labeled[labeled.length - 1].object.id, "book");
-  assert.equal(labeled[labeled.length - 1].label, "O", "the thirteenth citizen takes the next derived letter");
+  const mine = labeled.find(({ object }) => object.id === "book");
+  assert.equal(mine.label, "O", "the thirteenth citizen takes the next derived letter");
 });
 
 /* ---------------- tier access ---------------- */

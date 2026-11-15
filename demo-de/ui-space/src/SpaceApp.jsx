@@ -117,6 +117,15 @@ import { buildDataTree, dataBranchById } from "./lsystems.js";
 import { isSubnodeObject, subnodeById, subnodeRootOf } from "./subnodes.js";
 import { BOOK_TOTALS, SPREAD_COUNT, spreadIndexForPage } from "./book.js";
 import { HIERARCHY } from "./hierarchy.js";
+import {
+  ENVIRONMENT,
+  deviceList,
+  printerOf,
+  queueTotals,
+  connectionTotals,
+  ENV_TOTALS,
+} from "./environment.js";
+import { SPACE_LANES, laneNow, laneSource } from "./horizon-lanes.js";
 
 // Slice 7: the data tree's own bookkeeping for panels and readout —
 // the same buildDataTree(HIERARCHY) the view grows in the scene
@@ -132,7 +141,7 @@ import {
 /**
  * UI Space — an early form of the environment.
  *
- * Thirteen of the lab's frames stand on one platter as miniature
+ * Fourteen of the lab's frames stand on one platter as miniature
  * citizens, and for the first time they are not pages to visit but
  * objects in a space. Addressing is the key-click model: the
  * object under the cursor is the addressee, F is the click, Tab
@@ -348,7 +357,7 @@ const KEY_GROUPS = [
     rows: [
       ["Enter", "arm the command line: category › action › argument, ⏎ runs — on the line, Enter is the finish (A is a letter there)"],
       ["K", "hide / show the keyboard panel — inside label mode K is the definition's address"],
-      ["Alt+L", "in label mode the letters are addresses (G the tangled tree, M the living crystal, E the sunburst cylinder, B the drum, N the tree, O the sample book); outside it they are operators"],
+      ["Alt+L", "in label mode the letters are addresses (G the tangled tree, M the living crystal, E the sunburst cylinder, B the drum, N the tree, O the sample book, P the devices); outside it they are operators"],
       ["H / I", "here I inspects and H copies — KeyPilot's stock I-copy lives on H in this layout"],
       ["F on a card / tray", "inspects it, like I"],
       ["knot parts", "with the knot current, hover a part — F flies into it, D (GO BACK II) backs out to the knot"],
@@ -361,6 +370,8 @@ const KEY_GROUPS = [
       ["book access", "F on a chapter or section ACCESSES it: the drum turns so the accessed arc faces the front, and the tiers outside it ghost. F on a page slides the page OUT of the drum to be read in full. The backs climb page → section → chapter → whole book, one tier per level — access is a display state, never a transform"],
       ["book style", "U (or PARAMETERS · Sample Book style) stands the book open instead: two pages at a time, verso left and recto right. The title page stands alone as the first spread's recto, with a blank verso; the pages then pair in reading order"],
       ["spread flipping", "in the spread presentation B and N flip the spread (they read SPREAD − / SPREAD + on the keyboard panel) instead of plane-spinning the book; F on a standing leaf turns to that page's spread. In the cylinder presentation B and N plane-spin as usual"],
+      ["devices & hosts", "with Devices current, hover a device on its shelf, the hub, or a host token standing on the ring's back arc — it lights, its card stands in the space, and F flies into it. The printer's card lists its queue: a sheet stands in its tray per job, the printing job's sheet half-fed"],
+      ["net lanes", "the horizon citizens' last two lanes are NETWORK IN and NETWORK OUT, driven by the environment snapshot's captured strip of interface rates; the other six lanes keep the tempered walk"],
     ],
   },
   {
@@ -2240,6 +2251,40 @@ export default function SpaceApp() {
         ],
       };
     }
+    if (id === "devices") {
+      const o = objectById(id);
+      const printer = printerOf(ENVIRONMENT);
+      const queue = queueTotals(printer);
+      const conns = connectionTotals(ENVIRONMENT);
+      return {
+        title: o.name,
+        lines: [
+          `kind — object · ${o.group} · the machine's attachments`,
+          ENV_TOTALS.sample
+            ? "the environment snapshot is a SAMPLE machine — it names sample devices and example hosts"
+            : "from this machine's environment snapshot",
+          ...deviceList(ENVIRONMENT).map((d) => `${d.name} — ${d.state || d.kind}`),
+          ...(printer
+            ? [`queue — ${queue.jobs} jobs · ${queue.pagesKnown ? `${queue.pages} pages` : "pages not reported"} · ${queue.printing} printing`]
+            : []),
+          `network — ${conns.count} connections · cables from the hub to host tokens on the ring`,
+          "devices, the hub and the hosts are sub-addresses — hover one, F flies into it",
+          "D / Esc — send it home, exactly as it was",
+        ],
+      };
+    }
+    if (id === "horizon3d" || id === "horizonflat") {
+      const o = objectById(id);
+      return {
+        title: o.name,
+        lines: [
+          `kind — object · ${o.group} · the activity monitor`,
+          "eight lanes of machine life — the last two are the network, driven by the environment snapshot's captured strip",
+          ...SPACE_LANES.map((l) => `${l.label} — ${laneNow(l)} · ${laneSource(l)}`),
+          "D / Esc — send it home, exactly as it was",
+        ],
+      };
+    }
     if (id === "book") {
       const o = objectById(id);
       return {
@@ -2576,7 +2621,7 @@ export default function SpaceApp() {
                       which leaves the app only when its history is already empty).
                     </p>
                     <p>
-                      <b>FIG. 1</b> — The space at rest in the RING layout: thirteen miniature frames
+                      <b>FIG. 1</b> — The space at rest in the RING layout: fourteen miniature frames
                       on the platter, each one a working object — the mesa and drum really are the
                       sunburst layout, the tray and cube really are the treemap, tiled by the same
                       NCTGraphite modules as their own pages. Left alone for eight seconds the
@@ -2763,6 +2808,40 @@ export default function SpaceApp() {
                       everywhere else turn a thing in its plane, flip the
                       spread. One object, two bindings; the transform you gave
                       it survives both, as transforms survive everything here.
+                    </p>
+                    <p>
+                      Slice 14 turns the same trick outward: THE SPACE EATS ITS
+                      OWN MACHINE. A second snapshot generator
+                      (ui-space/tools/snapshot-environment.mjs) writes the
+                      ENVIRONMENT — the machine's devices and its network —
+                      and each kind feeds a form the space already has. The
+                      devices stand as one citizen, DEVICES: a shelf at its
+                      plot carrying the machine's attachments as small forms —
+                      the printer a little press, the keyboard a slab of keys,
+                      the pointer a pebble, the display a small screen, the
+                      volumes slabs — and the printer carries its QUEUE as
+                      geometry: a sheet of paper stands in its output tray for
+                      every queued job, and the job being printed wears its
+                      sheet half-fed into the press. Its hub stands at the
+                      shelf's edge with a port per connection. The network
+                      arrives twice. In the HORIZON citizens — the skyline's
+                      rows and the panel's strips alike — the last two of the
+                      eight lanes are NETWORK IN and NETWORK OUT, driven by the
+                      snapshot's captured strip of interface rates; the other
+                      six lanes keep the tempered walk they always had. And
+                      each CONNECTION is a cable: from the hub an arc runs out
+                      to a host token standing on the ring's back arc — the
+                      tokens are world-anchored there, not riders on the
+                      ring's spin, and they carry no letters — its thickness
+                      and its glow the connection's bytes, on a log scale.
+                      The hosts are sub-addresses of the devices citizen, like
+                      its devices: hover one and its card names the host, the
+                      port and the bytes; F flies to it. The committed
+                      snapshot is a SAMPLE machine, and it says so wherever it
+                      shows; regenerate with node
+                      ui-space/tools/snapshot-environment.mjs --real to show
+                      this machine — review before committing, it names real
+                      devices and endpoints.
                     </p>
                     <h4>Media, the Ring and the Apps</h4>
                     <p>

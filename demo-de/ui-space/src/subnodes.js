@@ -53,12 +53,26 @@
  * shares read against the whole book). Its access state is NOT
  * a descent and does not re-root anything: the book's shares
  * are always of the whole book.
+ *
+ * THE DEVICES (slice 14) join as a sixth provider, and theirs
+ * is the environment snapshot's table (environment.js): the
+ * machine's attachments as sub-nodes under the root "devices"
+ * — one node per shelf device (devices/<slug>), a NETWORK HUB
+ * node (devices/net) standing for the machine's connections,
+ * and one node per HOST under it (devices/net/<host>), the
+ * hosts' anchors out on the ring where their tokens stand.
+ * The measure here is a COUNT, as the tangle's is: a device's
+ * value is 1 (it is one attached thing), the hub's is its
+ * connection count, and the whole is the count of attached
+ * things — the cards carry the specifics (the printer's
+ * queue, a host's bytes), as the book's cards carry its text.
  */
 
 import { HIERARCHY } from "./hierarchy.js";
 import { TANGLE_LEVELS } from "../../src/tangle-data.js";
 import importGraph from "./import-graph.json" with { type: "json" };
 import { bookTable } from "./book.js";
+import { ENVIRONMENT, deviceList, connectionsOf, connectionIds } from "./environment.js";
 
 /* ---------------- the hierarchy (tray, mesa, drum) ---------------- */
 
@@ -209,12 +223,62 @@ function tangleTable(dataset) {
   return TANGLE_TABLES[dataset] || TANGLE_TABLES.genealogy;
 }
 
+/* ---------------- the devices (slice 14) ---------------- */
+
+function buildDevicesTable() {
+  const byId = new Map();
+  const all = [];
+  const root = {
+    id: "devices", name: "Devices", depth: 0, parentId: null,
+    path: ["Devices"], value: 0, children: [], isLeaf: false,
+  };
+  byId.set(root.id, root);
+  all.push(root);
+  for (const device of deviceList(ENVIRONMENT)) {
+    const node = {
+      id: `devices/${device.slug}`, name: device.name, depth: 1,
+      parentId: root.id, path: ["Devices", device.name], value: 1,
+      children: [], isLeaf: true,
+    };
+    byId.set(node.id, node);
+    all.push(node);
+    root.children.push(node);
+    root.value += 1;
+  }
+  const conns = connectionsOf(ENVIRONMENT);
+  if (conns.length) {
+    const hub = {
+      id: "devices/net", name: "Network hub", depth: 1,
+      parentId: root.id, path: ["Devices", "Network hub"],
+      value: conns.length, children: [], isLeaf: false,
+    };
+    byId.set(hub.id, hub);
+    all.push(hub);
+    root.children.push(hub);
+    root.value += conns.length;
+    const ids = connectionIds(ENVIRONMENT);
+    conns.forEach((conn, i) => {
+      const node = {
+        id: ids[i], name: conn.host, depth: 2,
+        parentId: hub.id, path: ["Devices", "Network hub", conn.host],
+        value: 1, children: [], isLeaf: true,
+      };
+      byId.set(node.id, node);
+      all.push(node);
+      hub.children.push(node);
+    });
+  }
+  return { root, byId, all };
+}
+
+const DEVICES_TABLE = buildDevicesTable();
+
 /* ---------------- the provider API ---------------- */
 
 const BOOK_TABLE = bookTable();
 
 /** The citizens with sub-nodes, in the order the guide names them. */
-export const SUBNODE_OBJECT_IDS = ["tray", "tangle", "mesa", "drum", "book"];
+export const SUBNODE_OBJECT_IDS = ["tray", "tangle", "mesa", "drum", "book", "devices"];
 
 export const isSubnodeObject = (id) => SUBNODE_OBJECT_IDS.includes(id);
 
@@ -258,6 +322,10 @@ export function subnodeRootOf(objectId, rootId = null, dataset = "genealogy") {
     const root = BOOK_TABLE.root;
     return { id: root.id, name: root.name, value: root.value };
   }
+  if (objectId === "devices") {
+    const root = DEVICES_TABLE.root;
+    return { id: root.id, name: root.name, value: root.value };
+  }
   return null;
 }
 
@@ -286,6 +354,11 @@ export function subnodeById(objectId, nodeId, rootId = null, dataset = "genealog
     const node = BOOK_TABLE.byId.get(nodeId);
     if (!node) return null;
     return publicNode(node, BOOK_TABLE.root.value ? node.value / BOOK_TABLE.root.value : 0, node.depth);
+  }
+  if (objectId === "devices") {
+    const node = DEVICES_TABLE.byId.get(nodeId);
+    if (!node) return null;
+    return publicNode(node, DEVICES_TABLE.root.value ? node.value / DEVICES_TABLE.root.value : 0, node.depth);
   }
   return null;
 }
@@ -328,6 +401,14 @@ export function subnodesFor(objectId, rootId = null, dataset = "genealogy") {
     // the bands and the leaves are all rendered, all addressed.
     const whole = BOOK_TABLE.root;
     return BOOK_TABLE.all
+      .filter((n) => n.depth >= 1)
+      .map((n) => publicNode(n, whole.value ? n.value / whole.value : 0, n.depth));
+  }
+  if (objectId === "devices") {
+    // Every attached thing: the shelf devices, the hub, and the
+    // hosts out on the ring — all rendered, all addressed.
+    const whole = DEVICES_TABLE.root;
+    return DEVICES_TABLE.all
       .filter((n) => n.depth >= 1)
       .map((n) => publicNode(n, whole.value ? n.value / whole.value : 0, n.depth));
   }

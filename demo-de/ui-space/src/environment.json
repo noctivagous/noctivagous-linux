@@ -1,0 +1,303 @@
+{
+ "sample": true,
+ "devices": {
+  "printer": {
+   "name": "Sample Press — OfficeJet class",
+   "kind": "printer",
+   "state": "printing — job 1 of 3",
+   "queue": [
+    {
+     "name": "field-notes-draft.pdf",
+     "pages": 12,
+     "status": "printing"
+    },
+    {
+     "name": "treemap-poster.pdf",
+     "pages": 2,
+     "status": "queued"
+    },
+    {
+     "name": "boarding-pass.pdf",
+     "pages": 1,
+     "status": "queued"
+    }
+   ]
+  },
+  "keyboard": {
+   "name": "Sample Keys — 65% board",
+   "kind": "keyboard",
+   "state": "connected"
+  },
+  "pointer": {
+   "name": "Sample Pointer — trackball",
+   "kind": "pointer",
+   "state": "connected"
+  },
+  "display": {
+   "name": "Sample Display — 27-inch panel",
+   "kind": "display",
+   "state": "primary · 5120 × 2880"
+  },
+  "volumes": [
+   {
+    "name": "Sample Volume — System",
+    "kind": "storage",
+    "slug": "volume-system",
+    "sizeGB": 512,
+    "freeGB": 188,
+    "state": "512 GB · 188 GB free"
+   },
+   {
+    "name": "Sample Volume — Archive",
+    "kind": "storage",
+    "slug": "volume-archive",
+    "sizeGB": 2048,
+    "freeGB": 1211,
+    "state": "2048 GB · 1211 GB free"
+   }
+  ]
+ },
+ "network": {
+  "interfaces": [
+   {
+    "name": "en0",
+    "series": [
+     {
+      "in": 19000000,
+      "out": 3650000
+     },
+     {
+      "in": 27494934,
+      "out": 5727390
+     },
+     {
+      "in": 33985696,
+      "out": 7380820
+     },
+     {
+      "in": 37059245,
+      "out": 6391379
+     },
+     {
+      "in": 29510453,
+      "out": 6513365
+     },
+     {
+      "in": 25661593,
+      "out": 5979568
+     },
+     {
+      "in": 20349306,
+      "out": 3216199
+     },
+     {
+      "in": 15641873,
+      "out": 2500781
+     },
+     {
+      "in": 6629173,
+      "out": 2313094
+     },
+     {
+      "in": 8065260,
+      "out": 977267
+     },
+     {
+      "in": 13227976,
+      "out": 2349764
+     },
+     {
+      "in": 21095989,
+      "out": 4294536
+     },
+     {
+      "in": 23050038,
+      "out": 4506739
+     },
+     {
+      "in": 30609524,
+      "out": 6386246
+     },
+     {
+      "in": 35246187,
+      "out": 7647463
+     },
+     {
+      "in": 36093855,
+      "out": 6187162
+     },
+     {
+      "in": 26603924,
+      "out": 5898522
+     },
+     {
+      "in": 21671208,
+      "out": 5135448
+     },
+     {
+      "in": 20683253,
+      "out": 2391776
+     },
+     {
+      "in": 14119548,
+      "out": 1939219
+     },
+     {
+      "in": 6000204,
+      "out": 2180027
+     },
+     {
+      "in": 9647362,
+      "out": 1311942
+     },
+     {
+      "in": 16554583,
+      "out": 3053469
+     },
+     {
+      "in": 25185915,
+      "out": 5159713
+     }
+    ]
+   },
+   {
+    "name": "en1",
+    "series": [
+     {
+      "in": 1140000,
+      "out": 401500
+     },
+     {
+      "in": 1649696,
+      "out": 630013
+     },
+     {
+      "in": 2039142,
+      "out": 811890
+     },
+     {
+      "in": 2223555,
+      "out": 703052
+     },
+     {
+      "in": 1770627,
+      "out": 716470
+     },
+     {
+      "in": 1539696,
+      "out": 657752
+     },
+     {
+      "in": 1220958,
+      "out": 353782
+     },
+     {
+      "in": 938512,
+      "out": 275086
+     },
+     {
+      "in": 397750,
+      "out": 254440
+     },
+     {
+      "in": 483916,
+      "out": 107499
+     },
+     {
+      "in": 793679,
+      "out": 258474
+     },
+     {
+      "in": 1265759,
+      "out": 472399
+     },
+     {
+      "in": 1383002,
+      "out": 495741
+     },
+     {
+      "in": 1836571,
+      "out": 702487
+     },
+     {
+      "in": 2114771,
+      "out": 841221
+     },
+     {
+      "in": 2165631,
+      "out": 680588
+     },
+     {
+      "in": 1596235,
+      "out": 648837
+     },
+     {
+      "in": 1300272,
+      "out": 564899
+     },
+     {
+      "in": 1240995,
+      "out": 263095
+     },
+     {
+      "in": 847173,
+      "out": 213314
+     },
+     {
+      "in": 360012,
+      "out": 239803
+     },
+     {
+      "in": 578842,
+      "out": 144314
+     },
+     {
+      "in": 993275,
+      "out": 335882
+     },
+     {
+      "in": 1511155,
+      "out": 567568
+     }
+    ]
+   }
+  ],
+  "connections": [
+   {
+    "host": "example.org",
+    "port": 443,
+    "protocol": "tcp",
+    "bytesIn": 61204800,
+    "bytesOut": 22915600
+   },
+   {
+    "host": "cdn.example.net",
+    "port": 443,
+    "protocol": "tcp",
+    "bytesIn": 11318400,
+    "bytesOut": 1621900
+   },
+   {
+    "host": "mail.example.org",
+    "port": 993,
+    "protocol": "tcp",
+    "bytesIn": 2904300,
+    "bytesOut": 307450
+   },
+   {
+    "host": "updates.example.net",
+    "port": 80,
+    "protocol": "tcp",
+    "bytesIn": 918300,
+    "bytesOut": 45920
+   },
+   {
+    "host": "time.example.org",
+    "port": 123,
+    "protocol": "udp",
+    "bytesIn": 41760,
+    "bytesOut": 6360
+   }
+  ]
+ }
+}

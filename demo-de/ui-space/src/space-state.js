@@ -88,6 +88,8 @@ export const OBJECTS = [
     blurb: "The noctivagous-linux repository grown as a branching tree by L-system rules — file sizes are the values; its depth-1 branches are sub-addresses: hover one, then F zooms into the subtree." },
   { id: "book", name: "Sample Book", group: "instruments",
     blurb: "A sample book whose leaves stand around a cylinder, in tiers: chapters on the drum's upper band, sections on the lower, pages as radial leaves at the rim. Hover a tier to read it, F accesses it — a page slides out of the drum to be read — and U stands the book open instead, two pages at a time, flipped with B and N." },
+  { id: "devices", name: "Devices", group: "instruments",
+    blurb: "The machine's own attachments on one shelf, from the environment snapshot: the printer a small press whose output tray holds a sheet for every queued job (the printing job's sheet half-fed), keyboard, pointer, display and volumes beside it, and a hub whose connections arc out as cables to host tokens standing on the ring. Its devices, its hub and its hosts are sub-addresses: hover one to read it, F flies into it." },
 ];
 
 export const OBJECT_IDS = OBJECTS.map((o) => o.id);
@@ -466,7 +468,10 @@ export function addressedId(hoverId, currentId) {
  * tangled tree or a sunburst, validated by the caller against the
  * provider (subnodes.js) and applying only when the addressed
  * target is that sub-node's citizen. The tray's and the tangle's
- * sub-nodes take the part-focus seat, like the knot's parts. The
+ * sub-nodes take the part-focus seat, like the knot's parts —
+ * and so do the DEVICES citizen's (slice 14): its shelf devices,
+ * its network hub, and its hosts, whose anchors stand out on the
+ * ring while their addresses belong to the shelf. The
  * sunbursts split on `subLeaf`: a LEAF wedge seats; a BRANCH
  * wedge DESCENDS — the citizen re-roots at that wedge (see the
  * descent state below).
@@ -512,7 +517,7 @@ export function resolveFAction({
     }
     return { type: "bookAccess", targetId, nodeId: subId };
   }
-  if ((targetId === "tray" || targetId === "tangle") && subId) {
+  if ((targetId === "tray" || targetId === "tangle" || targetId === "devices") && subId) {
     return { type: "partFocus", targetId, partId: subId };
   }
   if ((targetId === "mesa" || targetId === "drum") && subId) {
@@ -624,6 +629,7 @@ export const LAYOUTS = {
       crystal: [-52, 30],
       tree: [-148, -30],
       book: [-95, 95],
+      devices: [30, 108],
     },
     scales: {},
   },
@@ -639,6 +645,7 @@ export const LAYOUTS = {
       crystal: [92, 46],
       tree: [-56, 84],
       book: [0, 92],
+      devices: [58, 102],
     },
     scales: { cube: 1.6 },
   },

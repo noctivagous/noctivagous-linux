@@ -14,7 +14,28 @@ import {
   treemapHouseColor,
 } from "../../NCTGraphite/packages/nctgraphite/src/treemap/NCTGraphiteTreemapLayout.ts";
 import { TANGLE_PALETTE } from "../../NCTGraphite/packages/nctgraphite/src/tangle/NCTGraphiteTangleLayout.ts";
+import {
+  SCHEME_GREENS,
+  SCHEME_BLUES,
+  horizonBandColor,
+} from "../../NCTGraphite/packages/nctgraphite/src/horizon/NCTGraphiteHorizon.ts";
 import { HIERARCHY } from "./hierarchy.js";
+import {
+  ENVIRONMENT,
+  deviceList,
+  deviceBySlug,
+  printerOf,
+  queueTotals,
+  connectionsOf,
+  connectionIds,
+  connectionBytes,
+  connectionTotals,
+  cableRadiusForBytes,
+  cableGlowForBytes,
+  formatBytes,
+  ENV_TOTALS,
+} from "./environment.js";
+import { SPACE_LANES } from "./horizon-lanes.js";
 import {
   OBJECTS,
   OBJECT_IDS,
@@ -77,7 +98,7 @@ import {
 /**
  * UI Space — SpaceView: the R3F scene.
  *
- * Thirteen miniature frames stand on the platter as citizens of one
+ * Fourteen miniature frames stand on the platter as citizens of one
  * space. The scene is declared (one component per object, cables as
  * components), and ONE useFrame driver (the Rig) eases every
  * displayed value toward the pure state in space-state.js: object
@@ -120,7 +141,7 @@ export const COMPASS = [
 export const ANCHOR_H = {
   mesa: 16, drum: 24, tray: 10, cube: 36, tangle: 26,
   horizon3d: 16, horizonflat: 28, arch: 32, definition: 18, knot: 26, crystal: 32,
-  tree: 30, book: 28,
+  tree: 30, book: 28, devices: 16,
 };
 
 /**
@@ -145,6 +166,7 @@ export const CENTRE_Y = {
   crystal: 14.5, // pedestal 0..4; the solid ±12.1 about CRYSTAL_CY 17 → bounds 0..29
   tree: 14.7, // segments 0..27.2 in the sway group at 2.2, soil 0..2.2 → bounds 0..29.4
   book: 13, // plinth 0..1.6, drum body to 25.6, cap rim ~26.3 → bounds 0..26.3
+  devices: 7, // shelf 0..1.6, the display's screen top ~14.4 → bounds 0..14.4
 };
 
 /**
@@ -163,7 +185,7 @@ export const CENTRE_Y = {
 export const PLANE_AXIS = {
   mesa: "y", drum: "y", tray: "y", cube: "y", tangle: "y",
   horizon3d: "y", horizonflat: "z", arch: "y", definition: "z",
-  knot: "y", crystal: "y", tree: "y", book: "y",
+  knot: "y", crystal: "y", tree: "y", book: "y", devices: "y",
 };
 
 const DEG = Math.PI / 180;
@@ -439,24 +461,40 @@ function geoLib() {
     imports: buildTangleSet(tangleLevels("imports")),
   };
 
-  // Horizon skyline: a seeded relief of boxes.
-  let seed = 20261113;
-  const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  // Horizon citizens (slice 14): BOTH read the one lane table
+  // (horizon-lanes.js — NCTGraphite's activity lanes, shared
+  // with the standalone horizon pages; the last two lanes are
+  // NET IN / NET OUT, driven by the environment snapshot's
+  // captured strip). The SKYLINE is the lanes as terraced
+  // towers: eight rows, one per lane, reading back to front in
+  // lane order — so the net lanes are the FRONT pair of rows —
+  // by nine time columns. The PANEL is the lanes as the horizon
+  // chart itself: eight strips, lane order top to bottom — the
+  // net lanes the BOTTOM pair — each strip a row of twenty
+  // ticks. A tower's or tick's height is its lane value at that
+  // column; its colour is the horizon chart's own band colour
+  // for the lane's scheme family.
+  const laneColor = (lane, v) => {
+    const scheme = lane.scheme === "blues" ? SCHEME_BLUES : SCHEME_GREENS;
+    const band = Math.max(0, Math.min(3, Math.floor(v * 4)));
+    return horizonBandColor(scheme, 4, band);
+  };
+  const laneSampleAt = (lane, frac) =>
+    lane.samples[Math.min(lane.samples.length - 1, Math.floor(frac * lane.samples.length))];
   const skyline = [];
-  const skyColors = ["#1d5c38", "#2e7d4f", "#3f6fb5", "#5b8fd6"];
-  for (let i = 0; i < 9; i++) {
-    for (let j = 0; j < 5; j++) {
-      const h = 3 + rnd() * 11;
-      skyline.push({ x: (i - 4) * 5.6, z: (j - 2) * 6, h, color: skyColors[Math.min(3, Math.floor(h / 4))] });
+  SPACE_LANES.forEach((lane, li) => {
+    for (let ci = 0; ci < 9; ci++) {
+      const v = laneSampleAt(lane, (ci + 0.5) / 9);
+      skyline.push({ x: (ci - 4) * 5.6, z: (li - 3.5) * 3.6, h: 1.2 + v * 12.5, v, color: laneColor(lane, v) });
     }
-  }
-
-  // Horizon panel bars.
-  const bars = [];
-  for (let i = 0; i < 20; i++) {
-    const h = 4 + 17 * Math.abs(Math.sin(i * 1.7) * 0.6 + Math.sin(i * 0.53) * 0.4);
-    bars.push({ x: -21.5 + i * 2.26, h, alt: i % 2 === 0 });
-  }
+  });
+  const panelTicks = [];
+  SPACE_LANES.forEach((lane, li) => {
+    for (let ci = 0; ci < 20; ci++) {
+      const v = laneSampleAt(lane, (ci + 0.5) / 20);
+      panelTicks.push({ x: -21.5 + ci * 2.26, lane: li, v, h: 0.3 + v * 2.9, color: laneColor(lane, v) });
+    }
+  });
 
   // Definition wires.
   const wireGeos = [
@@ -499,7 +537,7 @@ function geoLib() {
 
   _lib = {
     mesaWedges, drumBlocks, trayPlates, trayCuboids, cubePieces,
-    tangles, skyline, bars, wireGeos,
+    tangles, skyline, panelTicks, wireGeos,
     dataTree, treeSegs, treeBuds,
     unitBox: new THREE.BoxGeometry(1, 1, 1),
   };
@@ -1011,7 +1049,9 @@ function MiniTangle({ lib, matFor, ctx, tangleDataset }) {
 function MiniSkyline({ lib, matFor, ctx }) {
   const ref = useRef(null);
   // The monitor lives: every tower's height breathes a few percent
-  // on its own phase, so the lanes keep updating in place.
+  // on its own phase, so the lanes keep updating in place. The
+  // towers ARE the lanes (slice 14): eight rows back to front in
+  // lane order — the front pair of rows is NET IN / NET OUT.
   const amp = useRef(1);
   const scratch = useMemo(() => ({
     M: new THREE.Matrix4(), Q: new THREE.Quaternion(),
@@ -1026,7 +1066,7 @@ function MiniSkyline({ lib, matFor, ctx }) {
     lib.skyline.forEach((b, i) => {
       const h = b.h * (1 + a * 0.07 * Math.sin(t * 0.8 + i * 1.37));
       P.set(b.x, 1.6 + h / 2, b.z);
-      S.set(4.8, h, 5.2);
+      S.set(4.8, h, 3.2);
       M.compose(P, Q, S);
       m.setMatrixAt(i, M);
     });
@@ -1042,7 +1082,7 @@ function MiniSkyline({ lib, matFor, ctx }) {
     const C = new THREE.Color();
     lib.skyline.forEach((b, i) => {
       P.set(b.x, 1.6 + b.h / 2, b.z);
-      S.set(4.8, b.h, 5.2);
+      S.set(4.8, b.h, 3.2);
       M.compose(P, Q, S);
       m.setMatrixAt(i, M);
       m.setColorAt(i, C.set(b.color));
@@ -1064,33 +1104,73 @@ function MiniSkyline({ lib, matFor, ctx }) {
   );
 }
 
+/** A lane strip's baseline on the panel (panel-local y): lane
+ *  order top to bottom, so the net lanes are the bottom pair. */
+const PANEL_STRIP_Y = (li) => 10.9 - li * 3.1;
+
 function MiniHorizonPanel({ lib, matFor, ctx }) {
-  // The flat monitor lives too: its bars ride a slow shimmer,
-  // each on its own phase, feet planted on the panel baseline.
-  const barRefs = useRef([]);
+  // The flat monitor, as the horizon chart itself (slice 14):
+  // eight lane strips, each a row of ticks whose heights are
+  // the lane's samples and whose colours are the chart's band
+  // colours — the last two strips are NET IN and NET OUT,
+  // driven by the environment snapshot. The ticks ride a slow
+  // shimmer, each on its own phase, feet planted on their
+  // strip's baseline.
+  const ref = useRef(null);
   const amp = useRef(1);
+  const scratch = useMemo(() => ({
+    M: new THREE.Matrix4(), Q: new THREE.Quaternion(),
+    S: new THREE.Vector3(), P: new THREE.Vector3(),
+  }), []);
   useFrame((state, dt) => {
     const a = ambientAmp(amp, ctx, dt);
+    const m = ref.current;
+    if (!m) return;
     const t = state.clock.elapsedTime;
-    lib.bars.forEach((b, i) => {
-      const m = barRefs.current[i];
-      if (!m) return;
+    const { M, Q, S, P } = scratch;
+    lib.panelTicks.forEach((b, i) => {
       const h = b.h * (1 + a * 0.09 * Math.sin(t * 1.05 + i * 0.87));
-      m.scale.y = h;
-      m.position.y = -13 + h / 2;
+      P.set(b.x, PANEL_STRIP_Y(b.lane) + h / 2, 1.1);
+      S.set(1.7, h, 0.7);
+      M.compose(P, Q, S);
+      m.setMatrixAt(i, M);
     });
+    m.instanceMatrix.needsUpdate = true;
   });
+  useLayoutEffect(() => {
+    const m = ref.current;
+    if (!m) return;
+    const M = new THREE.Matrix4();
+    const Q = new THREE.Quaternion();
+    const S = new THREE.Vector3();
+    const P = new THREE.Vector3();
+    const C = new THREE.Color();
+    lib.panelTicks.forEach((b, i) => {
+      P.set(b.x, PANEL_STRIP_Y(b.lane) + b.h / 2, 1.1);
+      S.set(1.7, b.h, 0.7);
+      M.compose(P, Q, S);
+      m.setMatrixAt(i, M);
+      m.setColorAt(i, C.set(b.color));
+    });
+    m.instanceMatrix.needsUpdate = true;
+    if (m.instanceColor) m.instanceColor.needsUpdate = true;
+  }, [lib]);
   return (
     <group>
       <mesh position={[0, 1, 4]} geometry={lib.unitBox} scale={[50, 2, 10]}
         material={matFor(0x27313a, { rough: 0.85 })} />
       <group position={[0, 15, 0]} rotation-x={-0.1}>
         <mesh geometry={lib.unitBox} scale={[48, 28, 1.6]} material={matFor(0x131a1e, { rough: 0.8 })} />
-        {lib.bars.map((b, i) => (
-          <mesh key={i} geometry={lib.unitBox} position={[b.x, -13 + b.h / 2, 1.1]} scale={[1.7, b.h, 0.7]}
-            ref={(el) => { barRefs.current[i] = el; }}
-            material={matFor(b.alt ? 0x3f6fb5 : 0x2e7d4f, { rough: 0.45 })} />
+        {/* The strips' backings: a shade per lane, alternating. */}
+        {SPACE_LANES.map((lane, li) => (
+          <mesh key={lane.id} geometry={lib.unitBox}
+            position={[0, PANEL_STRIP_Y(li) + 1.45, 0.85]} scale={[46.5, 2.9, 0.2]}
+            material={matFor(li % 2 === 0 ? 0x182228 : 0x11181d, { rough: 0.9 })} />
         ))}
+        <instancedMesh ref={ref} args={[undefined, undefined, lib.panelTicks.length]} key={lib.panelTicks.length}>
+          <boxGeometry args={[1, 1, 1]} />
+          <primitive object={matFor(0xffffff, { rough: 0.45 })} attach="material" />
+        </instancedMesh>
         {/* A glass sheet over the panel face. */}
         <mesh position={[0, 0, 1.8]} geometry={lib.unitBox} scale={[48, 28, 0.3]}
           material={matFor(0x9fd8e8, { opacity: 0.13, glowScale: 0.3 })} />
@@ -2422,11 +2502,462 @@ function MiniBook({ lib, matFor, ctx, bookStyle, bookSpread }) {
   );
 }
 
+/* ---------- slice 14: the devices citizen and its network ---------- */
+
+/**
+ * A host token's place on the ring (world-group coordinates):
+ * the connections spread across the BACK arc of the annulus —
+ * the front belongs to the Waveform token and, while an app
+ * holds the stage, to the app's furniture. The tokens stand on
+ * the annulus geometrically but are WORLD-ANCHORED: they are
+ * not in the rotating ring group (PlatterRing's), so the ring's
+ * rest spin never carries them; they ride the world group like
+ * everything else in the space. Angle 0 is the +X rim and the
+ * spread runs 202°..338°, through the back (−Z).
+ */
+export function netTokenPosition(index, count) {
+  const deg = count <= 1 ? 270 : 202 + (index * 136) / (count - 1);
+  const a = deg * DEG;
+  return {
+    x: Math.cos(a) * RING_R,
+    z: Math.sin(a) * RING_R,
+    rotY: Math.atan2(-Math.cos(a), -Math.sin(a)),
+  };
+}
+
+/** An arc for a connection cable: the endpoints, and a midpoint
+ *  lifted above both — a cable thrown from the shelf's hub out
+ *  to the ring, hanging in the air of the space. */
+function netArcCurve(pa, pb) {
+  const mid = pa.clone().add(pb).multiplyScalar(0.5);
+  mid.y = Math.max(pa.y, pb.y) + 14 + pa.distanceTo(pb) * 0.08;
+  return new THREE.CatmullRomCurve3([pa.clone(), mid, pb.clone()]);
+}
+
+/**
+ * THE DEVICES CITIZEN (slice 14): the machine's own attachments
+ * on one shelf, from the environment snapshot (environment.js).
+ * The shelf is a low plinth at the plot; on it, one small form
+ * per device the snapshot carries — a kind absent from the
+ * snapshot builds no form. The PRINTER is a small press (body,
+ * lid, an amber output slot, a tray), and it carries its QUEUE
+ * as geometry: one sheet of paper stands in the output tray
+ * per queued job, and the printing job's sheet is half-fed
+ * into the press. The keyboard is a slab with a grid of keys;
+ * the pointer a pebble; the display a small screen on a stand;
+ * the volumes slabs with a lit stripe. At the shelf's right
+ * edge stands the HUB, a small switch with a port per
+ * connection — the cables' home end (NetworkLayer, below).
+ *
+ * Every device, the hub and (through the per-frame anchor
+ * republication) the hosts are SUB-NODES (subnodes.js): hover
+ * lights the form and stands its card, F takes the part-focus
+ * seat — the slice-12 treatment, on owned materials. The host
+ * anchors are the one wrinkle: the tokens stand on the ring,
+ * OUTSIDE this citizen's plot, so each frame their anchors are
+ * recomputed into this group's local frame (token world →
+ * group local), and the Rig's sub-node pass turns them back
+ * into world for the card and the seat, exactly like every
+ * other sub-node's. The hub's top is published each frame in
+ * world-group coordinates (frame.netHubLocal) for the cables.
+ */
+function MiniDevices({ lib, matFor, ctx }) {
+  const wrapRef = useRef(null);
+  const hubTopRef = useRef(null);
+  const keysRef = useRef(null);
+  const anchors = useMemo(() => new Map(), []);
+  const devices = useMemo(() => deviceList(ENVIRONMENT), []);
+  const printer = useMemo(() => printerOf(ENVIRONMENT), []);
+  const conns = useMemo(() => connectionsOf(ENVIRONMENT), []);
+  const connIds = useMemo(() => connectionIds(ENVIRONMENT), []);
+  const scratch = useMemo(() => ({ v: new THREE.Vector3() }), []);
+
+  // The stands on the shelf: fixed per kind; the volumes take
+  // the two left-hand stands in data order.
+  const plots = useMemo(() => {
+    const map = new Map();
+    let vol = 0;
+    for (const d of devices) {
+      if (d.kind === "printer") map.set(d.slug, { x: -10.5, z: -1.5, top: 9.4, r: 4.5 });
+      else if (d.kind === "keyboard") map.set(d.slug, { x: 2.5, z: 7.5, top: 5, r: 3.5 });
+      else if (d.kind === "pointer") map.set(d.slug, { x: 12, z: 7.5, top: 4.6, r: 2.5 });
+      else if (d.kind === "display") map.set(d.slug, { x: 6.5, z: -8, top: 12.6, r: 4.5 });
+      else if (d.kind === "storage") {
+        map.set(d.slug, vol === 0
+          ? { x: -13.5, z: 8, top: 6, r: 3 }
+          : { x: -13.5, z: -8, top: 6, r: 3 });
+        vol++;
+      }
+    }
+    return map;
+  }, [devices]);
+
+  const owned = useMemo(() => {
+    const map = new Map();
+    const mats = {};
+    const own = (id, key, color, opts) => {
+      const mat = matFor(color, opts);
+      if (!map.has(id)) map.set(id, []);
+      map.get(id).push({ mat, base: new THREE.Color(color) });
+      mats[key] = mat;
+      return mat;
+    };
+    for (const d of devices) {
+      const id = `devices/${d.slug}`;
+      if (d.kind === "printer") {
+        own(id, "printerBody", 0x9fb2ba, { rough: 0.5 });
+        own(id, "printerAccent", 0xffa726, { rough: 0.4 });
+        own(id, "printerPaper", 0xe8e4d8, { rough: 0.85 });
+      } else if (d.kind === "keyboard") {
+        own(id, "keyboardBody", 0x39434b, { rough: 0.6 });
+        own(id, "keyboardKeys", 0x51707c, { rough: 0.5 });
+      } else if (d.kind === "pointer") {
+        own(id, "pointer", 0x8e6cc8, { rough: 0.45 });
+      } else if (d.kind === "display") {
+        own(id, "displayFrame", 0x2b3941, { rough: 0.55 });
+        own(id, "displayScreen", 0x5b8fd6, { rough: 0.35 });
+      } else if (d.kind === "storage") {
+        own(id, `vol-${d.slug}`, 0x2e5d43, { rough: 0.55 });
+        own(id, `volStripe-${d.slug}`, 0x74c476, { rough: 0.45 });
+      }
+    }
+    if (conns.length) {
+      own("devices/net", "hubBody", 0x2e7d74, { rough: 0.45 });
+      own("devices/net", "hubPorts", 0xc9f7e8, { rough: 0.35 });
+    }
+    return { map, mats };
+  }, [devices, conns, matFor]);
+
+  useEffect(() => {
+    const frame = ctx.frame;
+    frame.subGroupRefs.set("devices", wrapRef.current);
+    for (const d of devices) {
+      const p = plots.get(d.slug);
+      if (p) {
+        anchors.set(`devices/${d.slug}`, {
+          centre: new THREE.Vector3(p.x, p.top, p.z), radius: p.r,
+        });
+      }
+    }
+    if (conns.length) {
+      anchors.set("devices/net", { centre: new THREE.Vector3(14.5, 6.4, -3), radius: 3 });
+      for (const id of connIds) {
+        anchors.set(id, { centre: new THREE.Vector3(), radius: 3.5 });
+      }
+    }
+    frame.subLocal.set("devices", anchors);
+    frame.devicesAnchors = anchors;
+    return () => {
+      frame.subGroupRefs.delete("devices");
+      if (frame.subLocal.get("devices") === anchors) frame.subLocal.delete("devices");
+      if (frame.devicesAnchors === anchors) frame.devicesAnchors = null;
+    };
+  }, [ctx, anchors, devices, plots, conns, connIds]);
+
+  // The keyboard's key grid: 4 rows of 11, set once.
+  useLayoutEffect(() => {
+    const m = keysRef.current;
+    if (!m) return;
+    const M = new THREE.Matrix4();
+    let i = 0;
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < 11; c++) {
+        M.setPosition(-5.5 + c * 1.1, 0.95, -1.65 + r * 1.1);
+        m.setMatrixAt(i++, M);
+      }
+    }
+    m.instanceMatrix.needsUpdate = true;
+  }, [devices]);
+
+  const lastHi = useRef(undefined);
+  useFrame(() => {
+    const st = ctx.stateRef.current;
+    const frame = ctx.frame;
+    // The hub's top, in world-group coordinates, for the cables.
+    if (hubTopRef.current && frame.worldGroup) {
+      hubTopRef.current.getWorldPosition(scratch.v);
+      frame.netHubLocal = frame.worldGroup.worldToLocal(scratch.v.clone());
+    }
+    // Host anchors, republished every frame: the tokens stand
+    // on the ring, outside this plot — token world → this
+    // group's local frame (see the head comment).
+    const wrap = wrapRef.current;
+    if (wrap && frame.worldGroup && conns.length) {
+      wrap.updateWorldMatrix(true, false);
+      conns.forEach((conn, i) => {
+        const a = anchors.get(connIds[i]);
+        if (!a) return;
+        const p = netTokenPosition(i, conns.length);
+        const world = frame.worldGroup.localToWorld(
+          scratch.v.set(p.x, 9.6, p.z).clone(),
+        );
+        a.centre.copy(wrap.worldToLocal(world));
+        a.radius = 3.5;
+      });
+    }
+    // The highlight, rewritten only when its signature changes.
+    const hov = st.currentId === "devices" && st.subHover && st.subHover.objectId === "devices"
+      ? st.subHover.nodeId : null;
+    const foc = st.partFocus && st.partFocus.objectId === "devices" ? st.partFocus.partId : null;
+    const hi = foc || hov || null;
+    if (hi !== lastHi.current) {
+      lastHi.current = hi;
+      for (const [id, parts] of owned.map) {
+        const f = !hi ? 1 : id === hi ? 1.9 : 0.55;
+        for (const part of parts) part.mat.color.copy(part.base).multiplyScalar(f);
+      }
+    }
+  });
+
+  const st = () => ctx.stateRef.current;
+  const report = (id) => {
+    if (st().currentId !== "devices" || !st().onSubHover) return;
+    st().onSubHover("devices", id);
+  };
+  const clear = () => { if (st().onSubHover) st().onSubHover("devices", null); };
+  const hoverProps = (id) => ({
+    onPointerOver: () => report(id),
+    onPointerMove: () => report(id),
+    onPointerOut: clear,
+  });
+  const byKind = (kind) => devices.find((d) => d.kind === kind);
+  const queue = printer ? printer.queue || [] : [];
+  const printingJob = queue.some((j) => j.status === "printing");
+  const kb = byKind("keyboard");
+  const ptr = byKind("pointer");
+  const disp = byKind("display");
+
+  return (
+    <group ref={wrapRef}>
+      {/* The shelf itself: context, like the citizens' plot plates. */}
+      <mesh position={[0, 0.8, 0]}>
+        <boxGeometry args={[38, 1.6, 26]} />
+        <primitive object={matFor(0x27313a, { rough: 0.85 })} attach="material" />
+      </mesh>
+      {printer ? (
+        <group position={[-10.5, 1.6, -1.5]}>
+          <mesh position={[0, 2.1, 0]} material={owned.mats.printerBody} {...hoverProps("devices/printer")}>
+            <boxGeometry args={[11, 4.2, 8]} />
+          </mesh>
+          <mesh position={[0, 4.55, 0]} material={owned.mats.printerBody} {...hoverProps("devices/printer")}>
+            <boxGeometry args={[9, 0.7, 6]} />
+          </mesh>
+          <mesh position={[0, 3.1, 4.05]} material={owned.mats.printerAccent} {...hoverProps("devices/printer")}>
+            <boxGeometry args={[8, 0.5, 0.3]} />
+          </mesh>
+          {/* The output tray, and the QUEUE as geometry: one
+              sheet stands in the tray per queued job; the job
+              being printed wears its sheet half-fed. */}
+          <mesh position={[0, 0.9, 5.6]} rotation-x={0.18} material={owned.mats.printerBody} {...hoverProps("devices/printer")}>
+            <boxGeometry args={[9.5, 0.35, 4.5]} />
+          </mesh>
+          {queue.map((job, i) => (
+            <mesh key={i} position={[0, 1.18 + i * 0.22, 5.6]} rotation-x={0.18}
+              material={owned.mats.printerPaper} {...hoverProps("devices/printer")}>
+              <boxGeometry args={[8.2, 0.16, 3.4]} />
+            </mesh>
+          ))}
+          {printingJob ? (
+            <mesh position={[0, 3.35, 3.1]} rotation-x={-0.42}
+              material={owned.mats.printerPaper} {...hoverProps("devices/printer")}>
+              <boxGeometry args={[8.2, 0.14, 4.6]} />
+            </mesh>
+          ) : null}
+        </group>
+      ) : null}
+      {kb ? (
+        <group position={[2.5, 1.6, 7.5]}>
+          <mesh position={[0, 0.4, 0]} material={owned.mats.keyboardBody} {...hoverProps(`devices/${kb.slug}`)}>
+            <boxGeometry args={[13, 0.8, 5]} />
+          </mesh>
+          <instancedMesh ref={keysRef} args={[undefined, undefined, 44]}
+            material={owned.mats.keyboardKeys}
+            onPointerOver={() => report(`devices/${kb.slug}`)}
+            onPointerMove={() => report(`devices/${kb.slug}`)}
+            onPointerOut={clear}>
+            <boxGeometry args={[0.95, 0.35, 0.95]} />
+          </instancedMesh>
+        </group>
+      ) : null}
+      {ptr ? (
+        <group position={[12, 1.6, 7.5]}>
+          <mesh position={[0, 1.05, 0]} scale={[1.3, 0.62, 1.8]}
+            material={owned.mats.pointer} {...hoverProps(`devices/${ptr.slug}`)}>
+            <sphereGeometry args={[1.9, 20, 14]} />
+          </mesh>
+        </group>
+      ) : null}
+      {disp ? (
+        <group position={[6.5, 1.6, -8]}>
+          <mesh position={[0, 0.3, 0.8]} material={owned.mats.displayFrame} {...hoverProps(`devices/${disp.slug}`)}>
+            <boxGeometry args={[6, 0.6, 3]} />
+          </mesh>
+          <mesh position={[0, 2.75, 0.8]} material={owned.mats.displayFrame} {...hoverProps(`devices/${disp.slug}`)}>
+            <boxGeometry args={[1.2, 5.5, 1.2]} />
+          </mesh>
+          <group position={[0, 8.2, 0]} rotation-x={-0.14}>
+            <mesh material={owned.mats.displayFrame} {...hoverProps(`devices/${disp.slug}`)}>
+              <boxGeometry args={[15, 9, 0.7]} />
+            </mesh>
+            <mesh position={[0, 0, 0.42]} material={owned.mats.displayScreen} {...hoverProps(`devices/${disp.slug}`)}>
+              <boxGeometry args={[13.8, 7.8, 0.1]} />
+            </mesh>
+          </group>
+        </group>
+      ) : null}
+      {devices.filter((d) => d.kind === "storage").map((d) => {
+        const p = plots.get(d.slug);
+        if (!p) return null;
+        return (
+          <group key={d.slug} position={[p.x, 1.6, p.z]}>
+            <mesh position={[0, 1.2, 0]} material={owned.mats[`vol-${d.slug}`]} {...hoverProps(`devices/${d.slug}`)}>
+              <boxGeometry args={[6.5, 2.4, 8.5]} />
+            </mesh>
+            <mesh position={[0, 2.6, 0]} material={owned.mats[`volStripe-${d.slug}`]} {...hoverProps(`devices/${d.slug}`)}>
+              <boxGeometry args={[6.5, 0.45, 8.5]} />
+            </mesh>
+          </group>
+        );
+      })}
+      {conns.length ? (
+        <group position={[14.5, 1.6, -3]}>
+          <mesh position={[0, 1.3, 0]} material={owned.mats.hubBody} {...hoverProps("devices/net")}>
+            <boxGeometry args={[7, 2.6, 4.5]} />
+          </mesh>
+          {conns.map((conn, i) => (
+            <mesh key={i}
+              position={[conns.length > 1 ? -2.7 + (i * 5.4) / (conns.length - 1) : 0, 1.9, 2.3]}
+              material={owned.mats.hubPorts} {...hoverProps("devices/net")}>
+              <boxGeometry args={[0.85, 0.5, 0.25]} />
+            </mesh>
+          ))}
+          {/* The cables' home end: an empty group at the hub's
+              top, whose world position MiniDevices' frame loop
+              publishes for NetworkLayer. */}
+          <group ref={hubTopRef} position={[0, 3.2, 0]} />
+        </group>
+      ) : null}
+    </group>
+  );
+}
+
+/** The host tokens' colours, in connection order. */
+const NET_TOKEN_COLORS = [0x5b8fd6, 0x2e7d74, 0x8e6cc8, 0xe0a458, 0x7fb069, 0xd66ba0, 0x6baed6, 0xc7b458];
+
+/**
+ * ONE CONNECTION, drawn: a host TOKEN standing on the ring's
+ * back arc (a slab, a pillar, a coloured plate — the audio
+ * token's stance, without its letter: these are not ring
+ * items, carry no labels, and do not ride the ring's spin),
+ * and its CABLE, an arc from the devices shelf's hub to the
+ * token's plate, rebuilt each frame like the citizens' patch
+ * cables because the hub end moves with its citizen. The
+ * cable's thickness is the connection's bytes (environment.js's
+ * log scale) and its glow likewise; a hovered or focused host
+ * lifts both, on the citizens' two tiers.
+ */
+function NetLink({ ctx, conn, nodeId, index, count }) {
+  const tube = useRef(null);
+  const prevGeo = useRef(null);
+  const pos = netTokenPosition(index, count);
+  const bytes = connectionBytes(conn);
+  const radius = cableRadiusForBytes(bytes);
+  const baseGlow = cableGlowForBytes(bytes);
+  const mats = useMemo(() => ({
+    slab: stdMat(0x2b3941, { rough: 0.6 }),
+    pillar: stdMat(0x39434b, { rough: 0.55 }),
+    plate: stdMat(NET_TOKEN_COLORS[index % NET_TOKEN_COLORS.length], { rough: 0.45 }),
+    cable: stdMat(0x2e7d74, { rough: 0.4 }),
+  }), [index]);
+  const initGeo = useMemo(
+    () => new THREE.TubeGeometry(
+      netArcCurve(new THREE.Vector3(0, 8, 120), new THREE.Vector3(pos.x, 8.4, pos.z)), 24, radius, 6),
+    [pos.x, pos.z, radius],
+  );
+  useEffect(() => () => {
+    for (const m of Object.values(mats)) m.dispose();
+    initGeo.dispose();
+    if (prevGeo.current) prevGeo.current.dispose();
+  }, [mats, initGeo]);
+  useFrame(() => {
+    const st = ctx.stateRef.current;
+    const frame = ctx.frame;
+    const hov = st.currentId === "devices" && st.subHover
+      && st.subHover.objectId === "devices" && st.subHover.nodeId === nodeId;
+    const foc = st.partFocus && st.partFocus.objectId === "devices"
+      && st.partFocus.partId === nodeId;
+    const tier = foc ? 0.55 : hov ? 0.3 : 0;
+    mats.plate.emissiveIntensity = Math.max(baseGlow * 0.7, tier);
+    mats.cable.emissiveIntensity = Math.max(baseGlow, tier);
+    const hub = frame.netHubLocal;
+    if (!hub || !tube.current) {
+      if (tube.current) tube.current.visible = false;
+      return;
+    }
+    tube.current.visible = true;
+    const geo = new THREE.TubeGeometry(
+      netArcCurve(hub, new THREE.Vector3(pos.x, 8.4, pos.z)), 24, radius, 6);
+    tube.current.geometry = geo;
+    if (prevGeo.current) prevGeo.current.dispose();
+    prevGeo.current = geo;
+  });
+  const st = () => ctx.stateRef.current;
+  const report = () => {
+    if (st().currentId !== "devices" || !st().onSubHover) return;
+    st().onTouch();
+    st().onSubHover("devices", nodeId);
+  };
+  const clear = () => { if (st().onSubHover) st().onSubHover("devices", null); };
+  const hoverProps = {
+    onPointerOver: report,
+    onPointerMove: report,
+    onPointerOut: clear,
+  };
+  return (
+    <group>
+      <mesh ref={tube} geometry={initGeo} material={mats.cable} {...hoverProps} />
+      <group position={[pos.x, 0, pos.z]} rotation-y={pos.rotY}>
+        <mesh position={[0, 2.4, 0]} material={mats.slab} {...hoverProps}>
+          <boxGeometry args={[17, 2.2, 11.5]} />
+        </mesh>
+        <mesh position={[0, 5.6, 0]} material={mats.pillar} {...hoverProps}>
+          <boxGeometry args={[2.2, 4.4, 2.2]} />
+        </mesh>
+        <mesh position={[0, 8.2, 0]} material={mats.plate} {...hoverProps}>
+          <boxGeometry args={[8.5, 0.9, 8.5]} />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
+/**
+ * THE NETWORK LAYER: every connection in the snapshot, drawn
+ * (NetLink). It lives in the world group beside the citizens —
+ * in the DATA stratum's block, so hiding DATA or opening an
+ * app full-platter takes the tokens and cables with their
+ * citizen — and NOT in the ring's rotating group: the tokens
+ * stand on the annulus but are world-anchored (see
+ * netTokenPosition).
+ */
+function NetworkLayer({ ctx }) {
+  const conns = connectionsOf(ENVIRONMENT);
+  const ids = connectionIds(ENVIRONMENT);
+  if (!conns.length) return null;
+  return (
+    <group>
+      {conns.map((conn, i) => (
+        <NetLink key={ids[i]} ctx={ctx} conn={conn} nodeId={ids[i]} index={i} count={conns.length} />
+      ))}
+    </group>
+  );
+}
+
 const MINIATURES = {
   mesa: MiniMesa, drum: MiniDrum, tray: MiniTray, cube: MiniCube,
   tangle: MiniTangle, horizon3d: MiniSkyline, horizonflat: MiniHorizonPanel,
   arch: MiniArch, definition: MiniDefinition, knot: MiniKnot, crystal: MiniCrystal,
-  tree: MiniTree, book: MiniBook,
+  tree: MiniTree, book: MiniBook, devices: MiniDevices,
 };
 
 /* ---------- one citizen of the space ---------- */
@@ -3979,6 +4510,7 @@ export default function SpaceView(props) {
       anchorWorld: new Map(), baseWorld: new Map(), partWorld: new Map(),
       branchWorld: new Map(), branchLocal: null, treeGroupRef: null,
       subLocal: new Map(), subWorld: new Map(), subGroupRefs: new Map(),
+      devicesAnchors: null, netHubLocal: null,
       camera: null, worldGroup: null, turntabling: false, knotSpinRef: null,
       crystalCores: [], crystalFaces: null,
       ringAngle: 0, ringItemRefs: new Map(), tokenRefs: new Map(),
@@ -4237,6 +4769,44 @@ export default function SpaceView(props) {
               ];
             }
           }
+          if (oid === "devices") {
+            // The devices' cards speak in their own terms: a
+            // device by its state (the printer by its queue, in
+            // full), the hub by its connections, a host by its
+            // port and its bytes.
+            if (nid === "devices/net") {
+              const t = connectionTotals(ENVIRONMENT);
+              lines = [
+                "Network hub",
+                `${t.count} connections · ${formatBytes(t.bytes)} moved`,
+                "cables run from the hub to the hosts' tokens on the ring",
+              ];
+            } else if (nid.startsWith("devices/net/")) {
+              const idx = connectionIds(ENVIRONMENT).indexOf(nid);
+              const conn = idx >= 0 ? connectionsOf(ENVIRONMENT)[idx] : null;
+              if (conn) {
+                lines = [
+                  conn.host,
+                  `${conn.protocol} · port ${conn.port}`,
+                  `in ${formatBytes(conn.bytesIn)} · out ${formatBytes(conn.bytesOut)}`,
+                ];
+              }
+            } else {
+              const dev = deviceBySlug(ENVIRONMENT, nid.slice("devices/".length));
+              if (dev && dev.kind === "printer") {
+                const q = queueTotals(dev);
+                lines = [
+                  dev.name,
+                  `${q.jobs} jobs queued · ${q.pagesKnown ? `${q.pages} pages` : "pages not reported"}`,
+                  ...(dev.queue || []).map((j) => `${j.name} — ${j.pages != null ? `${j.pages} pages` : "pages —"} · ${j.status}`),
+                ];
+              } else if (dev && dev.kind === "storage" && dev.sizeGB != null) {
+                lines = [dev.name, `${dev.sizeGB} GB · ${dev.freeGB} GB free`];
+              } else if (dev) {
+                lines = [dev.name, dev.state || dev.kind];
+              }
+            }
+          }
           const txt = lines.join("\n");
           if (subEl.textContent !== txt) subEl.textContent = txt;
           const [sx, sy, front] = project(sw.centre);
@@ -4420,6 +4990,11 @@ export default function SpaceView(props) {
                 <Cable key={`${a}|${b}`} a={a} b={b} offset={(i * 0.37) % 1} ctx={ctx} />
               ))}
               <PendingCable ctx={ctx} />
+              {/* Slice 14: the devices citizen's connections —
+                  host tokens on the ring's back arc and their
+                  cables from the shelf's hub. They belong to
+                  the DATA stratum with their citizen. */}
+              <NetworkLayer ctx={ctx} />
             </>
           ) : null}
           {strata?.instruments ? (
@@ -4538,6 +5113,14 @@ export default function SpaceView(props) {
                   {bookAccessedId(bookAccess) ? (
                     <><br />in the book at {subnodeById("book", bookAccessedId(bookAccess))?.path.join(" › ")}</>
                   ) : null}
+                </span>
+              ) : null}
+              {cardObj.id === "devices" ? (
+                <span style={{ display: "block", marginTop: 4 }}>
+                  {ENV_TOTALS.devices} devices · printer queue {ENV_TOTALS.jobs} jobs · {ENV_TOTALS.connections} connections cabled to the ring<br />
+                  {ENV_TOTALS.sample
+                    ? "the environment snapshot is a SAMPLE machine — regenerate with snapshot-environment.mjs --real to show this one"
+                    : "from this machine's environment snapshot"}
                 </span>
               ) : null}
             </>

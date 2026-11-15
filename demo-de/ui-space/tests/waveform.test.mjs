@@ -231,19 +231,20 @@ test("the ring: one item, on the annulus, turning with the rotation", () => {
     "two items stand opposite");
 });
 
-test("labels: the ring item follows the thirteenth citizen; citizens stay thirteen", () => {
-  assert.equal(OBJECTS.length, 13);
+test("labels: the ring item follows the fourteenth citizen; citizens stay fourteen", () => {
+  assert.equal(OBJECTS.length, 14);
   assert.equal(labelForIndex(11), "N", "the twelfth citizen keeps its label");
-  assert.equal(labelForIndex(12), "O", "the thirteenth citizen — the sample book — takes the next letter");
+  assert.equal(labelForIndex(12), "O", "the thirteenth citizen — the sample book — keeps its letter");
+  assert.equal(labelForIndex(13), "P", "the fourteenth citizen — the devices — takes the next letter");
   const labeled = labeledRingItems();
   assert.equal(labeled.length, 1);
   assert.equal(labeled[0].item.id, "audio");
-  assert.equal(labeled[0].label, "P");
-  assert.equal(ringItemForLabel("P").id, "audio");
+  assert.equal(labeled[0].label, "Q");
+  assert.equal(ringItemForLabel("Q").id, "audio");
   assert.equal(ringItemForLabel("A"), null);
-  // The media cards continue after the ring: they now start at Q.
-  assert.equal(labelForMedia("media-1"), "Q");
-  assert.equal(mediaForLabel("Q").id, "media-1");
+  // The media cards continue after the ring: they now start at R.
+  assert.equal(labelForMedia("media-1"), "R");
+  assert.equal(mediaForLabel("R").id, "media-1");
 });
 
 test("the ring item is an instrument: addressable until its stratum locks or hides", () => {
