@@ -231,18 +231,19 @@ test("the ring: one item, on the annulus, turning with the rotation", () => {
     "two items stand opposite");
 });
 
-test("labels: the ring item follows the twelfth citizen; citizens stay twelve", () => {
-  assert.equal(OBJECTS.length, 12);
+test("labels: the ring item follows the thirteenth citizen; citizens stay thirteen", () => {
+  assert.equal(OBJECTS.length, 13);
   assert.equal(labelForIndex(11), "N", "the twelfth citizen keeps its label");
+  assert.equal(labelForIndex(12), "O", "the thirteenth citizen — the sample book — takes the next letter");
   const labeled = labeledRingItems();
   assert.equal(labeled.length, 1);
   assert.equal(labeled[0].item.id, "audio");
-  assert.equal(labeled[0].label, "O");
-  assert.equal(ringItemForLabel("O").id, "audio");
+  assert.equal(labeled[0].label, "P");
+  assert.equal(ringItemForLabel("P").id, "audio");
   assert.equal(ringItemForLabel("A"), null);
-  // The media cards continue after the ring: they now start at P.
-  assert.equal(labelForMedia("media-1"), "P");
-  assert.equal(mediaForLabel("P").id, "media-1");
+  // The media cards continue after the ring: they now start at Q.
+  assert.equal(labelForMedia("media-1"), "Q");
+  assert.equal(mediaForLabel("Q").id, "media-1");
 });
 
 test("the ring item is an instrument: addressable until its stratum locks or hides", () => {

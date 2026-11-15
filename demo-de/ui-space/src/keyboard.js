@@ -157,6 +157,12 @@ function transformBindings(ctx = {}) {
       else if (axis === "scale") label = "NO MAGNIFY · PLATTER";
       else label = "ROTATE PLATTER · CAMERA";
     }
+    if (ctx.bookFlip && axis === "spin") {
+      // Slice 13-2: in the book's SPREAD presentation, B and N
+      // flip the spread instead of plane-spinning the book (the
+      // App dispatches them there) — the cap must say so.
+      label = `SPREAD ${sign}`;
+    }
     out[code] = bind(label);
   }
   return out;
@@ -243,6 +249,16 @@ function spaceBindings(ctx) {
     KeyC: bind("DOLLY OUT"),
     KeyV: bind("DOLLY IN"),
     KeyK: bind("KEYBOARD", { hint: "hide or show this panel" }),
+    // Slice 13-2: U is BOOK STYLE only while the book is current
+    // (ctx.bookStyle carries its presentation then, else null) —
+    // in label scope U stays an address, as every letter does.
+    ...(ctx.bookStyle ? {
+      KeyU: op("BOOK STYLE", {
+        hint: ctx.bookStyle === "spread"
+          ? "stand the book as a cylinder again"
+          : "stand the book open, two pages at a time",
+      }),
+    } : {}),
     Space: op("DRAG LOCK"),
     Enter: op("COMMAND LINE"),
   };
@@ -362,7 +378,13 @@ const SCOPE_TABLES = {
  *         rotateTarget: "citizen" | "ring" | "platter",
  *         eKey: "yaw-" | "expand" | null,
  *         fieldName: the current field size's name (§15),
- *         cardLabels: [{ label, title, id }], lastKey }
+ *         cardLabels: [{ label, title, id }],
+ *         bookStyle: the book's presentation ("cylinder" |
+ *           "spread") while the book is current, else null —
+ *           U is BOOK STYLE only then (slice 13-2),
+ *         bookFlip: the book current in SPREAD presentation —
+ *           B and N read SPREAD − / SPREAD + (they flip),
+ *         lastKey }
  * Returns { scope, scopeName, rows, caps, combos } where each cap
  * is { code, glyph, width, binding|null, active } — binding a
  * { label, hint?, operator?, target? } or null (a bare dim glyph),

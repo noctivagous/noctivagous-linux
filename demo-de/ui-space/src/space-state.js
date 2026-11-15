@@ -86,6 +86,8 @@ export const OBJECTS = [
     blurb: "An octahedron that is alive: its eight faces carry eight values, each face's distance from the centre set by its value, so the shape is the chart. It turns slowly on its pedestal, and the faces regrow as the values drift." },
   { id: "tree", name: "Data tree", group: "graphs",
     blurb: "The noctivagous-linux repository grown as a branching tree by L-system rules — file sizes are the values; its depth-1 branches are sub-addresses: hover one, then F zooms into the subtree." },
+  { id: "book", name: "Sample Book", group: "instruments",
+    blurb: "A sample book whose leaves stand around a cylinder, in tiers: chapters on the drum's upper band, sections on the lower, pages as radial leaves at the rim. Hover a tier to read it, F accesses it — a page slides out of the drum to be read — and U stands the book open instead, two pages at a time, flipped with B and N." },
 ];
 
 export const OBJECT_IDS = OBJECTS.map((o) => o.id);
@@ -224,7 +226,8 @@ export const EVENTS = {
  *
  *   drag → inspection → appNav (each nav entry its own level) →
  *   appClose → partFocus → descent (each descended level its own)
- *   → patch → card → selection
+ *   → bookAccess (each accessed tier its own) → patch → card →
+ *   selection
  *
  * Slice 12 adds DESCENT at the partFocus tier: a sunburst focus
  * (a leaf seat) releases before the climb beneath it, and each
@@ -233,6 +236,12 @@ export const EVENTS = {
  * only while the descended citizen is current — a descent is
  * that citizen's display state, and its stack is only in scope
  * while you are on it.
+ *
+ * Slice 13-2 adds BOOK ACCESS at the same tier, immediately
+ * after descent: the cylinder book's accessed tiers (chapter,
+ * then section, then the page standing out of the drum) are one
+ * chain level each, counted only while the book is current,
+ * exactly as descents count only while their citizen is.
  *
  * The command line's walk-back is handled BEFORE this layer (its
  * machine consumes Esc while armed) and is not part of the chain;
@@ -250,6 +259,8 @@ export function backChainLevels(chain = {}) {
   if (chain.partFocus) levels.push("partFocus");
   const descent = Math.max(0, Math.floor(chain.descent || 0));
   for (let i = 0; i < descent; i++) levels.push("descent");
+  const bookAccess = Math.max(0, Math.floor(chain.bookAccess || 0));
+  for (let i = 0; i < bookAccess; i++) levels.push("bookAccess");
   if (chain.pending) levels.push("patch");
   if (chain.card) levels.push("card");
   if (chain.selection) levels.push("selection");
@@ -459,6 +470,14 @@ export function addressedId(hoverId, currentId) {
  * sunbursts split on `subLeaf`: a LEAF wedge seats; a BRANCH
  * wedge DESCENDS — the citizen re-roots at that wedge (see the
  * descent state below).
+ *
+ * The BOOK (slice 13-2) splits on `subTier` — the hovered node's
+ * depth in its tiers (1 chapter, 2 section, 3 page): a chapter
+ * or a section is ACCESSED (the drum turns to it; see the book
+ * access state below), and a PAGE, in the CYLINDER presentation,
+ * comes OUT of the drum — the access path extended to the page.
+ * In the SPREAD presentation a page instead turns the book to
+ * that page's spread. `bookStyle` carries the presentation.
  */
 export function resolveFAction({
   pendingId = null,
@@ -468,6 +487,8 @@ export function resolveFAction({
   branchId = null,
   subId = null,
   subLeaf = false,
+  subTier = 0,
+  bookStyle = "cylinder",
   inspectIds = [],
 } = {}) {
   const targetId = addressedId(hoverId, currentId);
@@ -482,6 +503,14 @@ export function resolveFAction({
   }
   if (targetId === "tree" && branchId) {
     return { type: "branchFocus", targetId, partId: branchId };
+  }
+  if (targetId === "book" && subId) {
+    if (subTier >= 3) {
+      return bookStyle === "spread"
+        ? { type: "bookSpreadTo", targetId, nodeId: subId }
+        : { type: "bookPage", targetId, nodeId: subId };
+    }
+    return { type: "bookAccess", targetId, nodeId: subId };
   }
   if ((targetId === "tray" || targetId === "tangle") && subId) {
     return { type: "partFocus", targetId, partId: subId };
@@ -594,6 +623,7 @@ export const LAYOUTS = {
       knot: [-100, 34],
       crystal: [-52, 30],
       tree: [-148, -30],
+      book: [-95, 95],
     },
     scales: {},
   },
@@ -608,6 +638,7 @@ export const LAYOUTS = {
       knot: [-92, 46],
       crystal: [92, 46],
       tree: [-56, 84],
+      book: [0, 92],
     },
     scales: { cube: 1.6 },
   },
@@ -1194,6 +1225,102 @@ export function displayRootOf(descent, objectId) {
 /** How many chain levels a descent occupies (its depth below the true root). */
 export function descentDepth(descent) {
   return descent && descent.path ? descent.path.length : 0;
+}
+
+/* ---------------- the cylinder book: access + spreads (slice 13-2) ---------------- */
+
+/**
+ * BOOK ACCESS: the cylinder book is read by TIERS — F on a
+ * chapter band accesses the chapter, F on a section band the
+ * section, F on a page brings the page OUT of the drum. The
+ * state is the PATH of tier ids accessed, from the chapter down
+ * to the deepest tier in hand: because a book sub-node's id IS
+ * its name path ("book/<chapter>/<section>/<page>"), the access
+ * path of any tier is its own ancestor chain, and accessing a
+ * tier sets the path to that chain — every tier is always
+ * addressable on the drum, so access is a position in the book,
+ * not a history. The drum turns to the accessed tier (the View
+ * eases it), the other tiers ghost, and the back events CLIMB
+ * the path one tier per chain level — the access sits in the
+ * release stack at the descent tier (see backChainLevels),
+ * counted only while the book is current.
+ *
+ * Like descent, access is a DISPLAY state: it never touches the
+ * book's transform — rotation, plane spin and MAGNIFY persist
+ * through access and climb exactly as they were. Only ONE page
+ * stands out at a time: the path's deepest entry, when it is a
+ * page (depth 3 in the tiers).
+ */
+export function createBookAccess() {
+  return { path: [] };
+}
+
+/** The access path a tier id stands at: its ancestor chain, root excluded. */
+export function bookTierChain(nodeId) {
+  if (!nodeId || typeof nodeId !== "string") return [];
+  const segs = nodeId.split("/");
+  if (segs[0] !== "book" || segs.length < 2) return [];
+  const chain = [];
+  for (let i = 2; i <= segs.length; i++) chain.push(segs.slice(0, i).join("/"));
+  return chain;
+}
+
+/** F on a tier (chapter, section, or — the page coming out — a page). */
+export function bookAccessTo(access, nodeId) {
+  const chain = bookTierChain(nodeId);
+  if (!chain.length) return access || createBookAccess();
+  return { path: chain };
+}
+
+/** One climb: the deepest tier releases. At the whole book, a no-op. */
+export function climbBookAccess(access) {
+  if (!access || !access.path || !access.path.length) return access || createBookAccess();
+  return access.path.length > 1 ? { path: access.path.slice(0, -1) } : createBookAccess();
+}
+
+/** How many chain levels an access occupies (its tier depth). */
+export function bookAccessDepth(access) {
+  return access && access.path ? access.path.length : 0;
+}
+
+/** The deepest accessed tier's id, or null at the whole book. */
+export function bookAccessedId(access) {
+  return access && access.path && access.path.length
+    ? access.path[access.path.length - 1]
+    : null;
+}
+
+/** The accessed chapter's id (the path's first entry), or null. */
+export function bookAccessChapter(access) {
+  return access && access.path && access.path.length ? access.path[0] : null;
+}
+
+/** The accessed section's id (the path's second entry), or null. */
+export function bookAccessSection(access) {
+  return access && access.path && access.path.length > 1 ? access.path[1] : null;
+}
+
+/**
+ * The page standing OUT of the drum: the path's deepest entry,
+ * when the access reaches page depth (three tiers). Null when
+ * no page is out — only one page is ever out at a time.
+ */
+export function bookPageOutId(access) {
+  return access && access.path && access.path.length >= 3
+    ? access.path[access.path.length - 1]
+    : null;
+}
+
+/**
+ * One step of the SPREAD index (the two-page presentation):
+ * dir +1 flips forward, −1 back, clamped at the book's ends —
+ * flipping is navigation within the presentation, not a level
+ * of the release stack, so it neither pushes nor pops anything.
+ */
+export function stepSpread(index, dir, count) {
+  const n = Math.max(1, Math.floor(count) || 1);
+  const cur = Math.max(0, Math.min(n - 1, Math.floor(index) || 0));
+  return Math.max(0, Math.min(n - 1, cur + (dir > 0 ? 1 : -1)));
 }
 
 /* ---------------- apps and the ring (slice 8) ---------------- */

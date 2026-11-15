@@ -28,6 +28,13 @@ import {
   climbDescent,
   displayRootOf,
   descentDepth,
+  createBookAccess,
+  bookAccessTo,
+  climbBookAccess,
+  bookAccessDepth,
+  bookAccessedId,
+  bookPageOutId,
+  stepSpread,
   beginPartFocus,
   endPartFocus,
   ANGLE_STEP,
@@ -108,6 +115,7 @@ import {
 } from "./knots.js";
 import { buildDataTree, dataBranchById } from "./lsystems.js";
 import { isSubnodeObject, subnodeById, subnodeRootOf } from "./subnodes.js";
+import { BOOK_TOTALS, SPREAD_COUNT, spreadIndexForPage } from "./book.js";
 import { HIERARCHY } from "./hierarchy.js";
 
 // Slice 7: the data tree's own bookkeeping for panels and readout —
@@ -124,7 +132,7 @@ import {
 /**
  * UI Space — an early form of the environment.
  *
- * Twelve of the lab's frames stand on one platter as miniature
+ * Thirteen of the lab's frames stand on one platter as miniature
  * citizens, and for the first time they are not pages to visit but
  * objects in a space. Addressing is the key-click model: the
  * object under the cursor is the addressee, F is the click, Tab
@@ -219,6 +227,15 @@ const PARAM_DEFS = [
       { value: "imports", label: "Imports — demo-de's own modules" },
     ],
   },
+  {
+    // Slice 13-2: the cylinder book's presentation — the same
+    // state the U key toggles while the book is current.
+    id: "bookStyle", label: "Sample Book style", type: "select", defaultValue: "cylinder",
+    options: [
+      { value: "cylinder", label: "Cylinder — leaves around the drum" },
+      { value: "spread", label: "Spread — two pages at a time" },
+    ],
+  },
   { id: "layerData", label: "Layer · DATA", type: "boolean", defaultValue: true },
   { id: "layerDataLock", label: "Lock · DATA", type: "boolean", defaultValue: false },
   { id: "layerInstruments", label: "Layer · INSTRUMENTS", type: "boolean", defaultValue: true },
@@ -281,7 +298,7 @@ const KEY_GROUPS = [
       ["S", "GO BACK I — back exactly one level, the same as Esc"],
       ["D", "GO BACK II — back up to two levels in one press: focus + card, or out of the app and off it"],
       ["Esc", "CANCEL — release one level; cancels a drag before it drops"],
-      ["the stack", "drag → inspection → app steps → app close → part / branch / node focus → sunburst descent → patch → card → selection"],
+      ["the stack", "drag → inspection → app steps → app close → part / branch / node focus → sunburst descent → book access → patch → card → selection"],
     ],
   },
   {
@@ -331,7 +348,7 @@ const KEY_GROUPS = [
     rows: [
       ["Enter", "arm the command line: category › action › argument, ⏎ runs — on the line, Enter is the finish (A is a letter there)"],
       ["K", "hide / show the keyboard panel — inside label mode K is the definition's address"],
-      ["Alt+L", "in label mode the letters are addresses (G the tangled tree, M the living crystal, E the sunburst cylinder, B the drum, N the tree); outside it they are operators"],
+      ["Alt+L", "in label mode the letters are addresses (G the tangled tree, M the living crystal, E the sunburst cylinder, B the drum, N the tree, O the sample book); outside it they are operators"],
       ["H / I", "here I inspects and H copies — KeyPilot's stock I-copy lives on H in this layout"],
       ["F on a card / tray", "inspects it, like I"],
       ["knot parts", "with the knot current, hover a part — F flies into it, D (GO BACK II) backs out to the knot"],
@@ -340,6 +357,10 @@ const KEY_GROUPS = [
       ["tangled figures", "with the tangled tree current, hover a figure — its card names the figure and its line; F flies into it. PARAMETERS switches the tree's course: the Greek genealogy, or demo-de's own module import graph"],
       ["sunburst wedges", "with the mesa or the drum current, hover a wedge to read it — F on a leaf wedge flies into it; F on a branch wedge descends"],
       ["sunburst descent", "F on a branch wedge re-roots the sunburst at that wedge — values and shares are of the new root, and the readout shows the path from the repository root. The backs climb out, one root per level, until the true root stands again. Descent is a display state only: rotation, plane spin and MAGNIFY are exactly as you left them, on the way down and on the way back up"],
+      ["the book's tiers", "with the sample book current, its tiers are sub-addresses: hover a CHAPTER band segment (the drum's upper band), a SECTION segment (the lower band) or a PAGE leaf at the rim — it lights, its card stands in the space, and the readout's NODE line follows"],
+      ["book access", "F on a chapter or section ACCESSES it: the drum turns so the accessed arc faces the front, and the tiers outside it ghost. F on a page slides the page OUT of the drum to be read in full. The backs climb page → section → chapter → whole book, one tier per level — access is a display state, never a transform"],
+      ["book style", "U (or PARAMETERS · Sample Book style) stands the book open instead: two pages at a time, verso left and recto right. The title page stands alone as the first spread's recto, with a blank verso; the pages then pair in reading order"],
+      ["spread flipping", "in the spread presentation B and N flip the spread (they read SPREAD − / SPREAD + on the keyboard panel) instead of plane-spinning the book; F on a standing leaf turns to that page's spread. In the cylinder presentation B and N plane-spin as usual"],
     ],
   },
   {
@@ -681,10 +702,20 @@ export default function SpaceApp() {
   // disturbs the other, and neither touches a transform).
   const [subHover, setSubHover] = useState(null); // { objectId, nodeId } | null
   const [descents, setDescents] = useState(() => ({ mesa: createDescent(), drum: createDescent() }));
+  // Slice 13-2 — the cylinder book's own state: its tier ACCESS
+  // (a path of tier ids, descent's pattern, its own citizen's —
+  // it waits untouched while other citizens are current) and,
+  // for the two-page presentation, the current SPREAD index.
+  // The presentation itself is a parameter (bookStyle, below).
+  const [bookAccess, setBookAccess] = useState(() => createBookAccess());
+  const [bookSpread, setBookSpread] = useState(0);
   // Slice 13: the tangled tree's active course, from PARAMETERS.
   // A figure of one course is not an address in the other, so a
   // tangle hover or focus does not survive the switch.
   const tangleDataset = String(values.tangleData || "genealogy");
+  // Slice 13-2: the book's presentation, from PARAMETERS (the U
+  // key writes the same parameter while the book is current).
+  const bookStyle = String(values.bookStyle || "cylinder");
   const prevTangleDataset = useRef(tangleDataset);
   useEffect(() => {
     if (prevTangleDataset.current === tangleDataset) return;
@@ -1031,6 +1062,8 @@ export default function SpaceApp() {
       branchId: branchHoverId && dataBranchById(DATA_TREE, branchHoverId) ? branchHoverId : null,
       subId: subNode ? subNode.id : null,
       subLeaf: subNode ? subNode.isLeaf : false,
+      subTier: subNode ? subNode.depth : 0,
+      bookStyle,
       inspectIds: [...MEDIA_IDS, "clipboard"],
     });
     switch (action.type) {
@@ -1059,6 +1092,48 @@ export default function SpaceApp() {
         setCardId(null);
         setSubHover(null);
         showDyn(`DESCENDED — ${node ? node.path.join(" › ") : action.nodeId}`);
+        return;
+      }
+      case "bookAccess": {
+        // Slice 13-2: F on a chapter or section band ACCESSES the
+        // tier — the access path becomes the tier's own chain,
+        // the drum turns to face it (the view eases the turn),
+        // and the tiers outside it ghost. A display state only:
+        // the book's transform is untouched, and the backs climb
+        // the access one tier per level.
+        const node = subnodeById("book", action.nodeId);
+        setCurrentId("book");
+        setBookAccess(bookAccessTo(bookAccess, action.nodeId));
+        setPartFocus(endPartFocus());
+        setCardId(null);
+        setSubHover(null);
+        showDyn(`ACCESSED — ${node ? node.path.join(" › ") : action.nodeId}`);
+        return;
+      }
+      case "bookPage": {
+        // F on a page in the cylinder presentation: the page
+        // comes OUT of the drum — the access path extended to the
+        // page — and its card shows the page's full text. The
+        // backs slide it home again, one tier at a time.
+        const node = subnodeById("book", action.nodeId);
+        setCurrentId("book");
+        setBookAccess(bookAccessTo(bookAccess, action.nodeId));
+        setPartFocus(endPartFocus());
+        setCardId(null);
+        setSubHover(null);
+        showDyn(`PAGE OUT — ${node ? node.name : action.nodeId}`);
+        return;
+      }
+      case "bookSpreadTo": {
+        // F on a standing leaf in the spread presentation turns
+        // the book to that page's spread — navigation within the
+        // presentation, not a level of the release stack.
+        const at = spreadIndexForPage(action.nodeId);
+        const node = subnodeById("book", action.nodeId);
+        setCurrentId("book");
+        if (at >= 0) setBookSpread(at);
+        setSubHover(null);
+        showDyn(`SPREAD ${at + 1} / ${SPREAD_COUNT} — ${node ? node.name : action.nodeId}`);
         return;
       }
       case "branchFocus":
@@ -1096,6 +1171,10 @@ export default function SpaceApp() {
     partFocus: Boolean(partFocus.partId),
     descent:
       currentId && descents[currentId] ? descentDepth(descents[currentId]) : 0,
+    // Slice 13-2: the book's accessed tiers count at the same
+    // tier of the chain, immediately after descent — and, like
+    // a descent, only while their citizen is current.
+    bookAccess: currentId === "book" ? bookAccessDepth(bookAccess) : 0,
     pending: Boolean(pendingId),
     card: Boolean(cardId),
     selection: Boolean(currentId),
@@ -1153,6 +1232,9 @@ export default function SpaceApp() {
     // previous climb produced — not the render's snapshot.
     let nextDescent = currentId ? descents[currentId] : null;
     let climbed = 0;
+    // The book's access climbs the same way, through its own local.
+    let nextBookAccess = currentId === "book" ? bookAccess : null;
+    let bookClimbed = 0;
     for (const level of levels) {
       switch (level) {
         case "appNav": break; // applied as one batch above
@@ -1162,6 +1244,9 @@ export default function SpaceApp() {
         case "partFocus": setPartFocus(endPartFocus()); said.push(BACK_LEVEL_ECHO.partFocus); break;
         case "descent":
           if (nextDescent) { nextDescent = climbDescent(nextDescent); climbed++; }
+          break;
+        case "bookAccess":
+          if (nextBookAccess) { nextBookAccess = climbBookAccess(nextBookAccess); bookClimbed++; }
           break;
         case "patch": setPendingId(null); said.push(BACK_LEVEL_ECHO.patch); break;
         case "card": setCardId(null); said.push(BACK_LEVEL_ECHO.card); break;
@@ -1177,6 +1262,16 @@ export default function SpaceApp() {
         rootNode
           ? `climbed out to ${rootNode.path.join(" › ")}`
           : `climbed out to ${subnodeRootOf(currentId)?.name || "the root"}`,
+      );
+    }
+    if (bookClimbed && currentId === "book") {
+      setBookAccess(nextBookAccess);
+      const atId = bookAccessedId(nextBookAccess);
+      const atNode = atId ? subnodeById("book", atId) : null;
+      said.push(
+        atNode
+          ? `climbed out to ${atNode.path.join(" › ")}`
+          : `climbed out to ${subnodeRootOf("book")?.name || "the whole book"}`,
       );
     }
     setEcho({ text: `${said.join(" · ")} — ${event}`, error: false });
@@ -1268,6 +1363,19 @@ export default function SpaceApp() {
   const handleTransformKey = (tk) => {
     const op = transformOpOf(tk);
     if (!op) return;
+    // Slice 13-2: in the book's SPREAD presentation, B and N FLIP
+    // the spread instead of plane-spinning the book — resolved
+    // here, where B/N are dispatched, so cylinder mode keeps the
+    // free plane spin and every other citizen is untouched. (The
+    // inspection branch turns its specimen before this is ever
+    // reached, so an inspected book still turns in the hand.)
+    if ((op === "spin-" || op === "spin+") && currentId === "book" && bookStyle === "spread") {
+      const next = stepSpread(bookSpread, op === "spin+" ? 1 : -1, SPREAD_COUNT);
+      setBookSpread(next);
+      showDyn(`SPREAD ${next + 1} / ${SPREAD_COUNT}`);
+      touch();
+      return;
+    }
     if (op === "scale-" || op === "scale+") {
       const st = resolveScaleTarget({
         hoverId, currentId, ringAddressed: ringAddressedNow(),
@@ -1727,6 +1835,22 @@ export default function SpaceApp() {
         onParam("keyboardPanel", values.keyboardPanel === false);
         return;
       }
+      // Slice 13-2: U toggles the BOOK's presentation — cylinder
+      // or spread — while the book is current. It stands with the
+      // K toggle: outside label mode only (in label mode U is an
+      // address, like every letter), never mid-drag, and it
+      // writes the same bookStyle parameter the PARAMETERS
+      // select holds, so the two never disagree.
+      if ((e.key === "u" || e.key === "U") && !uiMode.labelMode && !e.repeat
+        && !lockRef.current && currentId === "book") {
+        e.preventDefault();
+        const next = bookStyle === "spread" ? "cylinder" : "spread";
+        onParam("bookStyle", next);
+        showDyn(next === "spread"
+          ? `BOOK STYLE — SPREAD ${bookSpread + 1} / ${SPREAD_COUNT}`
+          : "BOOK STYLE — CYLINDER");
+        return;
+      }
       // Enter arms the line (when no patch is live and no drag is
       // locked — those keep their Enter-free key worlds).
       if (e.key === "Enter") {
@@ -1974,7 +2098,8 @@ export default function SpaceApp() {
   }, [space, currentId, hoverId, cardId, pendingId, cmd, uiMode,
     inspection, inspectRot, libraryOpen, clip, clipSummoned, values,
     openAppState, audio, tokenHoverId, appFocusId, regionHover, viewName,
-    partFocus, zoomMul, ringSpin, platterQuat, ringHover, fieldIndex, subHover, descents]);
+    partFocus, zoomMul, ringSpin, platterQuat, ringHover, fieldIndex, subHover, descents,
+    bookAccess, bookSpread]);
 
   // Dynamic input during a locked drag: the footer follows the
   // drag point (platter units) while the lock holds.
@@ -2017,6 +2142,10 @@ export default function SpaceApp() {
         : focusSub
           ? `NODE FOCUS — ${focusSub.name}`
           : `PART FOCUS — ${partById(partFocus.partId)?.name || ""}`
+    : currentId === "book" && bookPageOutId(bookAccess)
+      ? `PAGE OUT — ${subnodeById("book", bookPageOutId(bookAccess))?.name || ""}`
+    : currentId === "book" && bookAccessedId(bookAccess)
+      ? `IN THE BOOK — ${subnodeById("book", bookAccessedId(bookAccess))?.name || ""}`
     : cardId ? "ENTERED — the card is open"
     : uiMode.labelMode ? "LABEL MODE"
     : currentId ? "TARGETED"
@@ -2040,11 +2169,15 @@ export default function SpaceApp() {
             : focusSub
               ? `${focusSub.name} focused — D (GO BACK II) backs out${descentRoot ? `, then climbs toward ${descentRoot.name}` : ` to the ${current?.name || "citizen"}`}`
               : `${focusPart?.name || "part"} focused — D (GO BACK II) backs out to the knot`
-          : cardId
-            ? `${thingName(cardId)} is open — D (GO BACK II) flies back to the world seat`
-            : addressedName
-              ? `${addressedName} addressed — F opens it`
-              : "hover an object, or Tab to one — F opens it";
+          : currentId === "book" && bookPageOutId(bookAccess)
+            ? `${subnodeById("book", bookPageOutId(bookAccess))?.name || "the page"} stands out of the drum — S / Esc (one level) slides it home; D climbs two tiers`
+            : currentId === "book" && bookAccessedId(bookAccess)
+              ? `in the book at ${subnodeById("book", bookAccessedId(bookAccess))?.path.join(" › ") || ""} — the backs climb out, one tier per level`
+              : cardId
+                ? `${thingName(cardId)} is open — D (GO BACK II) flies back to the world seat`
+                : addressedName
+                  ? `${addressedName} addressed — F opens it`
+                  : "hover an object, or Tab to one — F opens it";
 
   // The inspected thing's object-born panel: title, kind, and its
   // provenance or state, stood beside it in the space by the view.
@@ -2107,6 +2240,20 @@ export default function SpaceApp() {
         ],
       };
     }
+    if (id === "book") {
+      const o = objectById(id);
+      return {
+        title: o.name,
+        lines: [
+          `kind — object · ${o.group} · a book in tiers`,
+          `the book — ${BOOK_TOTALS.chapters} chapters · ${BOOK_TOTALS.sections} sections · ${BOOK_TOTALS.pages} pages · ${BOOK_TOTALS.words} words`,
+          `presentation — ${bookStyle === "spread" ? `spread ${bookSpread + 1} of ${SPREAD_COUNT}` : "cylinder"}`,
+          "chapters and sections are bands on the drum; pages are leaves at the rim — hover a tier, F accesses it, a page comes out to be read",
+          "U stands the book open, two pages at a time; B and N flip the spread",
+          "D / Esc — send it home, exactly as it was",
+        ],
+      };
+    }
     const o = objectById(id);
     if (!o) return null;
     return {
@@ -2146,6 +2293,11 @@ export default function SpaceApp() {
     cardLabels: libraryOpen
       ? labeledMedia().map(({ item, label }) => ({ label, title: item.title, id: item.id }))
       : [],
+    // Slice 13-2: the book's caps — U is BOOK STYLE only while
+    // the book is current, and in its spread presentation B/N
+    // read SPREAD − / SPREAD +.
+    bookStyle: currentId === "book" ? bookStyle : null,
+    bookFlip: currentId === "book" && bookStyle === "spread",
     lastKey: lastKey?.code || null,
   });
 
@@ -2199,6 +2351,9 @@ export default function SpaceApp() {
             branchHoverId={branchHoverId}
             subHover={subHover}
             descents={descents}
+            bookStyle={bookStyle}
+            bookAccess={bookAccess}
+            bookSpread={bookSpread}
             tangleDataset={tangleDataset}
             pastes={pastes}
             inspectPanel={inspectPanel}
@@ -2296,6 +2451,16 @@ export default function SpaceApp() {
             {descentRoot ? (
               <>
                 <span className="k">DESCENT</span>{"  "}{current?.name || currentId} rooted at {descentRoot.path.join(" › ")} — values and shares are of this root{"\n"}
+              </>
+            ) : null}
+            {currentId === "book" ? (
+              <>
+                <span className="k">BOOK</span>{"     "}{bookStyle === "spread" ? `SPREAD — spread ${bookSpread + 1} of ${SPREAD_COUNT}` : "CYLINDER — leaves around the drum"} · {BOOK_TOTALS.chapters} chapters · {BOOK_TOTALS.sections} sections · {BOOK_TOTALS.pages} pages · {BOOK_TOTALS.words} words{"\n"}
+              </>
+            ) : null}
+            {currentId === "book" && bookAccessedId(bookAccess) ? (
+              <>
+                <span className="k">ACCESS</span>{"   "}in the book at {subnodeById("book", bookAccessedId(bookAccess))?.path.join(" › ") || ""}{bookPageOutId(bookAccess) ? " — the page stands out" : ""} — the backs climb out{"\n"}
               </>
             ) : null}
             <span className="k">LIBRARY</span>{"  "}{libraryOpen ? "OPEN" : "CLOSED"} · {MEDIA_ITEMS.length} items{"\n"}
@@ -2411,7 +2576,7 @@ export default function SpaceApp() {
                       which leaves the app only when its history is already empty).
                     </p>
                     <p>
-                      <b>FIG. 1</b> — The space at rest in the RING layout: twelve miniature frames
+                      <b>FIG. 1</b> — The space at rest in the RING layout: thirteen miniature frames
                       on the platter, each one a working object — the mesa and drum really are the
                       sunburst layout, the tray and cube really are the treemap, tiled by the same
                       NCTGraphite modules as their own pages. Left alone for eight seconds the
@@ -2573,6 +2738,31 @@ export default function SpaceApp() {
                       courses in PARAMETERS (Tangled tree data). The figures stay
                       sub-addresses in both courses: hover to read a module and its
                       line, F flies into it.
+                    </p>
+                    <p>
+                      The newest citizen is a BOOK, and it is built the way the
+                      space builds everything: in tiers. THE CYLINDER BOOK — "A
+                      Sample Book of the Space", three chapters, nine sections,
+                      twenty pages, written about the space itself — stands its
+                      pages as radial leaves around a drum. The drum's surface
+                      carries the tiers as two arc bands, chapters above and
+                      sections below, each segment's span proportional to its
+                      page count: a sunburst unwrapped around a cylinder, in the
+                      chapter's own colour. A page's value is its word count,
+                      and the tiers sum, as values do here. Reading it is the
+                      sub-address discipline one level up: hover a band or a
+                      leaf to read its card; F ACCESSES a chapter or a section
+                      — the drum turns to face it and the rest of the book
+                      ghosts — and F on a page slides the page out of the drum
+                      so its whole text stands clear. The backs climb the tiers
+                      exactly as they climb a descent, because access sits in
+                      the release stack at the same tier. Or the book changes
+                      its stance entirely: U stands it open as a codex, two
+                      pages at a time — the title page alone on the first
+                      recto, as title pages stand — and B and N, which
+                      everywhere else turn a thing in its plane, flip the
+                      spread. One object, two bindings; the transform you gave
+                      it survives both, as transforms survive everything here.
                     </p>
                     <h4>Media, the Ring and the Apps</h4>
                     <p>

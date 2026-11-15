@@ -45,11 +45,20 @@
  * holds the descent), the whole is the display root — pass its
  * id as `rootId` and shares, and the rendered set, resolve
  * against it.
+ *
+ * THE CYLINDER BOOK (slice 13-2) joins as a fifth provider: its
+ * tiers — chapters, sections, pages — are sub-nodes whose ids
+ * are name paths under the root "book" (book.js holds the book
+ * itself: a page's value is its word count, the tiers sum, and
+ * shares read against the whole book). Its access state is NOT
+ * a descent and does not re-root anything: the book's shares
+ * are always of the whole book.
  */
 
 import { HIERARCHY } from "./hierarchy.js";
 import { TANGLE_LEVELS } from "../../src/tangle-data.js";
 import importGraph from "./import-graph.json" with { type: "json" };
+import { bookTable } from "./book.js";
 
 /* ---------------- the hierarchy (tray, mesa, drum) ---------------- */
 
@@ -202,8 +211,10 @@ function tangleTable(dataset) {
 
 /* ---------------- the provider API ---------------- */
 
+const BOOK_TABLE = bookTable();
+
 /** The citizens with sub-nodes, in the order the guide names them. */
-export const SUBNODE_OBJECT_IDS = ["tray", "tangle", "mesa", "drum"];
+export const SUBNODE_OBJECT_IDS = ["tray", "tangle", "mesa", "drum", "book"];
 
 export const isSubnodeObject = (id) => SUBNODE_OBJECT_IDS.includes(id);
 
@@ -243,6 +254,10 @@ export function subnodeRootOf(objectId, rootId = null, dataset = "genealogy") {
       value: table.total,
     };
   }
+  if (objectId === "book") {
+    const root = BOOK_TABLE.root;
+    return { id: root.id, name: root.name, value: root.value };
+  }
   return null;
 }
 
@@ -266,6 +281,11 @@ export function subnodeById(objectId, nodeId, rootId = null, dataset = "genealog
     const node = table.byId.get(nodeId);
     if (!node) return null;
     return publicNode(node, node.value / table.total, node.depth);
+  }
+  if (objectId === "book") {
+    const node = BOOK_TABLE.byId.get(nodeId);
+    if (!node) return null;
+    return publicNode(node, BOOK_TABLE.root.value ? node.value / BOOK_TABLE.root.value : 0, node.depth);
   }
   return null;
 }
@@ -302,6 +322,14 @@ export function subnodesFor(objectId, rootId = null, dataset = "genealogy") {
   if (objectId === "tangle") {
     const table = tangleTable(dataset);
     return table.all.map((n) => publicNode(n, n.value / table.total, n.depth));
+  }
+  if (objectId === "book") {
+    // Every tier under the root: chapters, sections and pages —
+    // the bands and the leaves are all rendered, all addressed.
+    const whole = BOOK_TABLE.root;
+    return BOOK_TABLE.all
+      .filter((n) => n.depth >= 1)
+      .map((n) => publicNode(n, whole.value ? n.value / whole.value : 0, n.depth));
   }
   return [];
 }

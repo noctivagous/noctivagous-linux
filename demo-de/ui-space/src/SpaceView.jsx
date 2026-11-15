@@ -39,8 +39,11 @@ import {
   axisLockPoint,
   isAddressable,
   displayRootOf,
+  bookAccessedId,
+  bookPageOutId,
 } from "./space-state.js";
 import { subnodeById, subnodeRootOf, hierarchyDataOf, tangleLevels } from "./subnodes.js";
+import { bookTable, bookSpreads, bookNodeById, BOOK_TOTALS, SPREAD_COUNT } from "./book.js";
 import {
   makeTrack,
   peaksForWindow,
@@ -74,7 +77,7 @@ import {
 /**
  * UI Space — SpaceView: the R3F scene.
  *
- * Twelve miniature frames stand on the platter as citizens of one
+ * Thirteen miniature frames stand on the platter as citizens of one
  * space. The scene is declared (one component per object, cables as
  * components), and ONE useFrame driver (the Rig) eases every
  * displayed value toward the pure state in space-state.js: object
@@ -117,7 +120,7 @@ export const COMPASS = [
 export const ANCHOR_H = {
   mesa: 16, drum: 24, tray: 10, cube: 36, tangle: 26,
   horizon3d: 16, horizonflat: 28, arch: 32, definition: 18, knot: 26, crystal: 32,
-  tree: 30,
+  tree: 30, book: 28,
 };
 
 /**
@@ -141,6 +144,7 @@ export const CENTRE_Y = {
   knot: 12.5, // KNOT_CY — the tube rides ±~8 about it
   crystal: 14.5, // pedestal 0..4; the solid ±12.1 about CRYSTAL_CY 17 → bounds 0..29
   tree: 14.7, // segments 0..27.2 in the sway group at 2.2, soil 0..2.2 → bounds 0..29.4
+  book: 13, // plinth 0..1.6, drum body to 25.6, cap rim ~26.3 → bounds 0..26.3
 };
 
 /**
@@ -159,7 +163,7 @@ export const CENTRE_Y = {
 export const PLANE_AXIS = {
   mesa: "y", drum: "y", tray: "y", cube: "y", tangle: "y",
   horizon3d: "y", horizonflat: "z", arch: "y", definition: "z",
-  knot: "y", crystal: "y", tree: "y",
+  knot: "y", crystal: "y", tree: "y", book: "y",
 };
 
 const DEG = Math.PI / 180;
@@ -252,6 +256,22 @@ function plateTexture(text) {
   g.strokeStyle = "rgba(255,167,38,.7)"; g.strokeRect(2, 2, 508, 52);
   g.fillStyle = "#ffa726"; g.font = "600 30px 'Barlow Condensed', sans-serif";
   g.textAlign = "center"; g.fillText(text.split("").join(" "), 256, 39);
+  const tex = new THREE.CanvasTexture(cv);
+  _texCache.set(key, tex);
+  return tex;
+}
+
+/** A spread leaf's page number, as a small amber plate at its foot. */
+function pageNumberTexture(n) {
+  const key = `pageno:${n}`;
+  if (_texCache.has(key)) return _texCache.get(key);
+  const cv = document.createElement("canvas");
+  cv.width = 96; cv.height = 96;
+  const g = cv.getContext("2d");
+  g.fillStyle = "#10161a"; g.fillRect(0, 0, 96, 96);
+  g.strokeStyle = "rgba(255,167,38,.7)"; g.strokeRect(3, 3, 90, 90);
+  g.fillStyle = "#ffa726"; g.font = "600 46px 'Barlow Condensed', sans-serif";
+  g.textAlign = "center"; g.fillText(String(n), 48, 63);
   const tex = new THREE.CanvasTexture(cv);
   _texCache.set(key, tex);
   return tex;
@@ -2007,16 +2027,411 @@ function MiniTree({ lib, matFor, ctx }) {
   );
 }
 
+/* ---------------- slice 13-2: the cylinder book ---------------- */
+
+const BOOK_VIEW = bookTable();
+const BOOK_SPREADS_VIEW = bookSpreads();
+
+/** The book's geometry, in citizen units (bounds 0..~26.3). */
+const BK = {
+  drumR: 13, drumY: 13.6, drumH: 24, // the drum body, y 1.6..25.6
+  bandR: 13.25,
+  chBandY: 22.3, chBandH: 5, // the CHAPTER band, upper
+  secBandY: 16.4, secBandH: 4.6, // the SECTION band, lower
+  leafY: 12.3, leafH: 20, leafMidR: 19.7, // leaves: r 13.2..26.2, y 2.3..22.3
+  pageOut: 16, // how far a page slides out of the drum
+};
+const BK_BAR_Y = [6.2, 9.3, 12.4, 15.5, 18.6];
+
+const chapterOfId = (id) => id.split("/").slice(0, 2).join("/");
+const sectionOfId = (id) => (id.split("/").length > 2 ? id.split("/").slice(0, 3).join("/") : null);
+
+/**
+ * One tier node's light factor under the book's two attentions:
+ * ACCESS ghosts what stands outside it (another chapter's pages
+ * to a ghost, its bands half; another section's pages half), and
+ * the ADDRESSED node — hovered, or the deepest accessed tier —
+ * lights its own subtree while the rest of the book dims, the
+ * slice-12 treatment (1.9 / 0.55) carried into the tiers.
+ */
+function bookTierFactor(node, hi, accCh, accSec) {
+  let f = 1;
+  if (accCh && chapterOfId(node.id) !== accCh) f *= node.kind === "page" ? 0.32 : 0.5;
+  else if (accSec && node.kind === "page" && sectionOfId(node.id) !== accSec) f *= 0.5;
+  else if (accSec && node.kind === "section" && node.id !== accSec) f *= 0.8;
+  if (hi) {
+    if (node.id === hi) f *= 1.9;
+    else if (hi.startsWith(`${node.id}/`)) f *= node.kind === "chapter" ? 1.3 : 1.5;
+    else if (node.id.startsWith(`${hi}/`)) f *= 1.15;
+    else f *= 0.55;
+  }
+  return f;
+}
+
+/**
+ * The CYLINDER presentation: a drum at the plot (r 13, body
+ * y 1.6..25.6 on a plinth), its surface carrying the tiers as
+ * two arc bands — CHAPTERS above (y 19.8..24.8), SECTIONS below
+ * (y 14.1..18.7) — each segment's angular span proportional to
+ * its page count (book.js's partition: a sunburst unwrapped
+ * around the cylinder), coloured by chapter. At the rim, one
+ * RADIAL LEAF per page: a thin vertical plane (0.45 thick,
+ * 20 high) running from the drum surface outward 13 units, its
+ * angle its page's arc midpoint, thin line-bars on both faces
+ * suggesting print, in its chapter's hue family.
+ *
+ * The whole drum assembly TURNS (an eased display rotation,
+ * here) so the accessed tier's arc midpoint faces the front;
+ * accessing ghosts the tiers outside (bookTierFactor — the
+ * accessed chapter's leaves do NOT fan: the leaves are
+ * slot-centred on arcs they already fill, so a fan would overlap
+ * the neighbours; the read is carried by the turn and the
+ * ghosting). A page F'd out slides radially outward 16 units on
+ * its own eased offset. Anchors are republished every frame in
+ * the wrapper's local frame, turn and slide applied, so the
+ * in-space card rides the node it names.
+ */
+function BookCylinder({ ctx, matFor, anchors }) {
+  const table = BOOK_VIEW;
+  const owned = useMemo(() => {
+    const map = new Map();
+    for (const n of table.all) {
+      if (n.kind === "chapter") {
+        map.set(n.id, { mat: matFor(n.color, { rough: 0.5 }), base: new THREE.Color(n.color) });
+      } else if (n.kind === "section") {
+        const base = new THREE.Color(n.color).multiplyScalar(0.72);
+        map.set(n.id, { mat: matFor(base, { rough: 0.55 }), base });
+      } else if (n.kind === "page") {
+        const base = new THREE.Color(n.color).multiplyScalar(0.92);
+        const barBase = new THREE.Color(n.color).multiplyScalar(1.55);
+        map.set(n.id, {
+          mat: matFor(base, { rough: 0.6 }), base,
+          barMat: matFor(barBase, { rough: 0.5 }), barBase,
+        });
+      }
+    }
+    return map;
+  }, [table, matFor]);
+  const bandGeos = useMemo(() => {
+    const map = new Map();
+    for (const n of table.all) {
+      if (n.kind !== "chapter" && n.kind !== "section") continue;
+      const span = n.a1 - n.a0;
+      const gap = Math.min(0.02, span * 0.1);
+      map.set(n.id, new THREE.CylinderGeometry(
+        BK.bandR, BK.bandR, n.kind === "chapter" ? BK.chBandH : BK.secBandH,
+        Math.max(2, Math.ceil(span / 0.08)), 1, true,
+        n.a0 + gap, Math.max(0.01, span - gap * 2),
+      ));
+    }
+    return map;
+  }, [table]);
+  const leafGeo = useMemo(() => new THREE.BoxGeometry(0.45, BK.leafH, 13), []);
+  const barGeo = useMemo(() => new THREE.BoxGeometry(0.1, 0.55, 9.2), []);
+  const turnRef = useRef(null);
+  const turnCur = useRef(0);
+  const slideRefs = useRef(new Map());
+  const outCur = useRef(new Map());
+  const lastHi = useRef(undefined);
+  useFrame((_, dtRaw) => {
+    const dt = Math.min(0.05, dtRaw || 0.016);
+    const st = ctx.stateRef.current;
+    const access = st.bookAccess;
+    // The turn: ease toward the accessed tier's midpoint brought
+    // to the front (angle 0), by the wrapped delta — the drum
+    // never spins the long way round.
+    const deepId = bookAccessedId(access);
+    const deep = deepId ? table.byId.get(deepId) : null;
+    const target = deep ? -deep.mid : 0;
+    let d = target - turnCur.current;
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    turnCur.current += d * (1 - Math.exp(-4.5 * dt));
+    if (turnRef.current) turnRef.current.rotation.y = turnCur.current;
+    // The page out: one leaf's radial slide, eased per leaf.
+    const outId = bookPageOutId(access);
+    for (const p of table.pages) {
+      const cur = damp(outCur.current.get(p.id) || 0, outId === p.id ? BK.pageOut : 0, 6, dt);
+      outCur.current.set(p.id, cur);
+      const g = slideRefs.current.get(p.id);
+      if (g) g.position.z = cur;
+    }
+    // Anchors in the wrapper's local frame, turn and slide in.
+    const turn = turnCur.current;
+    for (const n of table.all) {
+      if (n.kind === "root") continue;
+      let a = anchors.get(n.id);
+      if (!a) { a = { centre: new THREE.Vector3(), radius: 0 }; anchors.set(n.id, a); }
+      const ang = n.mid + turn;
+      if (n.kind === "page") {
+        const r = BK.leafMidR + (outCur.current.get(n.id) || 0);
+        a.centre.set(Math.sin(ang) * r, 17, Math.cos(ang) * r);
+        a.radius = 3;
+      } else {
+        a.centre.set(Math.sin(ang) * 14.6, n.kind === "chapter" ? BK.chBandY : BK.secBandY, Math.cos(ang) * 14.6);
+        a.radius = Math.max(3, (n.a1 - n.a0) * 14.6 * 0.4);
+      }
+    }
+    // The highlight, rewritten only when its signature changes.
+    const hov = st.currentId === "book" && st.subHover && st.subHover.objectId === "book"
+      ? st.subHover.nodeId : null;
+    const accCh = access && access.path && access.path.length ? access.path[0] : null;
+    const accSec = access && access.path && access.path.length > 1 ? access.path[1] : null;
+    const hi = hov || deepId;
+    const sig = `${hi}|${accCh}|${accSec}`;
+    if (sig !== lastHi.current) {
+      lastHi.current = sig;
+      for (const n of table.all) {
+        const e = owned.get(n.id);
+        if (!e) continue;
+        const f = bookTierFactor(n, hi, accCh, accSec);
+        e.mat.color.copy(e.base).multiplyScalar(f);
+        if (e.barMat) e.barMat.color.copy(e.barBase).multiplyScalar(f);
+      }
+    }
+  });
+  const st = () => ctx.stateRef.current;
+  const report = (id) => {
+    if (st().currentId !== "book" || !st().onSubHover) return;
+    st().onSubHover("book", id);
+  };
+  const clear = () => { if (st().onSubHover) st().onSubHover("book", null); };
+  return (
+    <group>
+      {/* The plinth stands still; the drum turns on it. */}
+      <mesh position={[0, 0.8, 0]}>
+        <cylinderGeometry args={[15.5, 16.5, 1.6, 48]} />
+        <primitive object={matFor(0x27313a, { rough: 0.85 })} attach="material" />
+      </mesh>
+      <group ref={turnRef}>
+        <mesh position={[0, BK.drumY, 0]}>
+          <cylinderGeometry args={[BK.drumR, BK.drumR, BK.drumH, 48]} />
+          <primitive object={matFor(0x39434b, { rough: 0.7 })} attach="material" />
+        </mesh>
+        <mesh position={[0, 25.75, 0]}>
+          <cylinderGeometry args={[13.2, 13.2, 0.7, 48]} />
+          <primitive object={matFor(0x8a97a0, { rough: 0.45 })} attach="material" />
+        </mesh>
+        <mesh position={[0, 26.1, 0]} rotation-x={Math.PI / 2}>
+          <torusGeometry args={[13.2, 0.55, 8, 48]} />
+          <primitive object={matFor(0x8a97a0, { rough: 0.45 })} attach="material" />
+        </mesh>
+        {table.root.children.map((ch) => (
+          <mesh key={ch.id} geometry={bandGeos.get(ch.id)} position={[0, BK.chBandY, 0]}
+            material={owned.get(ch.id).mat}
+            onPointerOver={() => report(ch.id)}
+            onPointerMove={() => report(ch.id)}
+            onPointerOut={clear} />
+        ))}
+        {table.all.filter((n) => n.kind === "section").map((sec) => (
+          <mesh key={sec.id} geometry={bandGeos.get(sec.id)} position={[0, BK.secBandY, 0]}
+            material={owned.get(sec.id).mat}
+            onPointerOver={() => report(sec.id)}
+            onPointerMove={() => report(sec.id)}
+            onPointerOut={clear} />
+        ))}
+        {table.pages.map((p) => (
+          <group key={p.id} rotation-y={p.mid}>
+            <group ref={(el) => {
+              if (el) slideRefs.current.set(p.id, el);
+              else slideRefs.current.delete(p.id);
+            }}>
+              <mesh geometry={leafGeo} position={[0, BK.leafY, BK.leafMidR]}
+                material={owned.get(p.id).mat}
+                onPointerOver={() => report(p.id)}
+                onPointerMove={() => report(p.id)}
+                onPointerOut={clear} />
+              {[-1, 1].map((f) => BK_BAR_Y.map((y, i) => (
+                <mesh key={`${f}:${i}`} geometry={barGeo}
+                  position={[f * 0.28, y, BK.leafMidR]}
+                  material={owned.get(p.id).barMat} />
+              )))}
+            </group>
+          </group>
+        ))}
+      </group>
+    </group>
+  );
+}
+
+/** One standing leaf of the spread: its page's line-bars on the
+ *  front face (the first, shorter and amber, is the title), its
+ *  page number at its foot — or, for a blank side, a plain leaf
+ *  that only clears the hover. */
+function SpreadLeaf({ side, page, owned, blankMat, report, clear }) {
+  const x = side === "verso" ? -8.4 : 8.4;
+  const ry = side === "verso" ? 0.3 : -0.3;
+  if (!page) {
+    return (
+      <group position={[x, 0, 0]} rotation-y={ry}>
+        <group position={[0, 13.1, 0]} rotation-x={-0.1}>
+          <mesh material={blankMat} onPointerOver={clear} onPointerMove={clear}>
+            <boxGeometry args={[16.5, 23, 0.5]} />
+          </mesh>
+        </group>
+      </group>
+    );
+  }
+  const bars = [8, 12.4, 11.2, 12.6, 10.8, 12.2, 9.4];
+  return (
+    <group position={[x, 0, 0]} rotation-y={ry}>
+      <group position={[0, 13.1, 0]} rotation-x={-0.1}>
+        <mesh material={owned.mat}
+          onPointerOver={() => report(page.id)}
+          onPointerMove={() => report(page.id)}
+          onPointerOut={clear}>
+          <boxGeometry args={[16.5, 23, 0.5]} />
+        </mesh>
+        {bars.map((w, i) => (
+          <mesh key={i} position={[i === 0 ? -1.5 : 0, 8.6 - i * 2.7, 0.31]}>
+            <boxGeometry args={[w, i === 0 ? 0.8 : 0.55, 0.1]} />
+            {i === 0 ? (
+              <meshStandardMaterial color={0xffc46b} roughness={0.5} />
+            ) : (
+              <primitive object={owned.barMat} attach="material" />
+            )}
+          </mesh>
+        ))}
+        <mesh position={[side === "verso" ? -5.6 : 5.6, -9.4, 0.31]}>
+          <planeGeometry args={[3.2, 3.2]} />
+          <meshBasicMaterial map={pageNumberTexture(page.number)} transparent />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
+/**
+ * The SPREAD presentation: the drum unmounts and an open codex
+ * stands at the same plot — a slab, and two leaves angled toward
+ * each other (verso left, recto right, a slight dihedral of
+ * 0.30 rad each way, leaning back a touch). The pairing is
+ * book.js's: the title page stands alone as the first spread's
+ * recto with a blank verso; pages then pair in reading order.
+ * B and N flip the spread (the App dispatches them here while
+ * the presentation stands); F on a standing leaf turns to its
+ * page's spread.
+ */
+function BookSpread({ ctx, matFor, anchors, spreadIndex }) {
+  const spread = BOOK_SPREADS_VIEW[
+    Math.max(0, Math.min(SPREAD_COUNT - 1, spreadIndex || 0))
+  ] || { verso: null, recto: null };
+  const owned = useMemo(() => {
+    const map = new Map();
+    for (const page of [spread.verso, spread.recto]) {
+      if (!page) continue;
+      const base = new THREE.Color(page.color).multiplyScalar(0.95);
+      const barBase = new THREE.Color(page.color).multiplyScalar(1.55);
+      map.set(page.id, {
+        mat: matFor(base, { rough: 0.6 }), base,
+        barMat: matFor(barBase, { rough: 0.5 }), barBase,
+      });
+    }
+    return map;
+  }, [spread, matFor]);
+  const blankMat = useMemo(() => matFor(0x232b31, { rough: 0.85 }), [matFor]);
+  useEffect(() => {
+    // Only the standing pages hold anchors in this presentation;
+    // every other tier parks at the book's centre, unaddressed.
+    for (const n of BOOK_VIEW.all) {
+      if (n.kind === "root") continue;
+      let a = anchors.get(n.id);
+      if (!a) { a = { centre: new THREE.Vector3(), radius: 0 }; anchors.set(n.id, a); }
+      a.centre.set(0, 20, 4);
+      a.radius = 0;
+    }
+    if (spread.verso) {
+      const a = anchors.get(spread.verso.id);
+      a.centre.set(-8.4, 17, 2);
+      a.radius = 4;
+    }
+    if (spread.recto) {
+      const a = anchors.get(spread.recto.id);
+      a.centre.set(8.4, 17, 2);
+      a.radius = 4;
+    }
+  }, [anchors, spread]);
+  const lastHi = useRef(undefined);
+  useFrame(() => {
+    const st = ctx.stateRef.current;
+    const hov = st.currentId === "book" && st.subHover && st.subHover.objectId === "book"
+      ? st.subHover.nodeId : null;
+    if (hov === lastHi.current) return;
+    lastHi.current = hov;
+    for (const [id, e] of owned) {
+      const f = !hov ? 1 : id === hov ? 1.9 : 0.8;
+      e.mat.color.copy(e.base).multiplyScalar(f);
+      e.barMat.color.copy(e.barBase).multiplyScalar(f);
+    }
+  });
+  const st = () => ctx.stateRef.current;
+  const report = (id) => {
+    if (st().currentId !== "book" || !st().onSubHover) return;
+    st().onSubHover("book", id);
+  };
+  const clear = () => { if (st().onSubHover) st().onSubHover("book", null); };
+  return (
+    <group>
+      <mesh position={[0, 0.8, 0]}>
+        <boxGeometry args={[42, 1.6, 27]} />
+        <primitive object={matFor(0x27313a, { rough: 0.85 })} attach="material" />
+      </mesh>
+      <mesh position={[0, 1.85, 0]}>
+        <boxGeometry args={[2, 0.5, 26]} />
+        <primitive object={matFor(0x141a1e, { rough: 0.9 })} attach="material" />
+      </mesh>
+      <SpreadLeaf side="verso" page={spread.verso}
+        owned={spread.verso ? owned.get(spread.verso.id) : null}
+        blankMat={blankMat} report={report} clear={clear} />
+      <SpreadLeaf side="recto" page={spread.recto}
+        owned={spread.recto ? owned.get(spread.recto.id) : null}
+        blankMat={blankMat} report={report} clear={clear} />
+    </group>
+  );
+}
+
+/**
+ * The cylinder book citizen (slice 13-2): one wrapper group —
+ * the registered sub-node group, whose local anchors the Rig
+ * turns into world for the in-space card — holding whichever
+ * presentation stands: the CYLINDER (drum, bands, radial leaves)
+ * or the SPREAD (the open codex). The presentation is the App's
+ * bookStyle parameter (U toggles it while the book is current);
+ * the access and the transform live outside, untouched by the
+ * switch, as everywhere in the space.
+ */
+function MiniBook({ lib, matFor, ctx, bookStyle, bookSpread }) {
+  const wrapRef = useRef(null);
+  const anchors = useMemo(() => new Map(), []);
+  useEffect(() => {
+    const frame = ctx.frame;
+    frame.subGroupRefs.set("book", wrapRef.current);
+    frame.subLocal.set("book", anchors);
+    return () => {
+      frame.subGroupRefs.delete("book");
+      if (frame.subLocal.get("book") === anchors) frame.subLocal.delete("book");
+    };
+  }, [ctx, anchors]);
+  return (
+    <group ref={wrapRef}>
+      {bookStyle === "spread" ? (
+        <BookSpread ctx={ctx} matFor={matFor} anchors={anchors} spreadIndex={bookSpread} />
+      ) : (
+        <BookCylinder ctx={ctx} matFor={matFor} anchors={anchors} />
+      )}
+    </group>
+  );
+}
+
 const MINIATURES = {
   mesa: MiniMesa, drum: MiniDrum, tray: MiniTray, cube: MiniCube,
   tangle: MiniTangle, horizon3d: MiniSkyline, horizonflat: MiniHorizonPanel,
   arch: MiniArch, definition: MiniDefinition, knot: MiniKnot, crystal: MiniCrystal,
-  tree: MiniTree,
+  tree: MiniTree, book: MiniBook,
 };
 
 /* ---------- one citizen of the space ---------- */
 
-function SpaceObject({ def, ctx, lib, descentRootId, tangleDataset }) {
+function SpaceObject({ def, ctx, lib, descentRootId, tangleDataset, bookStyle, bookAccess, bookSpread }) {
   const outer = useRef(null);
   const inner = useRef(null);
   const spin = useRef(null);
@@ -2106,7 +2521,8 @@ function SpaceObject({ def, ctx, lib, descentRootId, tangleDataset }) {
       <group ref={inner} position={[0, CENTRE_Y[def.id] || 0, 0]}>
         <group ref={spin}>
           <group position={[0, -(CENTRE_Y[def.id] || 0), 0]}>
-            <Mini lib={lib} matFor={mats.matFor} ctx={ctx} descentRootId={descentRootId} tangleDataset={tangleDataset} />
+            <Mini lib={lib} matFor={mats.matFor} ctx={ctx} descentRootId={descentRootId} tangleDataset={tangleDataset}
+              bookStyle={bookStyle} bookAccess={bookAccess} bookSpread={bookSpread} />
           </group>
         </group>
       </group>
@@ -3527,6 +3943,7 @@ export default function SpaceView(props) {
     turntableOn, pulsesOn, ambientOn, labelsOn, sharedRef,
     libraryOpen, clipHeld, clipSummoned, inspectedId, inspectRot, pastes, inspectPanel,
     partFocus, partHoverId, branchHoverId, subHover, descents,
+    bookStyle, bookAccess, bookSpread,
     tangleDataset,
     viewName, snapOn, strata, layers,
     openApp, audio, tokenHoverId, appFocusId, regionHover,
@@ -3543,6 +3960,7 @@ export default function SpaceView(props) {
     turntableOn, pulsesOn, ambientOn, labelsOn,
     libraryOpen, clipSummoned, inspectedId, inspectRot,
     partFocus, partHoverId, branchHoverId, subHover, descents,
+    bookStyle, bookAccess, bookSpread,
     tangleDataset,
     viewName, snapOn, strata, layers,
     openApp, audio, tokenHoverId, appFocusId, regionHover,
@@ -3776,21 +4194,49 @@ export default function SpaceView(props) {
         const focSub = st.partFocus && st.partFocus.partId
           && st.partFocus.objectId !== "knot" && st.partFocus.objectId !== "tree"
           ? st.partFocus : null;
-        const hovSub = !focSub && st.subHover && st.currentId && st.subHover.objectId === st.currentId
+        // Slice 13-2: the book's FOCUS is its page standing out
+        // of the drum (the deepest access tier) — it wins over a
+        // hover, as a part focus does, and its card is the page
+        // itself: the full text.
+        const focBook = !focSub && st.currentId === "book" && st.bookAccess
+          ? bookPageOutId(st.bookAccess) : null;
+        const hovSub = !focSub && !focBook && st.subHover && st.currentId && st.subHover.objectId === st.currentId
           ? st.subHover : null;
-        const oid = focSub ? focSub.objectId : hovSub ? hovSub.objectId : null;
-        const nid = focSub ? focSub.partId : hovSub ? hovSub.nodeId : null;
+        const oid = focSub ? focSub.objectId : focBook ? "book" : hovSub ? hovSub.objectId : null;
+        const nid = focSub ? focSub.partId : focBook || (hovSub ? hovSub.nodeId : null);
         const sw = oid && nid ? frame.subWorld.get(`${oid}:${nid}`) : null;
         const rootId = oid && st.descents ? displayRootOf(st.descents[oid], oid) : null;
         const node = oid && nid ? subnodeById(oid, nid, rootId, st.tangleDataset) : null;
         if (oid && nid && sw && node) {
           const whole = subnodeRootOf(oid, rootId, st.tangleDataset);
-          const lines = [
+          let lines = [
             node.name,
             `value ${node.value} · ${(node.share * 100).toFixed(1)}% of ${whole ? whole.name : "the whole"} · depth ${node.depth}`,
           ];
           if (focSub) lines.push(node.path.join(" › "));
           if (rootId) lines.push("shares are of the display root — descended");
+          if (oid === "book") {
+            // The book's cards speak in the book's own terms:
+            // tiers by their page counts and shares, a hovered
+            // page by its first line and its place, and a page
+            // standing out by its whole text.
+            const bn = bookNodeById(nid);
+            if (bn && focBook) {
+              lines = [bn.title, ...bn.lines];
+            } else if (bn && bn.kind === "page") {
+              lines = [
+                bn.title,
+                bn.lines[0] || "",
+                `page ${bn.number} of ${BOOK_TOTALS.pages} · ${bn.chapterName} › ${bn.sectionName}`,
+              ];
+            } else if (bn) {
+              lines = [
+                node.name,
+                `${bn.pageCount} pages · ${node.value} words · ${(node.share * 100).toFixed(1)}% of the book`,
+                node.path.join(" › "),
+              ];
+            }
+          }
           const txt = lines.join("\n");
           if (subEl.textContent !== txt) subEl.textContent = txt;
           const [sx, sy, front] = project(sw.centre);
@@ -3967,7 +4413,8 @@ export default function SpaceView(props) {
               {OBJECTS.map((def) => (
                 <SpaceObject key={def.id} def={def} ctx={ctx} lib={lib}
                   descentRootId={descents ? displayRootOf(descents[def.id], def.id) : null}
-                  tangleDataset={tangleDataset} />
+                  tangleDataset={tangleDataset}
+                  bookStyle={bookStyle} bookAccess={bookAccess} bookSpread={bookSpread} />
               ))}
               {space.cables.map(([a, b], i) => (
                 <Cable key={`${a}|${b}`} a={a} b={b} offset={(i * 0.37) % 1} ctx={ctx} />
@@ -4080,6 +4527,17 @@ export default function SpaceView(props) {
                 <span style={{ display: "block", marginTop: 4 }}>
                   descended — rooted at {subnodeById(cardObj.id, displayRootOf(descents[cardObj.id], cardObj.id))?.path.join(" › ")}<br />
                   values and shares are of this root · the backs climb out
+                </span>
+              ) : null}
+              {cardObj.id === "book" ? (
+                <span style={{ display: "block", marginTop: 4 }}>
+                  {BOOK_TOTALS.chapters} chapters · {BOOK_TOTALS.sections} sections · {BOOK_TOTALS.pages} pages · {BOOK_TOTALS.words} words<br />
+                  {bookStyle === "spread"
+                    ? `standing open — spread {(bookSpread || 0) + 1} of ${SPREAD_COUNT} · B / N flip the spread`
+                    : "leaves around the drum · U stands it open, two pages at a time"}
+                  {bookAccessedId(bookAccess) ? (
+                    <><br />in the book at {subnodeById("book", bookAccessedId(bookAccess))?.path.join(" › ")}</>
+                  ) : null}
                 </span>
               ) : null}
             </>

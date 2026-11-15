@@ -199,10 +199,10 @@ test("label scope: letters name their actual targets", () => {
   // Cards resolve only when the App passes their labels in (library open).
   const withCards = resolveKeyboard({
     scope: "labels",
-    cardLabels: [{ label: "P", title: "Neon Dunes at Dusk", id: "media-1" }],
+    cardLabels: [{ label: "Q", title: "Neon Dunes at Dusk", id: "media-1" }],
   });
-  assert.ok(labelOf(withCards, "KeyP").includes("NEON DUNES"));
-  assert.equal(labelOf(kb, "KeyP"), null);
+  assert.ok(labelOf(withCards, "KeyQ").includes("NEON DUNES"));
+  assert.equal(labelOf(kb, "KeyQ"), null);
 });
 
 test("label scope: the slice-11 operator letters are addresses here", () => {
