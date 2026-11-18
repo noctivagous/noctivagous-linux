@@ -215,12 +215,15 @@ test("label scope: letters name their actual targets", () => {
   const ring = labeledRingItems()[0];
   assert.equal(labelOf(kb, `Key${ring.label}`), "WAVEFORM");
   // Cards resolve only when the App passes their labels in (library open).
+  // Slice 16: the first card's letter is U now — the orrery took
+  // R and the ring items S/T — and T itself names the Web item.
   const withCards = resolveKeyboard({
     scope: "labels",
-    cardLabels: [{ label: "T", title: "Neon Dunes at Dusk", id: "media-1" }],
+    cardLabels: [{ label: "U", title: "Neon Dunes at Dusk", id: "media-1" }],
   });
-  assert.ok(labelOf(withCards, "KeyT").includes("NEON DUNES"));
-  assert.equal(labelOf(kb, "KeyT"), null);
+  assert.ok(labelOf(withCards, "KeyU").includes("NEON DUNES"));
+  assert.equal(labelOf(kb, "KeyU"), null);
+  assert.equal(labelOf(kb, "KeyT"), "WEB");
 });
 
 test("label scope: the slice-11 operator letters are addresses here", () => {

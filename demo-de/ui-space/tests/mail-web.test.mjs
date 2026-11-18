@@ -184,17 +184,21 @@ test("resolveFAction: a folder focuses, a letter opens", () => {
 
 /* ---------------- the ring's second item ---------------- */
 
-test("the ring derivation with two items: R Waveform, S Web, cards from T", () => {
+test("the ring derivation with two items: S Waveform, T Web, cards from U", () => {
+  // Slice 16 moved every letter after the citizens one on: the
+  // orrery, appended sixteenth, took R under the positional
+  // scheme, so the ring items and the media cards shift with it.
   assert.deepEqual(RING_ITEMS.map((i) => i.id), ["audio", "web"]);
-  assert.equal(OBJECTS.length, 15);
+  assert.equal(OBJECTS.length, 16);
   assert.equal(OBJECTS[14].id, "mail");
+  assert.equal(OBJECTS[15].id, "orrery");
   const labeled = labeledRingItems();
   assert.deepEqual(labeled.map(({ item, label }) => [item.id, label]),
-    [["audio", "R"], ["web", "S"]]);
-  assert.equal(ringItemForLabel("S").id, "web");
-  assert.equal(ringItemForLabel("R").id, "audio");
-  assert.equal(labelForMedia("media-1"), "T");
-  assert.equal(labelForMedia("media-8"), "AA");
+    [["audio", "S"], ["web", "T"]]);
+  assert.equal(ringItemForLabel("T").id, "web");
+  assert.equal(ringItemForLabel("S").id, "audio");
+  assert.equal(labelForMedia("media-1"), "U");
+  assert.equal(labelForMedia("media-8"), "AB");
 });
 
 test("resolveOpenAction: the web app opens like the waveform app", () => {

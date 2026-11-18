@@ -138,6 +138,10 @@ import {
   resolveSubTransformTarget,
 } from "./sub-transforms.js";
 import { BOOK_TOTALS, SPREAD_COUNT, spreadIndexForPage } from "./book.js";
+import {
+  modelDate, moonPhaseAt, eclipticLongitudeAt,
+  ORRERY_SPEED_MIN, ORRERY_SPEED_MAX, ORRERY_SPEED_DEFAULT,
+} from "./orrery.js";
 import { HIERARCHY } from "./hierarchy.js";
 import {
   ENVIRONMENT,
@@ -280,6 +284,23 @@ const PARAM_DEFS = [
       { value: "spread", label: "Spread — two pages at a time" },
     ],
   },
+  {
+    // Slice 16: the orrery's dressing — a flat dataset switch
+    // like the tangle's (decision 2a: no descent into Earth;
+    // F/G on a planet keep their standing meanings). The same
+    // plot re-dresses; the model clock does not reset.
+    id: "orreryData", label: "Orrery dataset", type: "select", defaultValue: "solar",
+    options: [
+      { value: "solar", label: "Solar system — eight planets on their rings" },
+      { value: "earthmoon", label: "Earth–Moon — the phase machine" },
+      { value: "armillary", label: "Armillary sphere — the sky from Earth" },
+    ],
+  },
+  // Slice 16: the orrery's clock — model days per second, and
+  // its pause. The clock is governed by Ambient motion like
+  // every citizen's idle motion; pause is its own switch.
+  { id: "orrerySpeed", label: "Orrery speed · days/sec", type: "number", min: ORRERY_SPEED_MIN, max: ORRERY_SPEED_MAX, step: 0.1, defaultValue: ORRERY_SPEED_DEFAULT },
+  { id: "orreryPaused", label: "Orrery time paused", type: "boolean", defaultValue: false },
   // Slice 13-3 (item 4): the sunburst mesa's terraces, ported
   // from the standalone sunburst page — the step each ring
   // stands below the ring inside it, and the radial gap
@@ -420,7 +441,7 @@ const KEY_GROUPS = [
     rows: [
       ["Enter", "arm the command line: category › action › argument, ⏎ runs — on the line, Enter is the finish (A is a letter there). With a sub-node hovered, Enter MARKS it instead (see marks)"],
       ["K", "hide / show the keyboard panel — inside label mode K is the definition's address"],
-      ["Alt+L", "in label mode the letters are addresses (G the tangled tree, M the living crystal, E the sunburst cylinder, B the drum, N the tree, O the sample book, P the devices, Q the mail, L the trefoil knot); outside it they are operators"],
+      ["Alt+L", "in label mode the letters are addresses (G the tangled tree, M the living crystal, E the sunburst cylinder, B the drum, N the tree, O the sample book, P the devices, Q the mail, R the orrery, L the trefoil knot); outside it they are operators"],
       ["L / I", "here I inspects and L copies — KeyPilot's stock I-copy lives on L in this layout"],
       ["marks", "a marked sub-node wears an AMBER outline and glow, held — a per-citizen index that persists while you move around the space; the readout's MARKS line counts the current citizen's, and its card names them. Enter on a marked node unmarks it. Marking is not focusing: F's part focus neither marks nor is cleared by marking. No operation consumes the marks yet — the convention, its display and its storage are the deliverable"],
       ["F on a card / tray", "inspects it, like I"],
@@ -438,6 +459,10 @@ const KEY_GROUPS = [
       ["devices & hosts", "with Devices current, hover a device on its shelf, the hub, or a host token standing on the ring's back arc — it lights, its card stands in the space, F focuses it and G flies into it. The printer's card lists its queue: a sheet stands in its tray per job, the printing job's sheet half-fed"],
       ["net lanes", "the horizon citizens' last two lanes are NETWORK IN and NETWORK OUT, driven by the environment snapshot's captured strip of interface rates; the other six lanes keep the tempered walk"],
       ["mail folders", "with Mail current, its folders are sub-addresses in the pigeonhole cabinet: hover a compartment to read its count and unread, F focuses it and G flies into it. Projects' subfolders nest inside its cell"],
+      ["the orrery", "the solar system as a working miniature (label R): the sun at the centre, eight planets on their rings, all moving — model time ALWAYS runs, at PARAMETERS · Orrery speed (days per second), eased by the ambient-motion setting like every citizen's idle motion, and freezable with PARAMETERS · Orrery time paused. Its planets are sub-addresses: hover one to read its period, distance and moons; F focuses it, G flies into it; the sun itself takes a card and no more — F there does nothing, as at the mesa's centre disc. The readout's MODEL line keeps the model date (from J2000) while the orrery is current"],
+      ["orrery scaling", "the miniature is honest about its cheats, as an orrery must be: distances are LOG-SCALED (Mercury's ring at 5.2 units, Neptune's at 17.5, from 0.39 to 30 AU), planet sizes are EXAGGERATED from their radii with a floor so Mercury still reads as a body, and the orbits are CIRCLES — eccentricity is a later refinement. What is NOT cheated: the planets' order, the size order, and the periods — the clock is exact, so each planet returns to its start after precisely its own year"],
+      ["earth & moon", "PARAMETERS · Orrery dataset re-dresses the same plot as the Earth–Moon system (a flat switch, like the tangle's courses — there is no descent into Earth): Earth large at the centre, its axis rod tilted 23.4°, the Moon on its ring, and a sun marker standing at the plot's edge in a FIXED direction (+Z, the front) with its light shaft. The Moon's card and the readout's PHASE line read the phase — new, the quarters, full, and the crescents and gibbous between — LIVE from the sun–Moon geometry as the clock runs: watch the Moon stand between Earth and the marker at new, and opposite it at full"],
+      ["armillary sphere", "the third dataset turns the plot inside out: an ARMILLARY SPHERE — the instrument that reads the sky as it appears FROM Earth, where the orrery shows the system from outside. A small Earth ball stands at the centre of a cage of BANDS (bands, not wire rings, because a real armillary's rings are bands wide enough to carry engraved scales — and these carry theirs: 24 hour ticks on the equator band, 12 sign ticks on the ecliptic). The FIXED frame stands on its two pillars: the HORIZON band, level — the rim of the visible sky — and the MERIDIAN band through the zenith, the noon line. Inside it the CAGE turns about the polar axis, tipped 23.4° toward the front as a real one stands: the CELESTIAL EQUATOR band, the ECLIPTIC band (the sun's road, tipped 23.4° against the equator) and the axis rod. The cage makes one turn per SIDEREAL day — the stars' day, a shade shorter than the sun's, so over a year it turns once more than the sun does — and a SUN BEAD rides the ecliptic band at the date's longitude, one circuit per year: at the March equinox it sits on both bands at once, where they cross. At the standing speed the cage's daily turn is a spin, because the days themselves pass at days per second — slow PARAMETERS · Orrery speed down, or pause it, to read the daily motion. Hover a band to make it read solid against its ghosted cage-mates and read its card; F focuses, G flies"],
       ["the info card", "the card that stands in the space beside a citizen — its own card, or a sub-node's — never covers the citizen it describes: it is placed clear of the citizen's protective sphere (the sphere its socket is cut from), above it or to a side, and always inside the viewport"],
       ["the post shelf", "beside the media library on the XY wall stands the POST SHELF: the recent letters as standing cards, sender and subject on their faces. With Mail current, hover a letter to read it; F opens it on the centre stage, and the backs close it like an app — one level, at the app's own tier"],
       ["the web frame", "the ring's second item is WEB: a captured page (Wikipedia's Snow globe), its structure — title, sections, links — laid out as a document on a sheet. It is a capture, not a live page: live pages need the local bridge, a later slice"],
@@ -846,6 +871,32 @@ export default function SpaceApp() {
     setSubHover((h) => (h && h.objectId === "tangle" ? null : h));
     setPartFocus((f) => (f.objectId === "tangle" ? createPartFocus() : f));
   }, [tangleDataset]);
+  // Slice 16: the orrery's dressing, speed and pause, from
+  // PARAMETERS. A planet of one dressing is not an address in
+  // the other (in Earth–Moon "orrery/earth" is the root, in
+  // Solar a planet), so an orrery hover or focus does not
+  // survive the switch — the tangle rule, mirrored. The model
+  // clock is the View's; switching never resets it.
+  const orreryDataset = String(values.orreryData || "solar");
+  const orrerySpeed = Number(values.orrerySpeed ?? ORRERY_SPEED_DEFAULT);
+  const orreryPaused = Boolean(values.orreryPaused);
+  const prevOrreryDataset = useRef(orreryDataset);
+  useEffect(() => {
+    if (prevOrreryDataset.current === orreryDataset) return;
+    prevOrreryDataset.current = orreryDataset;
+    setSubHover((h) => (h && h.objectId === "orrery" ? null : h));
+    setPartFocus((f) => (f.objectId === "orrery" ? createPartFocus() : f));
+  }, [orreryDataset]);
+  // Slice 16: while the orrery is current the READOUT carries
+  // its model date — the clock is the View's frame loop, read
+  // off the shared ref, so the App re-renders on a slow tick
+  // to keep the date (and the Moon's phase line) current.
+  const [, setOrreryTick] = useState(0);
+  useEffect(() => {
+    if (currentId !== "orrery") return undefined;
+    const iv = setInterval(() => setOrreryTick((t) => t + 1), 500);
+    return () => clearInterval(iv);
+  }, [currentId]);
   // Slice 8: the open app (pure state in space-state.js), the
   // audio app's own state — track, window, transport, and its nav
   // history, which D walks back — and the app's addressing: the
@@ -1415,7 +1466,7 @@ export default function SpaceApp() {
     const addressed = addressedId(hoverId, currentId);
     const subNode =
       subHover && subHover.objectId === addressed && isSubnodeObject(addressed)
-        ? subnodeById(addressed, subHover.nodeId, displayRootOf(descents[addressed], addressed), tangleDataset)
+        ? subnodeById(addressed, subHover.nodeId, displayRootOf(descents[addressed], addressed), tangleDataset, orreryDataset)
         : null;
     const action = resolveFAction({
       pendingId: fly ? null : pendingId,
@@ -1536,9 +1587,20 @@ export default function SpaceApp() {
       case "rootNoop": {
         // Slice 13-3 (item 4): F on a sunburst's centre disc —
         // the disc names the whole (the display root); it is
-        // not a wedge and does not descend.
-        const whole = subnodeRootOf(action.targetId, displayRootOf(descents[action.targetId], action.targetId));
-        setEcho({ text: `the centre names ${whole ? whole.name : "the whole"} — F descends into a wedge`, error: true });
+        // not a wedge and does not descend. Slice 16: the
+        // orrery's roots (the sun; Earth in its second
+        // dressing; the sphere itself in its third) resolve
+        // here too, with their own wording — the whole they
+        // name, and the parts F does act on.
+        const whole = subnodeRootOf(action.targetId, displayRootOf(descents[action.targetId], action.targetId), tangleDataset, orreryDataset);
+        setEcho({
+          text: action.targetId === "orrery"
+            ? orreryDataset === "armillary"
+              ? `the centre names ${whole ? whole.name : "the whole instrument"} — F acts on its bands and its bead`
+              : `the centre names ${whole ? whole.name : "the whole system"} — F acts on its bodies`
+            : `the centre names ${whole ? whole.name : "the whole"} — F descends into a wedge`,
+          error: true,
+        });
         return;
       }
       case "openMessage": {
@@ -1874,19 +1936,28 @@ export default function SpaceApp() {
    * Slice 13-5 (item 3): the transform keys' finest target,
    * resolved once for both the keys and H: a sub-node hovered
    * on the current citizen (resolveSubTransformTarget), minus
-   * one honest exception — the sunbursts' CENTRE DISC, the
-   * display root, has no wedge of its own to turn (it IS the
-   * whole the wedges belong to), so its hover falls through to
-   * the citizen, whose keys already turn that.
+   * one honest exception — the provider's ROOT, which has no
+   * node of its own to turn (it IS the whole the nodes belong
+   * to), so its hover falls through to the citizen, whose keys
+   * already turn that. Slice 13-5 named the sunbursts' CENTRE
+   * DISC; slice 16 states the rule generally, because the
+   * orrery's roots are the same shape — the sun (a uniform
+   * sphere: its turn would be invisible, its scale would move
+   * the system's centre) and Earth (whose turn is the axis
+   * dressing's, not a node's). The other providers never
+   * report their roots as hovers, so the general rule changes
+   * nothing for them. (The armillary's root is its Earth ball,
+   * the same shape again; its BANDS and bead are children with
+   * meshes of their own, and they take transforms like the
+   * planets do — the View folds the stored Euler into each
+   * band's own pivot group at the cage's centre.)
    */
   const subTransformTargetNow = () => {
     const t = resolveSubTransformTarget({ currentId, subHover, branchHoverId });
     if (!t) return null;
-    if (t.citizenId === "mesa" || t.citizenId === "drum") {
-      const root = subnodeRootOf(
-        t.citizenId, displayRootOf(descents[t.citizenId], t.citizenId), tangleDataset);
-      if (root && t.nodeId === root.id) return null;
-    }
+    const root = subnodeRootOf(
+      t.citizenId, displayRootOf(descents[t.citizenId], t.citizenId), tangleDataset, orreryDataset);
+    if (root && root.id && t.nodeId === root.id) return null;
     return t;
   };
 
@@ -2278,7 +2349,7 @@ export default function SpaceApp() {
   const markNodeName = (citizenId, nodeId) => {
     if (citizenId === "knot") return partById(nodeId)?.name || nodeId;
     if (citizenId === "tree") return dataBranchById(DATA_TREE, nodeId)?.name || nodeId;
-    return subnodeById(citizenId, nodeId, displayRootOf(descents[citizenId], citizenId), tangleDataset)?.name || nodeId;
+    return subnodeById(citizenId, nodeId, displayRootOf(descents[citizenId], citizenId), tangleDataset, orreryDataset)?.name || nodeId;
   };
 
   const toggleMarkAt = (target) => {
@@ -2936,10 +3007,10 @@ export default function SpaceApp() {
   // focus (the knot keeps PART, the tree keeps BRANCH); the
   // hovered sub-node is resolved for the readout the same way.
   const focusSub = partFocus.partId && isSubnodeObject(partFocus.objectId)
-    ? subnodeById(partFocus.objectId, partFocus.partId, displayRootOf(descents[partFocus.objectId], partFocus.objectId), tangleDataset)
+    ? subnodeById(partFocus.objectId, partFocus.partId, displayRootOf(descents[partFocus.objectId], partFocus.objectId), tangleDataset, orreryDataset)
     : null;
   const hoverSub = subHover && subHover.objectId === currentId
-    ? subnodeById(subHover.objectId, subHover.nodeId, displayRootOf(descents[subHover.objectId], subHover.objectId), tangleDataset)
+    ? subnodeById(subHover.objectId, subHover.nodeId, displayRootOf(descents[subHover.objectId], subHover.objectId), tangleDataset, orreryDataset)
     : null;
   const descentRootId = currentId ? displayRootOf(descents[currentId], currentId) : null;
   const descentRoot = descentRootId ? subnodeById(currentId, descentRootId) : null;
@@ -3242,6 +3313,9 @@ export default function SpaceApp() {
             mesaTerrace={mesaTerrace}
             mesaGap={mesaGap}
             tangleDataset={tangleDataset}
+            orreryDataset={orreryDataset}
+            orrerySpeed={orrerySpeed}
+            orreryPaused={orreryPaused}
             pastes={pastes}
             inspectPanel={inspectPanel}
             openApp={openAppState}
@@ -3356,6 +3430,11 @@ export default function SpaceApp() {
                 <span className="k">NODE</span>{"     "}{hoverSub.name} — value {hoverSub.value} · {(hoverSub.share * 100).toFixed(1)}% of {descentRoot ? descentRoot.name : current?.name || "the citizen"} · depth {hoverSub.depth} · hovered{"\n"}
               </>
             ) : null}
+            {(focusSub || hoverSub)?.id === "orrery/earth/moon" ? (
+              <>
+                <span className="k">PHASE</span>{"    "}{moonPhaseAt(sharedRef.current.modelDays || 0).name} · {(moonPhaseAt(sharedRef.current.modelDays || 0).fraction * 100).toFixed(0)}% lit — read live off the model clock{"\n"}
+              </>
+            ) : null}
             {currentId && countMarks(marks, currentId) ? (
               <>
                 <span className="k">MARKS</span>{"    "}{countMarks(marks, currentId)} marked in {current?.name || currentId}{countMarks(marks, currentId) <= 3 ? ` — ${marksFor(marks, currentId).map((nid) => markNodeName(currentId, nid)).join(" · ")}` : ""}{"\n"}
@@ -3374,6 +3453,11 @@ export default function SpaceApp() {
             {currentId === "book" && bookAccessedId(bookAccess) ? (
               <>
                 <span className="k">ACCESS</span>{"   "}in the book at {subnodeById("book", bookAccessedId(bookAccess))?.path.join(" › ") || ""}{bookPageOutId(bookAccess) ? " — the page stands out" : ""} — the backs climb out{"\n"}
+              </>
+            ) : null}
+            {currentId === "orrery" ? (
+              <>
+                <span className="k">MODEL</span>{"    "}{orreryDataset === "earthmoon" ? "EARTH–MOON" : orreryDataset === "armillary" ? "ARMILLARY" : "SOLAR SYSTEM"} · {modelDate(sharedRef.current.modelDays || 0)} · model day {(sharedRef.current.modelDays || 0).toFixed(1)}{orreryDataset === "armillary" ? ` · sun at ecliptic longitude ${eclipticLongitudeAt(sharedRef.current.modelDays || 0).toFixed(0)}°` : ""} · {orreryPaused ? "time PAUSED" : `time at ${orrerySpeed} d/s`}{values.ambientMotion === false ? " · ambient motion off — the clock rests" : ""}{"\n"}
               </>
             ) : null}
             <span className="k">LIBRARY</span>{"  "}{libraryOpen ? "OPEN" : "CLOSED"} · {MEDIA_ITEMS.length} items{"\n"}

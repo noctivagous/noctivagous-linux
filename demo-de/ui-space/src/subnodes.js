@@ -79,6 +79,29 @@
  * stand OUTSIDE the plot, on the post shelf beside the media
  * library on the XY wall, republished into the citizen's frame
  * each frame exactly as the devices' hosts are.
+ *
+ * THE ORRERY (slice 16) joins as an eighth provider, and it is
+ * the second with DATASETS — the tangle's precedent, a flat
+ * PARAMETERS switch (not a descent): pass `orreryMode`
+ * ("solar" by default) to the orrery calls. SOLAR: the root
+ * "orrery" is the SUN itself (its centre-disc precedent: a
+ * card, no descent — F there is the resolver's rootNoop) and
+ * the planets are its children (orrery/<planet>), a planet's
+ * value its ORBITAL PERIOD IN DAYS, the root's the planets'
+ * periods summed — the hierarchy rule, a parent's value its
+ * own plus its descendants', the sun's own being nothing.
+ * EARTH–MOON: the root is "orrery/earth" (Earth, its own value
+ * its year) and its one child "orrery/earth/moon" (the Moon,
+ * value its sidereal period). ARMILLARY (the slice-16
+ * extension): the root "orrery" is the SPHERE itself (the same
+ * rootNoop treatment) and its children are the instrument's
+ * teaching set — the four bands (orrery/equator, orrery/
+ * ecliptic, orrery/meridian, orrery/horizon) and the sun bead
+ * (orrery/sun) — at EQUAL values by design: bands have no
+ * natural magnitude, so each of the five carries a fifth of
+ * the whole, stated here rather than dressed as a measure.
+ * The data is orrery.js's table — NASA/JPL's published
+ * elements, constants, no snapshot.
  */
 
 import { HIERARCHY } from "./hierarchy.js";
@@ -87,6 +110,7 @@ import importGraph from "./import-graph.json" with { type: "json" };
 import { bookTable } from "./book.js";
 import { ENVIRONMENT, deviceList, connectionsOf, connectionIds } from "./environment.js";
 import { mailTable } from "./mail.js";
+import { PLANETS, TOTAL_PERIOD_DAYS, MOON_PERIOD_DAYS, planetBySlug } from "./orrery.js";
 
 /* ---------------- the hierarchy (tray, mesa, drum) ---------------- */
 
@@ -291,12 +315,91 @@ const DEVICES_TABLE = buildDevicesTable();
 
 const MAIL_TABLE = mailTable();
 
+/* ---------------- the orrery (slice 16) ---------------- */
+
+/** The orrery's datasets, in the PARAMETERS panel's order. */
+export const ORRERY_MODES = ["solar", "earthmoon", "armillary"];
+
+function buildOrreryTables() {
+  const solarById = new Map();
+  const solarAll = [];
+  const sun = {
+    id: "orrery", name: "Sun", depth: 0, parentId: null,
+    path: ["Sun"], value: TOTAL_PERIOD_DAYS, children: [], isLeaf: false,
+  };
+  solarById.set(sun.id, sun);
+  solarAll.push(sun);
+  for (const planet of PLANETS) {
+    const node = {
+      id: `orrery/${planet.slug}`, name: planet.name, depth: 1,
+      parentId: sun.id, path: ["Sun", planet.name], value: planet.periodDays,
+      children: [], isLeaf: true,
+    };
+    solarById.set(node.id, node);
+    solarAll.push(node);
+    sun.children.push(node);
+  }
+  const emById = new Map();
+  const emAll = [];
+  const earth = planetBySlug("earth");
+  const earthNode = {
+    id: "orrery/earth", name: "Earth", depth: 0, parentId: null,
+    path: ["Earth"], value: earth.periodDays + MOON_PERIOD_DAYS,
+    children: [], isLeaf: false,
+  };
+  emById.set(earthNode.id, earthNode);
+  emAll.push(earthNode);
+  const moonNode = {
+    id: "orrery/earth/moon", name: "Moon", depth: 1,
+    parentId: earthNode.id, path: ["Earth", "Moon"], value: MOON_PERIOD_DAYS,
+    children: [], isLeaf: true,
+  };
+  emById.set(moonNode.id, moonNode);
+  emAll.push(moonNode);
+  earthNode.children.push(moonNode);
+  const armById = new Map();
+  const armAll = [];
+  const sphere = {
+    id: "orrery", name: "Armillary Sphere", depth: 0, parentId: null,
+    path: ["Armillary Sphere"], value: 5, children: [], isLeaf: false,
+  };
+  armById.set(sphere.id, sphere);
+  armAll.push(sphere);
+  for (const [id, name] of [
+    ["orrery/equator", "Celestial Equator"],
+    ["orrery/ecliptic", "Ecliptic"],
+    ["orrery/meridian", "Meridian"],
+    ["orrery/horizon", "Horizon"],
+    ["orrery/sun", "Sun"],
+  ]) {
+    const node = {
+      id, name, depth: 1,
+      parentId: sphere.id, path: ["Armillary Sphere", name], value: 1,
+      children: [], isLeaf: true,
+    };
+    armById.set(node.id, node);
+    armAll.push(node);
+    sphere.children.push(node);
+  }
+  return {
+    solar: { root: sun, byId: solarById, all: solarAll, wholeName: "the solar system" },
+    earthmoon: { root: earthNode, byId: emById, all: emAll, wholeName: "the Earth–Moon system" },
+    armillary: { root: sphere, byId: armById, all: armAll, wholeName: "the armillary sphere" },
+  };
+}
+
+const ORRERY_TABLES = buildOrreryTables();
+
+function orreryTable(mode = "solar") {
+  return ORRERY_TABLES[mode] || ORRERY_TABLES.solar;
+}
+
 /* ---------------- the provider API ---------------- */
 
 const BOOK_TABLE = bookTable();
 
 /** The citizens with sub-nodes, in the order the guide names them. */
-export const SUBNODE_OBJECT_IDS = ["tray", "tangle", "mesa", "drum", "book", "devices", "mail"];
+export const SUBNODE_OBJECT_IDS = ["tray", "tangle", "mesa", "drum", "book", "devices", "mail", "orrery"];
 
 export const isSubnodeObject = (id) => SUBNODE_OBJECT_IDS.includes(id);
 
@@ -322,7 +425,7 @@ function publicNode(node, share, relDepth) {
  * otherwise the citizen's own whole — the repository root, or
  * the tangle's active course itself (id null: it is not a node).
  */
-export function subnodeRootOf(objectId, rootId = null, dataset = "genealogy") {
+export function subnodeRootOf(objectId, rootId = null, dataset = "genealogy", orreryMode = "solar") {
   if (HIERARCHY_CITIZENS.includes(objectId)) {
     const root = rootId ? HIERARCHY_TABLE.byId.get(rootId) : HIERARCHY_TABLE.root;
     if (!root) return null;
@@ -348,6 +451,10 @@ export function subnodeRootOf(objectId, rootId = null, dataset = "genealogy") {
     const root = MAIL_TABLE.root;
     return { id: root.id, name: root.name, value: root.value };
   }
+  if (objectId === "orrery") {
+    const table = orreryTable(orreryMode);
+    return { id: table.root.id, name: table.wholeName, value: table.root.value };
+  }
   return null;
 }
 
@@ -357,7 +464,7 @@ export function subnodeRootOf(objectId, rootId = null, dataset = "genealogy") {
  * citizen has no such node. `dataset` selects the tangle's
  * active course; the hierarchy citizens ignore it.
  */
-export function subnodeById(objectId, nodeId, rootId = null, dataset = "genealogy") {
+export function subnodeById(objectId, nodeId, rootId = null, dataset = "genealogy", orreryMode = "solar") {
   if (!nodeId) return null;
   if (HIERARCHY_CITIZENS.includes(objectId)) {
     const node = HIERARCHY_TABLE.byId.get(nodeId);
@@ -387,6 +494,12 @@ export function subnodeById(objectId, nodeId, rootId = null, dataset = "genealog
     if (!node) return null;
     return publicNode(node, MAIL_TABLE.root.value ? node.value / MAIL_TABLE.root.value : 0, node.depth);
   }
+  if (objectId === "orrery") {
+    const table = orreryTable(orreryMode);
+    const node = table.byId.get(nodeId);
+    if (!node) return null;
+    return publicNode(node, table.root.value ? node.value / table.root.value : 0, node.depth);
+  }
   return null;
 }
 
@@ -398,7 +511,7 @@ export function subnodeById(objectId, nodeId, rootId = null, dataset = "genealog
  *     (at rest, the true root's: the repository's depth 1..2);
  *   tangle — every figure of the active course, on its level sheet.
  */
-export function subnodesFor(objectId, rootId = null, dataset = "genealogy") {
+export function subnodesFor(objectId, rootId = null, dataset = "genealogy", orreryMode = "solar") {
   if (objectId === "tray") {
     const whole = HIERARCHY_TABLE.root;
     return HIERARCHY_TABLE.all
@@ -447,11 +560,23 @@ export function subnodesFor(objectId, rootId = null, dataset = "genealogy") {
       .filter((n) => n.depth >= 1)
       .map((n) => publicNode(n, whole.value ? n.value / whole.value : 0, n.depth));
   }
+  if (objectId === "orrery") {
+    // The active dressing's nodes under its root: the eight
+    // planets, or the Moon, or the armillary's bands and bead.
+    // (The roots themselves — the sun, Earth, the sphere — are
+    // reported by their own meshes, as the mesa's centre disc
+    // is.)
+    const table = orreryTable(orreryMode);
+    const whole = table.root;
+    return table.all
+      .filter((n) => n.depth >= 1)
+      .map((n) => publicNode(n, whole.value ? n.value / whole.value : 0, n.depth));
+  }
   return [];
 }
 
 /** A sub-node's parent id (the descent's climb target), or null at the top. */
-export function subnodeParentOf(objectId, nodeId, dataset = "genealogy") {
-  const node = subnodeById(objectId, nodeId, null, dataset);
+export function subnodeParentOf(objectId, nodeId, dataset = "genealogy", orreryMode = "solar") {
+  const node = subnodeById(objectId, nodeId, null, dataset, orreryMode);
   return node ? node.parentId : null;
 }

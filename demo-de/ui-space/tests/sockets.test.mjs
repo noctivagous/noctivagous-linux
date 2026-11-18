@@ -57,6 +57,7 @@ const PINNED = {
   mesa: 27.21, drum: 29.66, tray: 41.01, cube: 25.64, tangle: 36.82,
   horizon3d: 35.06, horizonflat: 28.83, arch: 30.73, definition: 32.10,
   knot: 18.15, crystal: 16.76, tree: 23.88, book: 43.65, devices: 25.10,
+  mail: 22.40, orrery: 22.83,
 };
 
 test("the socket radii match the measured analysis", () => {
@@ -118,6 +119,7 @@ const BINDING = {
   knot: [[-10.3, 12.3, -17.2]], // the measured sweep vertex, pivot-centred (−10.3, −0.2, −17.2)
   crystal: [[14, 0, 0]],
   devices: [[19, 0, 13]],
+  orrery: [[20.5, 0, 0]], // the plinth's bottom rim, all three dressings (the armillary's meridian top reaches only 13.9 about the pivot)
 };
 
 test("the table's radii are the binding points' reaches (tight, not padded)", () => {
@@ -200,11 +202,21 @@ function layoutPositions(name) {
 /* Re-measured at the slice-15 integration (fifteen citizens):
    the ring respaced for the mail citizen (one more overlapping
    pair among the old citizens), and mail's socket reaches
-   under the dais in districts. Theatre's counts are unchanged. */
+   under the dais in districts. Theatre's counts are unchanged.
+   Re-measured again at slice 16 (sixteen citizens): the ring
+   respaced once more and its configuration happens to stand
+   (10 / 9 / book 173.6); in districts the orrery's socket at
+   [150, 44] takes the max reach (178.9) without adding an
+   overlap or a dais reach; in theatre its socket at [134, 48]
+   overlaps one neighbour (6 → 7). Re-measured at the armillary
+   extension: the orrery's envelope grew for its third dressing
+   (CENTRE_Y 12.95, PROTECTIVE_R 24.25, socket 22.83), which
+   moves only the districts max reach (178.9 → 179.2) — every
+   overlap and dais count stands. */
 const MEASURED = {
   ring: { overlaps: 10, dais: 9, maxReach: ["book", 173.6] },
-  districts: { overlaps: 7, dais: 14, maxReach: ["book", 178.0] },
-  theatre: { overlaps: 6, dais: 13, maxReach: ["horizon3d", 173.3] },
+  districts: { overlaps: 7, dais: 14, maxReach: ["orrery", 179.2] },
+  theatre: { overlaps: 7, dais: 13, maxReach: ["horizon3d", 173.3] },
 };
 
 for (const [name, want] of Object.entries(MEASURED)) {

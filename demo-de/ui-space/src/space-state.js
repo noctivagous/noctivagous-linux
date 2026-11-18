@@ -102,6 +102,8 @@ export const OBJECTS = [
     blurb: "The machine's own attachments on one shelf, from the environment snapshot: the printer a small press whose output tray holds a sheet for every queued job (the printing job's sheet half-fed), keyboard, pointer, display and volumes beside it, and a hub whose connections arc out as cables to host tokens standing on the ring. Its devices, its hub and its hosts are sub-addresses: hover one to read it, F flies into it." },
   { id: "mail", name: "Mail", group: "instruments",
     blurb: "The sample mailbox as a pigeonhole sorting cabinet: its folders are compartments sized by their message counts, Projects' subfolders nested in its cell, an envelope slot on top. Its folders are sub-addresses, and so are the recent messages standing as letters on the post shelf beside the library on the XY wall — F on a folder flies into it; F on a letter opens it on the centre stage to be read." },
+  { id: "orrery", name: "Orrery", group: "instruments",
+    blurb: "The solar system as a clockwork miniature, from NASA/JPL's published elements: the sun at the centre and eight planets on their rings, distances log-scaled and sizes exaggerated (the guide says so plainly), all of them moving — model time always runs, at the PARAMETERS speed. Its planets are sub-addresses: hover one to read its period, distance and moons. PARAMETERS re-dresses the same plot as the Earth–Moon system: Earth large with its tilted axis, the Moon on its ring, and a fixed sun marker, so the Moon's card reads its live phase from the geometry itself." },
 ];
 
 export const OBJECT_IDS = OBJECTS.map((o) => o.id);
@@ -690,6 +692,17 @@ export function resolveFAction({
   if ((targetId === "tray" || targetId === "tangle" || targetId === "devices") && subId) {
     return { type: "partFocus", targetId, partId: subId };
   }
+  if (targetId === "orrery" && subId) {
+    // Slice 16: the orrery's ROOT — the sun, or Earth in the
+    // Earth–Moon dressing — names the whole system, as the
+    // mesa's centre disc names the repository: F there is the
+    // honest no-op, never a descent (the orrery HAS no descent;
+    // its datasets switch flatly in PARAMETERS, decision 2a).
+    // Its children are all leaves: F focuses them (the camera
+    // stays, slice 13-5), G flies into them.
+    if (subRoot) return { type: "rootNoop", targetId };
+    return { type: "partFocus", targetId, partId: subId };
+  }
   if ((targetId === "mesa" || targetId === "drum") && subId) {
     // Slice 13-3 (item 4): the centre disc reports the DISPLAY
     // ROOT itself as its sub-node (subRoot) — F there is an
@@ -808,6 +821,7 @@ export const LAYOUTS = {
       book: [-95, 95],
       devices: [30, 108],
       mail: [96, 30],
+      orrery: [150, 44],
     },
     scales: {},
   },
@@ -825,6 +839,7 @@ export const LAYOUTS = {
       book: [0, 92],
       devices: [58, 102],
       mail: [-112, 84],
+      orrery: [134, 48],
     },
     scales: { cube: 1.6 },
   },
@@ -971,6 +986,7 @@ export const CENTRE_Y = {
   book: 13, // plinth 0..1.6, drum body to 25.6, cap rim ~26.3 → bounds 0..26.3
   devices: 7, // shelf 0..1.6, the display's screen top ~14.4 → bounds 0..14.4
   mail: 12.5, // plinth 0..1.6, cabinet body to ~23.6, letters on top ~25 → bounds 0..25
+  orrery: 12.95, // sized for the LARGEST dressing (the book's page-out precedent): solar form 0..7.6, Earth–Moon form 0..12.2, armillary form 0..25.9 (the meridian band's top: cage centre 12.8 + the fixed bands' outer radius 13.1) → bounds 0..25.9
 };
 
 /**
@@ -1009,6 +1025,7 @@ export const PROTECTIVE_R = {
   crystal: 20.16, // the pedestal's bottom rim (r 14 at y 0); the living solid never reaches it, in any drift state — state-independent
   devices: 24.06, // the shelf's bottom corners (±19, 0, ±13) about (0, 7, 0): √579 — measured on MiniDevices, which postdates the analysis
   mail: 23.65, // the cabinet's plinth corners bind (√559.5) — measured on the built MiniMail in slice 13-3's session; the mail citizen postdates the sockets slice, so its sphere joins the table at this integration
+  orrery: 24.25, // the plinth's bottom rim (r 20.5 at y 0) about (0, 12.95, 0): √587.95 — measured on the built MiniOrrery across all three dressings (slice 16 + armillary extension); the armillary cage's far reach is 13.9 (its meridian top) and the Earth–Moon sun marker's 20.9 — every part of every dressing reaches less than the rim
 };
 
 /**
@@ -1357,6 +1374,12 @@ export function pointSeatDistance(mul = 1) {
  *     output tray both face +Z: 0 (devices read as "not
  *     facing" only because nothing turned it to its radial;
  *     the facing turn itself is the correction).
+ *   orrery — the solar dressing is radial, no front: 0. The
+ *     Earth–Moon dressing's fixed sun direction is built AT
+ *     azimuth 0 (+Z, orrery.js's SUN_AZIMUTH_DEG), so the
+ *     standing front already names it: 0. The armillary
+ *     dressing's polar axis tips toward +Z and its meridian
+ *     stands in the front plane — the front again: 0.
  *   tangle — its levels RISE in Y as they step toward +Z, so
  *     from +Z the tallest sheet stands in front and hides
  *     the staircase; the course reads from the ROOT side,
@@ -1377,6 +1400,7 @@ export const FACING = {
   mesa: 0, drum: 0, tray: 0, cube: 0, tangle: 180,
   horizon3d: 0, horizonflat: 0, arch: 0, definition: 0,
   knot: 0, crystal: 0, tree: 0, book: 0, devices: 0, mail: 0,
+  orrery: 0,
 };
 
 /**

@@ -90,6 +90,15 @@ import {
 } from "./sub-transforms.js";
 import { bookTable, bookSpreads, bookNodeById, BOOK_TOTALS, SPREAD_COUNT } from "./book.js";
 import {
+  PLANETS, planetPositionAt, planetDisplayRadius, orbitRadius,
+  moonPositionAt, moonPhaseAt,
+  SUN_R, ORBIT_PLANE_Y, EARTH_R, EARTH_Y, EARTH_TILT_DEG,
+  MOON_ORBIT_R, MOON_R, SUN_MARKER_R,
+  ARM_CENTRE_Y, ARM_R, ARM_FIXED_R, ARM_BAND_W, ARM_OUTER_R,
+  ARM_EARTH_R, ARM_BEAD_R, EQUATOR_TICKS, ECLIPTIC_TICKS,
+  cageAngleAt, eclipticLongitudeAt, sunBeadPositionAt, modelDate,
+} from "./orrery.js";
+import {
   makeTrack,
   peaksForWindow,
   bandEnergies,
@@ -3953,6 +3962,547 @@ const NET_TOKEN_COLORS = [0x5b8fd6, 0x2e7d74, 0x8e6cc8, 0xe0a458, 0x7fb069, 0xd6
  * log scale) and its glow likewise; a hovered or focused host
  * lifts both, on the citizens' two tiers.
  */
+/**
+ * Slice 16 — the ORRERY: one plot, three dressings, one clock.
+ *
+ * THE CLOCK lives here, in the frame loop: model days advance
+ * at the PARAMETERS speed (days/sec) × the ambient damping
+ * every citizen's idle motion uses (ambientAmp — the clock
+ * eases to a stop when Ambient motion is off), frozen outright
+ * by the PARAMETERS pause. It is published on the frame (for
+ * the overlay card's live Moon phase) and on the shared ref
+ * (for the App's readout date), and it is NEVER reset — a
+ * dataset switch re-dresses the plot around the same moment.
+ *
+ * SOLAR: a low plinth, the sun at the centre (a self-lit
+ * sphere — a basic material, outside the citizen glow's
+ * materials, its highlight driven by hand below), eight thin
+ * orbit rings at orrery.js's log-scaled radii, and the planets
+ * as spheres riding them. EARTH–MOON: Earth large at the
+ * centre with its axis rod tilted 23.4°, the Moon on its ring,
+ * and the sun marker — a small emissive sphere and a light
+ * shaft — standing at the plot's edge at the FIXED azimuth 0
+ * (+Z), so the phase geometry (the Moon between Earth and the
+ * marker at new, opposite at full) can be read off the plot.
+ *
+ * ARMILLARY (the extension): the plot inside out — the sky as
+ * it appears FROM Earth, built to teach the real instrument.
+ * A small Earth ball at the centre; the FIXED frame — the
+ * horizon band (level) and the meridian band (through the
+ * zenith, in the front YZ plane), standing on two pillars —
+ * at the WIDER radius ARM_FIXED_R, as a real armillary's
+ * meridian stands outside the cage it carries; and the CAGE
+ * about the polar axis (tipped 23.4° toward +Z): the equator
+ * band, the ecliptic band (tipped 23.4° against the equator,
+ * in its own mount group) and the axis rod. The rings are
+ * BANDS — flat annuli of real width, semi-transparent with
+ * depthWrite off, so the Earth and the far-side bands read
+ * through two layers — engraved with their scales as ticks:
+ * 24 hour divisions on the equator, 12 signs on the ecliptic
+ * (instanced boxes standing proud of the band's face; the
+ * ticks, not the annulus, are what make the cage's daily turn
+ * visible, a plain band being rotationally symmetric). The
+ * sun bead rides the ecliptic band at the day's longitude
+ * (a pivot group's turn — sunBeadPositionAt in orrery.js is
+ * the same composition, and the bead's anchor follows it).
+ * The frame loop turns the cage by cageAngleAt (one turn per
+ * sidereal day) and the bead's pivot by eclipticLongitudeAt.
+ * A band addressed (hovered/focused) RAISES ITS OPACITY toward
+ * solid while its cage-mates ghost further — the contrast is
+ * the teaching aid — on top of the citizens' colour tiers.
+ * Bands and bead take sub-node transforms like the planets:
+ * each band's wrapper group stands at the cage's centre (its
+ * own pivot), the bead's group rides the ecliptic wrapper, so
+ * a turned band never leaves its bead behind. The Earth ball
+ * is the dressing's ROOT (it reports "orrery") — no
+ * sub-transform, F is the rootNoop, as with the sun.
+ *
+ * The bodies are the provider's sub-nodes (subnodes.js): each
+ * has its own mesh, its own owned material and a wireframe
+ * outline ball (the sphere's edges overlay — a sphere has no
+ * edges worth drawing, so the outline is a slightly larger
+ * wireframe sphere, the tangle cages' equivalent). Anchors are
+ * republished EVERY FRAME — the bodies move (the devices'
+ * hosts precedent). Sub-node transforms (slice 13-5) are
+ * applied by hand in the frame loop, read off the state ref:
+ * a planet group IS its own pivot (the sphere is centred on
+ * it), so SubNodeGroup's wrapper is unnecessary here; the
+ * stored Euler folds in exactly as subTransformEuler resolves
+ * it. The roots (sun, Earth) take no sub-transforms — the App
+ * resolves their hovers to the citizen, as at the mesa's disc.
+ */
+/** The armillary bands' resting opacity — semi-transparent, in
+ *  the space's translucency register — and the addressed band's
+ *  near-solid read, the marked band's lift, and the ghosted
+ *  siblings' floor while one band is addressed. */
+const BAND_OPACITY = 0.42;
+const BAND_OPACITY_ADDRESSED = 0.88;
+const BAND_OPACITY_MARKED = 0.62;
+const BAND_OPACITY_GHOST = 0.2;
+
+/** The armillary's band sub-nodes, in the provider's order. */
+const ARMILLARY_BAND_IDS = ["orrery/equator", "orrery/ecliptic", "orrery/meridian", "orrery/horizon"];
+
+function MiniOrrery({ lib, matFor, ctx, orreryDataset, subTransforms }) {
+  const wrapRef = useRef(null);
+  const amp = useRef(1);
+  const planetRefs = useRef(new Map());
+  const moonRef = useRef(null);
+  const cageRef = useRef(null);
+  const beadPivotRef = useRef(null);
+  const beadGroupRef = useRef(null);
+  const bandWrapRefs = useRef(new Map());
+  const outlineRefs = useRef(new Map());
+  const anchors = useMemo(() => new Map(), []);
+  const mode = orreryDataset === "earthmoon" || orreryDataset === "armillary"
+    ? orreryDataset : "solar";
+
+  // Owned materials per sub-node (the devices' parts pattern):
+  // the highlight loop factors their colours — hovered ×1.9,
+  // marked ×1.35, siblings ×0.55 while one is addressed. A part
+  // may also carry a baseOpacity (the armillary's bands): the
+  // loop then drives the material's opacity by address as well
+  // — addressed near-solid, marked lifted, siblings ghosted.
+  const owned = useMemo(() => {
+    const map = new Map();
+    const own = (id, mat, color, baseOpacity = null) => {
+      if (!map.has(id)) map.set(id, []);
+      map.get(id).push({ mat, base: new THREE.Color(color), baseOpacity });
+    };
+    if (mode === "solar") {
+      // The sun is SELF-LIT: a basic material, not one of the
+      // citizen's glow materials — it does not wait for the
+      // scene's lights or the hover tiers to shine. (It is not
+      // in SpaceObject's mats list, so it is disposed by hand
+      // when the dressing changes or the citizen unmounts.)
+      own("orrery", new THREE.MeshBasicMaterial({ color: 0xffc46b }), 0xffc46b);
+      for (const p of PLANETS) {
+        own(`orrery/${p.slug}`, matFor(p.color, { rough: 0.55 }), p.color);
+        if (p.slug === "saturn") {
+          own("orrery/saturn", matFor(0xd8cdb4, { rough: 0.6, opacity: 0.8, double: true }), 0xd8cdb4);
+        }
+      }
+    } else if (mode === "earthmoon") {
+      own("orrery/earth", matFor(0x5b8fd6, { rough: 0.5 }), 0x5b8fd6);
+      own("orrery/earth/moon", matFor(0xb8bcc0, { rough: 0.7 }), 0xb8bcc0);
+    } else {
+      // ARMILLARY: the Earth ball (the dressing's root — it
+      // reports "orrery", like the sun), the four bands as
+      // semi-transparent standard materials (matFor turns
+      // depthWrite off for an opacity, so the ball and the
+      // far-side bands read through two layers), and the sun
+      // bead self-lit like the sun itself.
+      own("orrery", matFor(0x5b8fd6, { rough: 0.5 }), 0x5b8fd6);
+      own("orrery/equator", matFor(0x63b3a6, { rough: 0.4, opacity: BAND_OPACITY, double: true }), 0x63b3a6, BAND_OPACITY);
+      own("orrery/ecliptic", matFor(0xd8a941, { rough: 0.4, opacity: BAND_OPACITY, double: true }), 0xd8a941, BAND_OPACITY);
+      own("orrery/meridian", matFor(0x8fa3b8, { rough: 0.4, opacity: BAND_OPACITY, double: true }), 0x8fa3b8, BAND_OPACITY);
+      own("orrery/horizon", matFor(0x6d8296, { rough: 0.4, opacity: BAND_OPACITY, double: true }), 0x6d8296, BAND_OPACITY);
+      own("orrery/sun", new THREE.MeshBasicMaterial({ color: 0xffc46b }), 0xffc46b);
+    }
+    return map;
+  }, [mode, matFor]);
+  useEffect(() => () => {
+    for (const parts of owned.values()) {
+      for (const part of parts) {
+        if (part.mat.isMeshBasicMaterial) part.mat.dispose();
+      }
+    }
+  }, [owned]);
+
+  const outlineMats = useMemo(() => ({
+    teal: new THREE.MeshBasicMaterial({ color: HOVER_OUTLINE, wireframe: true, transparent: true, opacity: 0.85 }),
+    amber: new THREE.MeshBasicMaterial({ color: MARK_OUTLINE, wireframe: true, transparent: true, opacity: 0.85 }),
+  }), []);
+  useEffect(() => () => { outlineMats.teal.dispose(); outlineMats.amber.dispose(); }, [outlineMats]);
+  const outlineGeo = useMemo(() => new THREE.SphereGeometry(1, 16, 10), []);
+  useEffect(() => () => { outlineGeo.dispose(); }, [outlineGeo]);
+
+  // The armillary bands' GRADUATIONS: the engraved scales a
+  // real band carries — 24 hour divisions on the equator band,
+  // 12 sign divisions on the ecliptic — as instanced tick boxes
+  // standing proud of the band's face, in the band's own frame
+  // (so they ride its wrapper, its cage and its sub-transform).
+  // Not raycast: the band beneath them takes the hover.
+  const ticks = useMemo(() => {
+    if (mode !== "armillary") return null;
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xe8e2d0, transparent: true, opacity: 0.55, depthWrite: false,
+    });
+    const make = (count) => {
+      const geo = new THREE.BoxGeometry(0.1, 0.06, ARM_BAND_W * 0.86);
+      const inst = new THREE.InstancedMesh(geo, mat, count);
+      const m = new THREE.Matrix4();
+      const q = new THREE.Quaternion();
+      const up = new THREE.Vector3(0, 1, 0);
+      const one = new THREE.Vector3(1, 1, 1);
+      for (let i = 0; i < count; i++) {
+        const a = (i / count) * Math.PI * 2;
+        q.setFromAxisAngle(up, a);
+        m.compose(new THREE.Vector3(Math.sin(a) * ARM_R, 0.045, Math.cos(a) * ARM_R), q, one);
+        inst.setMatrixAt(i, m);
+      }
+      inst.instanceMatrix.needsUpdate = true;
+      inst.raycast = NO_RAYCAST;
+      return inst;
+    };
+    return { mat, equator: make(EQUATOR_TICKS), ecliptic: make(ECLIPTIC_TICKS) };
+  }, [mode]);
+  useEffect(() => () => {
+    if (!ticks) return;
+    ticks.mat.dispose();
+    for (const inst of [ticks.equator, ticks.ecliptic]) {
+      inst.geometry.dispose();
+      inst.dispose();
+    }
+  }, [ticks]);
+
+  // The anchors: registered once per dressing, then MOVED
+  // every frame below — the bodies travel, and the Rig turns
+  // this map into the world anchors the seats and cards read.
+  useEffect(() => {
+    const frame = ctx.frame;
+    frame.subGroupRefs.set("orrery", wrapRef.current);
+    anchors.clear();
+    if (mode === "solar") {
+      anchors.set("orrery", { centre: new THREE.Vector3(0, ORBIT_PLANE_Y, 0), radius: SUN_R });
+      for (const p of PLANETS) {
+        anchors.set(`orrery/${p.slug}`, {
+          centre: new THREE.Vector3(), radius: planetDisplayRadius(p.radiusEarth),
+        });
+      }
+    } else if (mode === "earthmoon") {
+      anchors.set("orrery/earth", { centre: new THREE.Vector3(0, EARTH_Y, 0), radius: EARTH_R });
+      anchors.set("orrery/earth/moon", { centre: new THREE.Vector3(), radius: MOON_R });
+    } else {
+      // ARMILLARY: the sphere and its bands share the cage's
+      // centre (a band's anchor is the centre it turns about,
+      // its radius the band's own); the bead's anchor MOVES —
+      // the frame loop sets it from sunBeadPositionAt.
+      anchors.set("orrery", { centre: new THREE.Vector3(0, ARM_CENTRE_Y, 0), radius: ARM_OUTER_R });
+      for (const id of ARMILLARY_BAND_IDS) {
+        anchors.set(id, { centre: new THREE.Vector3(0, ARM_CENTRE_Y, 0), radius: ARM_R });
+      }
+      anchors.set("orrery/sun", { centre: new THREE.Vector3(), radius: ARM_BEAD_R });
+    }
+    frame.subLocal.set("orrery", anchors);
+    frame.orreryAnchors = anchors;
+    return () => {
+      frame.subGroupRefs.delete("orrery");
+      if (frame.subLocal.get("orrery") === anchors) frame.subLocal.delete("orrery");
+      if (frame.orreryAnchors === anchors) frame.orreryAnchors = null;
+    };
+  }, [ctx, anchors, mode]);
+
+  const lastHi = useRef(undefined);
+  useFrame((_, dtRaw) => {
+    const dt = Math.min(0.05, dtRaw || 0.016);
+    const st = ctx.stateRef.current;
+    const frame = ctx.frame;
+    // THE CLOCK: speed × the ambient damping, unless paused.
+    const a = ambientAmp(amp, ctx, dt);
+    if (!st.orreryPaused) {
+      frame.orreryDays = (frame.orreryDays || 0)
+        + dt * (Number(st.orrerySpeed) || 0) * a;
+    }
+    const days = frame.orreryDays || 0;
+    if (st.shared) st.shared.modelDays = days;
+    // The bodies to their places, their sub-node transforms
+    // folded in, their anchors following.
+    if (mode === "solar") {
+      for (const p of PLANETS) {
+        const g = planetRefs.current.get(p.slug);
+        if (!g) continue;
+        const [x, y, z] = planetPositionAt(p, days);
+        g.position.set(x, y, z);
+        const e = subTransformEuler(
+          subTransformOf(st.subTransforms, "orrery", `orrery/${p.slug}`), "y");
+        g.rotation.set(e.rotation[0], e.rotation[1], e.rotation[2], "YXZ");
+        g.scale.setScalar(e.scale);
+        const anchor = anchors.get(`orrery/${p.slug}`);
+        if (anchor) anchor.centre.set(x, y, z);
+      }
+    } else if (mode === "earthmoon" && moonRef.current) {
+      const [x, y, z] = moonPositionAt(days);
+      moonRef.current.position.set(x, y, z);
+      const e = subTransformEuler(
+        subTransformOf(st.subTransforms, "orrery", "orrery/earth/moon"), "y");
+      moonRef.current.rotation.set(e.rotation[0], e.rotation[1], e.rotation[2], "YXZ");
+      moonRef.current.scale.setScalar(e.scale);
+      const anchor = anchors.get("orrery/earth/moon");
+      if (anchor) anchor.centre.set(x, y, z);
+    } else if (mode === "armillary") {
+      // The cage's turn (one per sidereal day) and the bead's
+      // ride along the ecliptic (one circuit per year) — the
+      // group nesting below composes exactly the composition
+      // sunBeadPositionAt computes, and the bead's anchor is
+      // set from that function, so card and mesh agree.
+      if (cageRef.current) {
+        cageRef.current.rotation.y = (cageAngleAt(days) * Math.PI) / 180;
+      }
+      if (beadPivotRef.current) {
+        beadPivotRef.current.rotation.y = (eclipticLongitudeAt(days) * Math.PI) / 180;
+      }
+      const beadAnchor = anchors.get("orrery/sun");
+      if (beadAnchor) {
+        // The bead rides its band's wrapper, so the anchor
+        // composes the ecliptic's own sub-node transform too —
+        // sunBeadPositionAt takes it as its second argument.
+        const ecl = subTransformEuler(
+          subTransformOf(st.subTransforms, "orrery", "orrery/ecliptic"), "y");
+        const [x, y, z] = sunBeadPositionAt(days, ecl);
+        beadAnchor.centre.set(x, y, z);
+      }
+      // The bands' and the bead's sub-node transforms, folded
+      // into their own pivot groups (the planets' pattern).
+      for (const id of [...ARMILLARY_BAND_IDS, "orrery/sun"]) {
+        const g = id === "orrery/sun"
+          ? beadGroupRef.current
+          : bandWrapRefs.current.get(id);
+        if (!g) continue;
+        const e = subTransformEuler(subTransformOf(st.subTransforms, "orrery", id), "y");
+        g.rotation.set(e.rotation[0], e.rotation[1], e.rotation[2], "YXZ");
+        g.scale.setScalar(e.scale);
+      }
+    }
+    // The highlight, rewritten only when its signature changes.
+    const hov = st.currentId === "orrery" && st.subHover && st.subHover.objectId === "orrery"
+      ? st.subHover.nodeId : null;
+    const foc = st.partFocus && st.partFocus.objectId === "orrery" ? st.partFocus.partId : null;
+    const hi = foc || hov || null;
+    const sig = `${mode}|${hi}|${marksKeyOf(st, "orrery")}`;
+    if (sig !== lastHi.current) {
+      lastHi.current = sig;
+      const marked = new Set(marksFor(st.marks, "orrery"));
+      for (const [id, parts] of owned) {
+        const isM = marked.has(id);
+        const f = id === hi ? 1.9 : isM ? 1.35 : hi ? 0.55 : 1;
+        for (const part of parts) {
+          part.mat.color.copy(part.base).multiplyScalar(f);
+          // A band's emphasis is its OPACITY: addressed it
+          // reads near-solid against ghosted cage-mates,
+          // marked it lifts, unaddressed siblings ghost.
+          if (part.baseOpacity != null) {
+            part.mat.opacity = id === hi
+              ? BAND_OPACITY_ADDRESSED
+              : isM ? BAND_OPACITY_MARKED : hi ? BAND_OPACITY_GHOST : part.baseOpacity;
+          }
+        }
+        const ball = outlineRefs.current.get(id);
+        if (ball) {
+          ball.visible = id === hi || isM;
+          ball.material = id === hi ? outlineMats.teal : outlineMats.amber;
+        }
+      }
+    }
+  });
+
+  const st = () => ctx.stateRef.current;
+  const report = (id) => {
+    if (st().currentId !== "orrery" || !st().onSubHover) return;
+    st().onSubHover("orrery", id);
+  };
+  const clear = () => { if (st().onSubHover) st().onSubHover("orrery", null); };
+  const hoverProps = (id) => ({
+    onPointerOver: () => report(id),
+    onPointerMove: () => report(id),
+    onPointerOut: clear,
+  });
+  const outlineBall = (id, r) => (
+    <mesh geometry={outlineGeo} scale={r * 1.3} visible={false} raycast={NO_RAYCAST}
+      material={outlineMats.teal}
+      ref={(el) => {
+        if (el) outlineRefs.current.set(id, el);
+        else outlineRefs.current.delete(id);
+      }} />
+  );
+  // The armillary bands' pivot groups, by sub-node id — the
+  // frame loop folds each band's sub-node transform into its
+  // own wrapper, exactly as the planets' groups take theirs.
+  const bandWrapRef = (id) => (g) => {
+    if (g) bandWrapRefs.current.set(id, g);
+    else bandWrapRefs.current.delete(id);
+  };
+
+  return (
+    <group ref={wrapRef}>
+      {/* The plinth every dressing stands on. */}
+      <mesh position={[0, 0.6, 0]}>
+        <cylinderGeometry args={[20.5, 21, 1.2, 48]} />
+        <primitive object={matFor(0x27313a, { rough: 0.85 })} attach="material" />
+      </mesh>
+      {mode === "solar" ? (
+        <>
+          {PLANETS.map((p) => (
+            <mesh key={`ring-${p.slug}`} position={[0, ORBIT_PLANE_Y, 0]} rotation-x={Math.PI / 2}>
+              <torusGeometry args={[orbitRadius(p.au), 0.035, 6, 140]} />
+              <meshBasicMaterial color={0x51707c} transparent opacity={0.45} depthWrite={false} />
+            </mesh>
+          ))}
+          <mesh position={[0, ORBIT_PLANE_Y, 0]} {...hoverProps("orrery")}>
+            <sphereGeometry args={[SUN_R, 28, 20]} />
+            <primitive object={owned.get("orrery")[0].mat} attach="material" />
+            {outlineBall("orrery", SUN_R)}
+          </mesh>
+          {PLANETS.map((p) => {
+            const id = `orrery/${p.slug}`;
+            const r = planetDisplayRadius(p.radiusEarth);
+            return (
+              <group key={p.slug}
+                ref={(g) => {
+                  if (g) planetRefs.current.set(p.slug, g);
+                  else planetRefs.current.delete(p.slug);
+                }}>
+                <mesh {...hoverProps(id)}>
+                  <sphereGeometry args={[r, 22, 16]} />
+                  <primitive object={owned.get(id)[0].mat} attach="material" />
+                  {outlineBall(id, r)}
+                  {p.slug === "saturn" ? (
+                    // Saturn's rings, a flat annulus in the
+                    // orbital plane — a child of the sphere's
+                    // mesh, so a hover on the rings still names
+                    // Saturn, and the sub-transform carries both.
+                    <mesh rotation-x={-Math.PI / 2}>
+                      <ringGeometry args={[r * 1.45, r * 2.35, 40]} />
+                      <primitive object={owned.get(id)[1].mat} attach="material" />
+                    </mesh>
+                  ) : null}
+                </mesh>
+              </group>
+            );
+          })}
+        </>
+      ) : mode === "earthmoon" ? (
+        <>
+          {/* The Moon's ring, in the dressing's plane. */}
+          <mesh position={[0, EARTH_Y, 0]} rotation-x={Math.PI / 2}>
+            <torusGeometry args={[MOON_ORBIT_R, 0.035, 6, 120]} />
+            <meshBasicMaterial color={0x51707c} transparent opacity={0.45} depthWrite={false} />
+          </mesh>
+          {/* The fixed sun: a marker sphere and its light shaft,
+              at azimuth 0 (+Z) — the direction the phase is
+              read against. */}
+          <mesh position={[0, EARTH_Y, SUN_MARKER_R]}>
+            <sphereGeometry args={[1.1, 18, 12]} />
+            <meshBasicMaterial color={0xffc46b} />
+          </mesh>
+          <mesh position={[0, EARTH_Y, (EARTH_R + 0.8 + SUN_MARKER_R - 1.3) / 2]}>
+            <boxGeometry args={[0.07, 0.07, (SUN_MARKER_R - 1.3) - (EARTH_R + 0.8)]} />
+            <meshBasicMaterial color={0xffc46b} transparent opacity={0.35}
+              blending={THREE.AdditiveBlending} depthWrite={false} />
+          </mesh>
+          {/* Earth, with the axis rod tilted in the sun's plane
+              (the north pole tipped toward the marker: the
+              solstice posture, the legible one). */}
+          <group position={[0, EARTH_Y, 0]}>
+            <mesh {...hoverProps("orrery/earth")}>
+              <sphereGeometry args={[EARTH_R, 30, 22]} />
+              <primitive object={owned.get("orrery/earth")[0].mat} attach="material" />
+              {outlineBall("orrery/earth", EARTH_R)}
+            </mesh>
+            <group rotation-x={(EARTH_TILT_DEG * Math.PI) / 180}>
+              <mesh>
+                <cylinderGeometry args={[0.09, 0.09, 13, 8]} />
+                <primitive object={matFor(0x8a97a0, { rough: 0.45 })} attach="material" />
+              </mesh>
+            </group>
+          </group>
+          <group ref={moonRef}>
+            <mesh {...hoverProps("orrery/earth/moon")}>
+              <sphereGeometry args={[MOON_R, 20, 14]} />
+              <primitive object={owned.get("orrery/earth/moon")[0].mat} attach="material" />
+              {outlineBall("orrery/earth/moon", MOON_R)}
+            </mesh>
+          </group>
+        </>
+      ) : (
+        <>
+          {/* ARMILLARY — the stand: two pillars on the plinth,
+              their arms meeting the horizon band's rim. */}
+          {[-1, 1].map((s) => (
+            <group key={`stand-${s}`}>
+              <mesh position={[s * 13.9, (1.2 + ARM_CENTRE_Y) / 2, 0]}>
+                <boxGeometry args={[0.7, ARM_CENTRE_Y - 1.2, 0.7]} />
+                <primitive object={matFor(0x39434b, { rough: 0.55 })} attach="material" />
+              </mesh>
+              <mesh position={[s * 13.45, ARM_CENTRE_Y, 0]}>
+                <boxGeometry args={[1.6, 0.45, 0.7]} />
+                <primitive object={matFor(0x39434b, { rough: 0.55 })} attach="material" />
+              </mesh>
+            </group>
+          ))}
+          {/* The FIXED FRAME, at the wider radius: the horizon
+              band, level — the rim of the visible sky — */}
+          <group position={[0, ARM_CENTRE_Y, 0]} ref={bandWrapRef("orrery/horizon")}>
+            <mesh rotation-x={-Math.PI / 2} {...hoverProps("orrery/horizon")}>
+              <ringGeometry args={[ARM_FIXED_R - ARM_BAND_W / 2, ARM_FIXED_R + ARM_BAND_W / 2, 96]} />
+              <primitive object={owned.get("orrery/horizon")[0].mat} attach="material" />
+            </mesh>
+          </group>
+          {/* — and the meridian band, standing through the
+              zenith in the front (YZ) plane, the noon line. */}
+          <group position={[0, ARM_CENTRE_Y, 0]} ref={bandWrapRef("orrery/meridian")}>
+            <mesh rotation-y={Math.PI / 2} {...hoverProps("orrery/meridian")}>
+              <ringGeometry args={[ARM_FIXED_R - ARM_BAND_W / 2, ARM_FIXED_R + ARM_BAND_W / 2, 96]} />
+              <primitive object={owned.get("orrery/meridian")[0].mat} attach="material" />
+            </mesh>
+          </group>
+          {/* The Earth ball at the centre — the dressing's
+              root: it reports "orrery", takes a card, and F
+              there is the root no-op, as with the sun. */}
+          <mesh position={[0, ARM_CENTRE_Y, 0]} {...hoverProps("orrery")}>
+            <sphereGeometry args={[ARM_EARTH_R, 26, 18]} />
+            <primitive object={owned.get("orrery")[0].mat} attach="material" />
+            {outlineBall("orrery", ARM_EARTH_R)}
+          </mesh>
+          {/* The CAGE, mounted with its polar axis tipped
+              23.4° toward +Z (the front), turning about that
+              axis once per sidereal day (the frame loop sets
+              the spin group's turn from cageAngleAt). */}
+          <group position={[0, ARM_CENTRE_Y, 0]} rotation-x={(EARTH_TILT_DEG * Math.PI) / 180}>
+            <group ref={cageRef}>
+              {/* The polar axis rod, through the Earth. */}
+              <mesh raycast={NO_RAYCAST}>
+                <cylinderGeometry args={[0.09, 0.09, ARM_R * 2, 8]} />
+                <primitive object={matFor(0x8a97a0, { rough: 0.45 })} attach="material" />
+              </mesh>
+              {/* The equator band and its 24 hour ticks. */}
+              <group ref={bandWrapRef("orrery/equator")}>
+                <mesh rotation-x={-Math.PI / 2} {...hoverProps("orrery/equator")}>
+                  <ringGeometry args={[ARM_R - ARM_BAND_W / 2, ARM_R + ARM_BAND_W / 2, 96]} />
+                  <primitive object={owned.get("orrery/equator")[0].mat} attach="material" />
+                </mesh>
+                {ticks ? <primitive object={ticks.equator} /> : null}
+              </group>
+              {/* The ecliptic: its wrapper (the band's own
+                  pivot) carries the tilt mount, the band, its
+                  12 sign ticks, and the sun bead's pivot — the
+                  nesting sunBeadPositionAt composes. */}
+              <group ref={bandWrapRef("orrery/ecliptic")}>
+                <group rotation-x={(EARTH_TILT_DEG * Math.PI) / 180}>
+                  <mesh rotation-x={-Math.PI / 2} {...hoverProps("orrery/ecliptic")}>
+                    <ringGeometry args={[ARM_R - ARM_BAND_W / 2, ARM_R + ARM_BAND_W / 2, 96]} />
+                    <primitive object={owned.get("orrery/ecliptic")[0].mat} attach="material" />
+                  </mesh>
+                  {ticks ? <primitive object={ticks.ecliptic} /> : null}
+                  <group ref={beadPivotRef}>
+                    <group ref={beadGroupRef} position={[ARM_R, 0, 0]}>
+                      <mesh {...hoverProps("orrery/sun")}>
+                        <sphereGeometry args={[ARM_BEAD_R, 18, 12]} />
+                        <primitive object={owned.get("orrery/sun")[0].mat} attach="material" />
+                        {outlineBall("orrery/sun", ARM_BEAD_R)}
+                      </mesh>
+                    </group>
+                  </group>
+                </group>
+              </group>
+            </group>
+          </group>
+        </>
+      )}
+    </group>
+  );
+}
+
 function NetLink({ ctx, conn, nodeId, index, count }) {
   const tube = useRef(null);
   const prevGeo = useRef(null);
@@ -4060,11 +4610,12 @@ const MINIATURES = {
   tangle: MiniTangle, horizon3d: MiniSkyline, horizonflat: MiniHorizonPanel,
   arch: MiniArch, definition: MiniDefinition, knot: MiniKnot, crystal: MiniCrystal,
   tree: MiniTree, book: MiniBook, devices: MiniDevices, mail: MiniMail,
+  orrery: MiniOrrery,
 };
 
 /* ---------- one citizen of the space ---------- */
 
-function SpaceObject({ def, ctx, lib, descentRootId, tangleDataset, bookStyle, bookAccess, bookSpread, mesaTerrace, mesaGap, subTransforms }) {
+function SpaceObject({ def, ctx, lib, descentRootId, tangleDataset, orreryDataset, bookStyle, bookAccess, bookSpread, mesaTerrace, mesaGap, subTransforms }) {
   const outer = useRef(null);
   const inner = useRef(null);
   const spin = useRef(null);
@@ -4163,6 +4714,7 @@ function SpaceObject({ def, ctx, lib, descentRootId, tangleDataset, bookStyle, b
         <group ref={spin}>
           <group position={[0, -(CENTRE_Y[def.id] || 0), 0]}>
             <Mini lib={lib} matFor={mats.matFor} ctx={ctx} descentRootId={descentRootId} tangleDataset={tangleDataset}
+              orreryDataset={orreryDataset}
               bookStyle={bookStyle} bookAccess={bookAccess} bookSpread={bookSpread}
               mesaTerrace={mesaTerrace} mesaGap={mesaGap} subTransforms={subTransforms} />
           </group>
@@ -6334,6 +6886,7 @@ export default function SpaceView(props) {
     bookStyle, bookAccess, bookSpread,
     mesaTerrace, mesaGap,
     tangleDataset,
+    orreryDataset, orrerySpeed, orreryPaused,
     viewName, snapOn, strata, layers,
     openApp, audio, tokenHoverId, appFocusId, regionHover,
     openMessage, web, webSectionHover, webLinkHover,
@@ -6355,6 +6908,7 @@ export default function SpaceView(props) {
     bookStyle, bookAccess, bookSpread,
     mesaTerrace, mesaGap,
     tangleDataset,
+    orreryDataset, orrerySpeed, orreryPaused,
     viewName, snapOn, strata, layers,
     openApp, audio, tokenHoverId, appFocusId, regionHover,
     openMessage, web, webSectionHover, webLinkHover,
@@ -6380,6 +6934,12 @@ export default function SpaceView(props) {
       branchWorld: new Map(), branchLocal: null, treeGroupRef: null,
       subLocal: new Map(), subWorld: new Map(), subGroupRefs: new Map(),
       devicesAnchors: null, netHubLocal: null,
+      // Slice 16: the orrery's model clock (days since J2000)
+      // and its live anchors — the planets move, so their
+      // anchors are republished every frame (the devices'
+      // hosts precedent), and the clock is read by the overlay
+      // card (the Moon's phase) and the App (the readout date).
+      orreryDays: 0, orreryAnchors: null,
       camera: null, worldGroup: null, turntabling: false, knotSpinRef: null,
       crystalCores: [], crystalFaces: null,
       ringAngle: 0, ringItemRefs: new Map(), tokenRefs: new Map(),
@@ -6645,7 +7205,7 @@ export default function SpaceView(props) {
         const nid = focSub ? focSub.partId : focBook || (hovSub ? hovSub.nodeId : null);
         const sw = oid && nid ? frame.subWorld.get(`${oid}:${nid}`) : null;
         const rootId = oid && st.descents ? displayRootOf(st.descents[oid], oid) : null;
-        const node = oid && nid ? subnodeById(oid, nid, rootId, st.tangleDataset) : null;
+        const node = oid && nid ? subnodeById(oid, nid, rootId, st.tangleDataset, st.orreryDataset) : null;
         if (oid && nid && sw && node) {
           const whole = subnodeRootOf(oid, rootId, st.tangleDataset);
           let lines = [
@@ -6732,6 +7292,86 @@ export default function SpaceView(props) {
                 `${mn.value} messages${mn.unread ? ` · ${mn.unread} unread` : ""}`,
                 mn.path.join(" › "),
               ];
+            }
+          }
+          if (oid === "orrery") {
+            // The orrery's cards speak in its own terms: a
+            // planet by its period, distance, size and moons;
+            // the sun as the system's centre; and in the
+            // Earth–Moon dressing, the Moon by its LIVE PHASE —
+            // name and lit fraction off the model clock this
+            // frame (frame.orreryDays), the geometry itself.
+            // In the ARMILLARY dressing each band's card teaches
+            // its job in one line, and the bead's card reads its
+            // live ecliptic longitude and the model date.
+            const days = frame.orreryDays || 0;
+            if (st.orreryDataset === "armillary") {
+              if (nid === "orrery/sun") {
+                lines = [
+                  "Sun",
+                  `ecliptic longitude ${eclipticLongitudeAt(days).toFixed(0)}° · ${modelDate(days)}`,
+                  "the bead rides the ecliptic band — set by the date, carried round by the cage",
+                ];
+              } else if (nid === "orrery/equator") {
+                lines = [
+                  "Celestial Equator",
+                  "the sky's equator, projected out from Earth's — the cage's turning band",
+                  "its 24 ticks are the hours: one turn per sidereal day",
+                ];
+              } else if (nid === "orrery/ecliptic") {
+                lines = [
+                  "Ecliptic",
+                  "the sun's road — tipped 23.4° against the equator band",
+                  "its 12 ticks are the signs, the months; the bead rides it, one circuit a year",
+                ];
+              } else if (nid === "orrery/meridian") {
+                lines = [
+                  "Meridian",
+                  "the fixed noon ring — through the zenith and both poles",
+                  "what crosses it stands at its highest; it never turns with the cage",
+                ];
+              } else if (nid === "orrery/horizon") {
+                lines = [
+                  "Horizon",
+                  "the fixed rim of the visible sky, level on its pillars",
+                  "what stands above it can be seen from Earth; below it, never",
+                ];
+              } else if (nid === "orrery") {
+                lines = [
+                  "Armillary Sphere",
+                  "the sky as it appears from Earth — the banded cage turns about the tilted polar axis",
+                  "fixed: horizon, meridian · turning: equator, ecliptic, the sun bead",
+                ];
+              }
+            } else if (nid === "orrery/earth/moon") {
+              const ph = moonPhaseAt(days);
+              lines = [
+                "Moon",
+                `phase ${ph.name} · ${(ph.fraction * 100).toFixed(0)}% lit`,
+                `period ${node.value} days · the phase is read off the sun marker's geometry, live`,
+              ];
+            } else if (nid === "orrery/earth") {
+              const earth = PLANETS.find((pl) => pl.slug === "earth");
+              lines = [
+                "Earth",
+                `the year ${earth ? earth.periodDays : 365.256} days · axis tilted ${EARTH_TILT_DEG}° · one moon`,
+                "the Earth–Moon system's centre — the Moon rides its ring",
+              ];
+            } else if (nid === "orrery") {
+              lines = [
+                "Sun",
+                "the system's centre — eight planets ride their rings around it",
+                "distances log-scaled · sizes exaggerated · periods exact",
+              ];
+            } else {
+              const p = PLANETS.find((pl) => `orrery/${pl.slug}` === nid);
+              if (p) {
+                lines = [
+                  p.name,
+                  `period ${p.periodDays} days · ${p.au} AU · ${p.radiusEarth} Earth radii`,
+                  `${p.moons} ${p.moons === 1 ? "moon" : "moons"} · axis tilt ${p.tiltDeg}°`,
+                ];
+              }
             }
           }
           // Slice 13-4 (item C): the card names a marked node —
@@ -7040,6 +7680,7 @@ export default function SpaceView(props) {
                 <SpaceObject key={def.id} def={def} ctx={ctx} lib={lib}
                   descentRootId={descents ? displayRootOf(descents[def.id], def.id) : null}
                   tangleDataset={tangleDataset}
+                  orreryDataset={orreryDataset}
                   bookStyle={bookStyle} bookAccess={bookAccess} bookSpread={bookSpread}
                   mesaTerrace={mesaTerrace} mesaGap={mesaGap} subTransforms={subTransforms} />
               ))}

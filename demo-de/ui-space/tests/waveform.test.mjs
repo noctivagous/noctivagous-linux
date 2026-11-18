@@ -233,24 +233,30 @@ test("the ring: two items, on the annulus, turning with the rotation", () => {
     "two items stand opposite");
 });
 
-test("labels: the ring items follow the fifteenth citizen; citizens stay fifteen", () => {
-  assert.equal(OBJECTS.length, 15);
+test("labels: the ring items follow the sixteenth citizen; citizens stay sixteen", () => {
+  // Slice 16: labels are positional (labelForIndex over the
+  // reading order), so appending the orrery as the sixteenth
+  // citizen gives IT the next letter, R, and the ring items
+  // and media cards — computed from OBJECTS.length — shift
+  // one letter later. No citizen before it changes letters.
+  assert.equal(OBJECTS.length, 16);
   assert.equal(labelForIndex(11), "N", "the twelfth citizen keeps its label");
   assert.equal(labelForIndex(12), "O", "the thirteenth citizen — the sample book — keeps its letter");
   assert.equal(labelForIndex(13), "P", "the fourteenth citizen — the devices — keeps its letter");
-  assert.equal(labelForIndex(14), "Q", "the fifteenth citizen — the mail — takes the next letter");
+  assert.equal(labelForIndex(14), "Q", "the fifteenth citizen — the mail — keeps its letter");
+  assert.equal(labelForIndex(15), "R", "the sixteenth citizen — the orrery — takes the next letter");
   const labeled = labeledRingItems();
   assert.equal(labeled.length, 2);
   assert.equal(labeled[0].item.id, "audio");
-  assert.equal(labeled[0].label, "R");
+  assert.equal(labeled[0].label, "S");
   assert.equal(labeled[1].item.id, "web");
-  assert.equal(labeled[1].label, "S");
-  assert.equal(ringItemForLabel("R").id, "audio");
-  assert.equal(ringItemForLabel("S").id, "web");
+  assert.equal(labeled[1].label, "T");
+  assert.equal(ringItemForLabel("S").id, "audio");
+  assert.equal(ringItemForLabel("T").id, "web");
   assert.equal(ringItemForLabel("A"), null);
-  // The media cards continue after the ring: they now start at T.
-  assert.equal(labelForMedia("media-1"), "T");
-  assert.equal(mediaForLabel("T").id, "media-1");
+  // The media cards continue after the ring: they now start at U.
+  assert.equal(labelForMedia("media-1"), "U");
+  assert.equal(mediaForLabel("U").id, "media-1");
 });
 
 test("the ring item is an instrument: addressable until its stratum locks or hides", () => {
