@@ -961,6 +961,48 @@ export const PLATTER_WELL_R = sphereCutRadius(
 /* ---------------- the citizens' sockets: the rule at citizen scale ---------------- */
 
 /**
+ * Height of each miniature's cable anchor / chip point, at
+ * scale 1 — and, through the Rig's citizen seat (ANCHOR_H ×
+ * 0.55 × scale), the height the entered camera LOOKS at. The
+ * entries sit near each miniature's full built height, so
+ * cables and chips clear the whole citizen in every dressing.
+ * (This table lived in SpaceView.jsx until the orrery fix: the
+ * orrery was never added to it there, ANCHOR_H.orrery read
+ * undefined, the seat's look target went NaN, and entering the
+ * orrery blanked the viewport. It lives here now, beside
+ * CENTRE_Y, so the pure tests can enumerate it against
+ * OBJECT_IDS — see citizen-registration.test.mjs.)
+ */
+export const ANCHOR_H = {
+  mesa: 16, drum: 24, tray: 10, cube: 36, tangle: 26,
+  horizon3d: 16, horizonflat: 28, arch: 32, definition: 18, knot: 26, crystal: 32,
+  tree: 30, book: 28, devices: 16, mail: 27,
+  orrery: 26, // the armillary dressing tops out at 25.9 (the meridian band), so 26 clears every dressing; the seat look (26 × 0.55 = 14.3) sits just above the cage centre (12.8) and CENTRE_Y (12.95) — entering looks at the cage's heart
+};
+
+/**
+ * Slice 11 (§11): each citizen's PLANE AXIS — the normal of the
+ * plane the miniature actually lies in, as built, about which
+ * B/N plane-rotate turns it (in its local frame, inside the
+ * tumble). Most citizens are XZ-plane shapes (normal = local Y):
+ * discs, trays, towers, the knot (its torus axis maps to Y), the
+ * arch (a cylinder segment about the Y axis — its circle is XZ),
+ * the tangle (horizontal level sheets on an XZ base), the crystal
+ * (equator in XZ) and the tree (XZ footprint, growing +Y). Two
+ * stand in XY (normal = local Z): the flat horizon panel, and
+ * the definition — its node slabs face +Z, thin in z, spread in
+ * x and y like the canvas they miniaturise. (Moved here with
+ * ANCHOR_H, for the same enumeration reason.)
+ */
+export const PLANE_AXIS = {
+  mesa: "y", drum: "y", tray: "y", cube: "y", tangle: "y",
+  horizon3d: "y", horizonflat: "z", arch: "y", definition: "z",
+  knot: "y", crystal: "y", tree: "y", book: "y", devices: "y",
+  mail: "z", // the cabinet's broad face stands in XY, like the flat horizon's panel
+  orrery: "y", // all three dressings lie in the XZ plot plane, like the other disc citizens
+};
+
+/**
  * Slice 11 (§5): the ROTATION PIVOT of each citizen — the centre
  * of its local 3D bounds, as built. The citizen's rotation group
  * sits at (0, CENTRE_Y, 0) with the content offset by −CENTRE_Y
@@ -1651,7 +1693,7 @@ export function resolveViewTarget({ view = null, enteredId = null } = {}) {
  * variants of the one citizen seat. `base` is the citizen's
  * world base [x, y, z]; `offsets` are citizenSeatOffsets(scale,
  * mul) (radial + up); `anchorY` is the look height the entered
- * card's seat uses (ANCHOR_H × 0.55 × scale, the View's table).
+ * card's seat uses (ANCHOR_H × 0.55 × scale, the table above).
  * FRONT is the entered seat itself — out along the citizen's
  * radial, raised, looking at the anchor height — the same
  * composition the Rig's card branch makes, so FRONT while

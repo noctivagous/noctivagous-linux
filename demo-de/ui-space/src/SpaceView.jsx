@@ -57,6 +57,8 @@ import {
   PROTECTIVE_CLEARANCE,
   PROTECTIVE_R,
   CENTRE_Y,
+  ANCHOR_H,
+  PLANE_AXIS,
   placeInfoCard,
   socketCircles,
   clampGround,
@@ -170,36 +172,19 @@ export const COMPASS = [
   { t: "E", x: PLATTER_R - 17, z: 0 },
 ];
 
-/** Height of each miniature's cable anchor / chip point, at scale 1. */
-export const ANCHOR_H = {
-  mesa: 16, drum: 24, tray: 10, cube: 36, tangle: 26,
-  horizon3d: 16, horizonflat: 28, arch: 32, definition: 18, knot: 26, crystal: 32,
-  tree: 30, book: 28, devices: 16, mail: 27,
-};
+/* ANCHOR_H (each miniature's cable anchor / chip height, and
+   the entered seat's look height through × 0.55) and PLANE_AXIS
+   (each citizen's plane normal for B/N) live in space-state.js,
+   beside CENTRE_Y, so the pure tests can enumerate them against
+   OBJECT_IDS; they are imported above. They lived here until
+   the orrery fix — the orrery was missing from both, and its
+   NaN seat look blanked the viewport on entry. The re-export
+   below preserves this module's historical surface. */
+export { ANCHOR_H, PLANE_AXIS } from "./space-state.js";
 
 /* CENTRE_Y — each citizen's rotation pivot, the midpoint of
    its built height range — lives in space-state.js, beside the
    socket table that consumes it; it is imported above. */
-
-/**
- * Slice 11 (§11): each citizen's PLANE AXIS — the normal of the
- * plane the miniature actually lies in, as built, about which
- * B/N plane-rotate turns it (in its local frame, inside the
- * tumble). Most citizens are XZ-plane shapes (normal = local Y):
- * discs, trays, towers, the knot (its torus axis maps to Y), the
- * arch (a cylinder segment about the Y axis — its circle is XZ),
- * the tangle (horizontal level sheets on an XZ base), the crystal
- * (equator in XZ) and the tree (XZ footprint, growing +Y). Two
- * stand in XY (normal = local Z): the flat horizon panel, and
- * the definition — its node slabs face +Z, thin in z, spread in
- * x and y like the canvas they miniaturise.
- */
-export const PLANE_AXIS = {
-  mesa: "y", drum: "y", tray: "y", cube: "y", tangle: "y",
-  horizon3d: "y", horizonflat: "z", arch: "y", definition: "z",
-  knot: "y", crystal: "y", tree: "y", book: "y", devices: "y",
-  mail: "z", // the cabinet's broad face stands in XY, like the flat horizon's panel
-};
 
 const DEG = Math.PI / 180;
 const easeOut = (t) => 1 - Math.pow(1 - t, 3);
