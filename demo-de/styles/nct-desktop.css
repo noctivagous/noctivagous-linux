@@ -209,7 +209,9 @@ input[type=range].sys::-moz-range-thumb{width:13px;height:19px;background:#2c2c2
 /* app internals */
 .toolbar{display:flex;gap:6px;align-items:center;padding:0 0 10px;flex-wrap:wrap}
 .toolbar .sp{flex:1}
+.files-app{display:flex;flex-direction:column;height:100%}
 .files-grid{display:grid;grid-template-columns:158px 1fr;gap:10px;min-height:220px}
+.files-app .files-grid{flex:1;min-height:0}
 .tree{background:#101010;border:1px solid #000;border-radius:4px;padding:6px;box-shadow:inset 0 1px 3px rgba(0,0,0,.6);overflow:auto}
 .tree button{display:flex;width:100%;gap:7px;align-items:center;background:none;border:none;color:#b9b9b9;padding:7px 7px;min-height:34px;cursor:pointer;font-size:12.5px;border-radius:3px;text-align:left}
 .tree button:hover{background:#1e1e1e;color:#fff}
@@ -260,7 +262,7 @@ textarea.notes{width:100%;min-height:210px;resize:vertical;line-height:1.6;font-
   .icons.right{display:none}
   .ws-ind{display:none}
   .frow{grid-template-columns:1fr}.frow label{text-align:left}
-  .files-grid{grid-template-columns:1fr}
+  .files-grid{grid-template-columns:1fr;grid-template-rows:auto 1fr}
   .tree{display:flex;flex-wrap:wrap}.tree button{width:auto}
   .login-wrap{justify-content:flex-start;padding-top:26px}
   .top-right .hidem{display:none}

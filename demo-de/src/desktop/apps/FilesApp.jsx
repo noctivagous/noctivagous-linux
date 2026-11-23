@@ -17,7 +17,7 @@ export default function FilesApp() {
   }), []);
   const rows = FILEDATA[folder];
   return (
-    <>
+    <div className="files-app">
       <div className="toolbar">
         <button className="btn sm">New</button>
         <button className="btn sm">Open</button>
@@ -53,6 +53,6 @@ export default function FilesApp() {
         left={<span style={{ border: "none", padding: 0 }}>{folder} — {rows.length} items</span>}
         right="100%"
       />
-    </>
+    </div>
   );
 }
