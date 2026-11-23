@@ -1,13 +1,180 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>demo-de — Flat Space · the 2D environment view</title>
-    <meta name="description" content="The 2D environment view of noctivagous-linux: stationary panels and key-click frames — Home, Files treemap, horizon Monitor, Sunburst, Mail. Type a label, press F to click." />
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/flat-main.jsx"></script>
-  </body>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="data:,">
+<title>NOCTIVAGOUS — Desktop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles/nct-desktop.css">
+<link rel="stylesheet" href="styles/keyclicks.css">
+</head>
+<body>
+<!-- ================= LOGIN ================= -->
+<section class="screen on" id="loginScreen">
+  <div class="wall" id="loginWall" data-w="0"><div class="wall-mark">N</div><div class="reg tl"></div><div class="reg tr"></div><div class="reg bl"></div><div class="reg br"></div>
+    <div class="wall-coords">SYS / SESSION MANAGER<br>LAT 00.0000 · LON 00.0000<br>DISPLAY :0 · VT7</div>
+  </div>
+  <div id="brightVeilLogin" style="position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;z-index:40"></div>
+  <header class="topbar">
+    <div class="wordmark"><span class="sq"></span>NOCTIVAGOUS <small id="verTop">OS 4.2 · KERNEL 6.8-NCT</small></div>
+    <div class="top-right">
+      <span class="stat hidem"><span class="led"></span><span id="loginNet">ETH0 · LINK</span></span>
+      <span class="stat hidem" id="loginVolStat">VOL 62%</span>
+      <span class="stat"><span id="loginDateTop">—</span></span>
+      <span class="stat" id="loginClockTop" style="font-weight:700;color:#eee">--:--:--</span>
+      <button class="iconbtn" id="loginPowerBtn" aria-label="Power options" title="Power"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3v8M6.3 6.5a8 8 0 1 0 11.4 0"/></svg></button>
+    </div>
+  </header>
+
+  <div class="login-wrap">
+    <div class="login-clock">
+      <div class="time" id="bigClock">--:--</div>
+      <div class="date" id="bigDate">—</div>
+      <div class="sessline" id="sessLine">SESSION · FLAT SPACE &nbsp;/&nbsp; DISPLAY :0</div>
+    </div>
+
+    <div class="nwin login-win" id="loginWin">
+      <div class="titlebar" style="cursor:default">
+        <span class="tid">WIN · 001</span><span class="tt" id="loginTitle">Login — Session Manager</span>
+        <span class="wctl"><button class="wbtn close" id="loginCloseX" aria-label="Close">✕</button></span>
+      </div>
+      <div class="wbody">
+        <div class="avatar-row">
+          <div class="avatar" id="loginAvatar">N</div>
+          <div class="who" id="loginWho">Noctivagous</div>
+          <div class="role" id="loginRole">Administrator · Local account</div>
+        </div>
+        <div class="err" id="loginErr" role="alert"></div>
+        <form id="loginForm" autocomplete="off">
+          <div class="frow"><label for="userField">Username</label><input class="tinput" id="userField" value="noctivagous" spellcheck="false"></div>
+          <div class="frow"><label for="passField">Password</label>
+            <div class="pwwrap"><input class="tinput" id="passField" type="password" placeholder="Password" autocomplete="current-password">
+            <button type="button" class="iconbtn eye" id="eyeBtn" aria-label="Show password" title="Show / hide password"><svg class="ic" viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.6"/></svg></button></div>
+          </div>
+          <div class="frow" id="sessionRow"><label>Session</label>
+            <div class="seg" id="sessionSeg" role="group" aria-label="Session">
+              <button type="button" class="sel" data-sess="Flat Space">FLAT SPACE</button>
+              <button type="button" data-sess="ZUI Plane">ZUI PLANE</button>
+              <button type="button" data-sess="ZUI Spatial">ZUI SPATIAL</button>
+            </div>
+          </div>
+          <div class="frow"><label for="langSel">Language</label>
+            <div class="selwrap"><select class="tinput" id="langSel"><option>English (US)</option><option>English (UK)</option><option>Deutsch</option><option>Français</option><option>日本語</option><option>中文 (简体)</option></select></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0 10px">
+            <label class="chk" style="padding:2px"><input type="checkbox" id="rememberChk"> Remember me</label>
+            <span style="flex:1"></span>
+            <span class="indicators"><span class="ind" id="capsInd">CAPS</span><span class="ind on" id="numInd">NUM</span></span>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button type="button" class="btn" id="cancelBtn">Cancel</button>
+            <button type="submit" class="btn primary" id="loginBtn" style="min-width:118px">Log In →</button>
+          </div>
+        </form>
+        <div id="bootArea" style="display:none">
+          <div class="cap" style="margin-bottom:7px">Loading session…</div>
+          <div class="indet"><i></i></div>
+          <div class="bootlog show" id="bootLog"></div>
+        </div>
+        <p class="hint" id="loginHint">Any password works in this demo — try 'guest' via Guest user.</p>
+      </div>
+      <div class="wstatus"><span id="loginStatus">READY</span><span class="grow" id="loginStatusR">GREETER 2.4 · X11</span></div>
+    </div>
+
+    <div class="userrow" id="userRow" aria-label="Switch user">
+      <button class="userchip sel" data-user="noctivagous" data-init="N" data-role="Administrator · Local account"><span class="av2">N</span><span>Noctivagous</span></button>
+      <button class="userchip" data-user="guest" data-init="G" data-role="Guest · Limited session"><span class="av2">G</span><span>Guest</span></button>
+      <button class="userchip" data-user="" data-init="+" data-role="Other account"><span class="av2">+</span><span>Other…</span></button>
+    </div>
+  </div>
+
+  <footer class="login-bottom">
+    <button class="btn sm" id="a11yBtn"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6"/><path d="M4 9.5c5.3 1.2 10.7 1.2 16 0M12 11v4l-3 6M12 15l3 6"/></svg> Accessibility</button>
+    <span class="kbd hidem" id="kbdLabel">KB · US &nbsp;·&nbsp; ⌨ EN-US</span>
+    <span class="sp"></span>
+    <button class="btn sm" id="restartBtn">↻ Restart</button>
+    <button class="btn sm danger" id="shutdownBtn"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3v8M6.3 6.5a8 8 0 1 0 11.4 0"/></svg> Shut Down</button>
+  </footer>
+</section>
+
+<!-- ================= DESKTOP ================= -->
+<section class="screen" id="desktopScreen">
+  <div class="wall" id="deskWall" data-w="0"><div class="wall-mark">N</div><div class="reg tl"></div><div class="reg tr"></div><div class="reg bl"></div><div class="reg br"></div>
+    <div class="wall-coords" id="deskCoords">WORKSPACE 01 / 04<br>GRID 44PX · ORIGIN 0,0</div>
+  </div>
+  <div id="brightVeil"></div>
+
+  <header class="sysbar">
+    <div class="menuwrap">
+      <button class="menubtn sys" id="sysMenuBtn"><span class="sq" style="width:8px;height:8px;background:var(--green);display:inline-block"></span> NOCTIVAGOUS ▾</button>
+      <div class="dropdown" id="sysMenu">
+        <button data-act="about">◈ &nbsp;About This System</button>
+        <button data-act="settings">⚙ &nbsp;Settings… <span class="k">Ctrl+,</span></button>
+        <button data-act="monitor">▤ &nbsp;System Monitor</button>
+        <div class="sep"></div>
+        <button data-act="lock">▣ &nbsp;Lock Screen <span class="k">Ctrl+L</span></button>
+        <button data-act="logout">⏻ &nbsp;Log Out…</button>
+      </div>
+    </div>
+    <nav id="appMenus" style="display:flex;gap:2px"></nav>
+    <div class="ws-ind"><span class="led"></span><span id="wsLabel">Workspace 01 — Flat Space</span></div>
+    <div class="top-right">
+      <span class="stat hidem" title="Network"><svg class="ic" viewBox="0 0 24 24"><path d="M3 10a13 13 0 0 1 18 0M6 13.5a8.5 8.5 0 0 1 12 0M9 17a4 4 0 0 1 6 0"/><circle cx="12" cy="20" r=".6" fill="currentColor"/></svg><span id="netStat">ETH0</span></span>
+      <span class="stat hidem" title="Volume"><svg class="ic" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4ZM16 9a4.5 4.5 0 0 1 0 6"/></svg><span id="volStat">62%</span></span>
+      <span class="stat hidem" title="Battery"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="8" width="15" height="8"/><path d="M21 11v2M6 11v2M9 11v2"/></svg><span id="battStat">87%</span></span>
+      <span class="stat" id="deskClock" style="font-weight:700;color:#eee">--:--</span>
+      <button class="iconbtn" id="deskPowerBtn" aria-label="Session menu" title="Session"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3v8M6.3 6.5a8 8 0 1 0 11.4 0"/></svg></button>
+    </div>
+  </header>
+
+  <div class="desk-area" id="deskArea">
+    <div class="icons" id="iconGrid"></div>
+    <div class="icons right" id="iconGridR"></div>
+    <div class="widgets">
+      <div class="widget"><div class="cap" style="margin-bottom:6px">Local time · <span style="color:#5c5c5c">W-01</span></div><div class="wtime" id="widgetClock">--:--</div><div class="wdate" id="widgetDate">—</div></div>
+      <div class="widget"><div class="cap" style="margin-bottom:7px">System load · <span style="color:#5c5c5c">W-02</span></div>
+        <div class="wmrow"><span>CPU</span><div class="meter"><i id="wCpu" style="width:34%"></i></div><b id="wCpuV">34%</b></div>
+        <div class="wmrow"><span>MEM</span><div class="meter blue"><i id="wMem" style="width:52%"></i></div><b id="wMemV">52%</b></div>
+        <div class="wmrow"><span>NET</span><div class="meter amber"><i id="wNet" style="width:21%"></i></div><b id="wNetV">21%</b></div>
+      </div>
+    </div>
+    <div id="winLayer" style="position:absolute;inset:0"></div>
+  </div>
+
+  <div class="launcher" id="launcher">
+    <div class="lhead"><div class="avatar sm" id="launchAv">N</div><div><div style="font-family:var(--font-d);font-weight:600;letter-spacing:.1em;color:#eee" id="launchUser">NOCTIVAGOUS</div><div class="mono" style="font-size:10px;color:#777;letter-spacing:.1em" id="launchSess">FLAT SPACE · :0</div></div></div>
+    <div id="launcherApps"></div>
+    <div class="hairline"></div>
+    <div style="display:flex;gap:6px"><button class="btn sm" style="flex:1" data-lact="lock">Lock</button><button class="btn sm" style="flex:1" data-lact="logout">Log Out</button><button class="btn sm danger" style="flex:1" data-lact="shutdown">Shut Down</button></div>
+  </div>
+
+  <footer class="dock">
+    <button class="startbtn" id="startBtn">▦ &nbsp;START</button>
+    <div class="tasks" id="taskBar"></div>
+    <button class="btn sm" id="showDeskBtn" title="Show desktop">Desktop</button>
+    <div class="dock-clock"><div id="dockClock">--:--:--</div><div id="dockDate" style="color:#777;font-size:10px">—</div></div>
+  </footer>
+</section>
+
+<!-- overlays -->
+<div class="overlay" id="restartOverlay"><div class="big">Restarting…</div><div class="indet" style="width:220px"><i></i></div><div class="mono" style="font-size:11px">Stopping session · unmounting /home</div></div>
+<div class="overlay" id="powerOverlay"><div style="font-size:34px;color:#333">⏻</div><div class="big" style="color:#555">Powered off</div><button class="btn primary" id="powerOnBtn" style="min-width:150px">Power on</button></div>
+<div class="ctxmenu" id="ctxMenu">
+  <button data-c="wallpaper">▦ &nbsp;Change Wallpaper</button>
+  <button data-c="terminal">▸ &nbsp;Open Terminal</button>
+  <button data-c="settings">⚙ &nbsp;Settings…</button>
+  <button data-c="monitor">▤ &nbsp;System Monitor</button>
+  <div style="height:1px;background:var(--hair);margin:4px 6px"></div>
+  <button data-c="lock">▣ &nbsp;Lock Screen</button>
+  <button data-c="logout">⏻ &nbsp;Log Out</button>
+  <div style="padding:7px 9px 3px"><button class="btn sm" style="width:100%" id="ctxAltBtn">Open menu (touch alternative)</button></div>
+</div>
+<div id="toast" style="position:fixed;right:14px;bottom:60px;z-index:800;background:linear-gradient(180deg,#2a2a2a,#161616);border:1px solid #000;box-shadow:6px 8px 18px rgba(0,0,0,.7);border-radius:5px;padding:10px 13px;font-family:var(--font-m);font-size:11.5px;color:#ddd;display:none;max-width:min(320px,90vw)"></div>
+<script src="scripts/nct-desktop.js"></script>
+<script src="scripts/nct-keyclicks.js"></script>
+</body>
 </html>

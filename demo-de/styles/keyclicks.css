@@ -1,0 +1,200 @@
+/* NCT Desktop — key-clicks styling.
+   KeyPilot's colour language, in the NCT system: green outline = the
+   thing under the cursor can be clicked (F), orange = a text field
+   (clicking it enters text mode), a filled chip = a letter label
+   (Alt+L), and an orange frame around the screen while in text mode. */
+
+/* Hovered addressee — green (clickable) / orange (text field) */
+.kc-hover {
+  outline: 2px solid #5cb85c !important;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7), 0 0 10px rgba(92, 184, 92, 0.45) !important;
+}
+.kc-hover-text {
+  outline: 2px solid #e8912d !important;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7), 0 0 10px rgba(232, 145, 45, 0.4) !important;
+}
+
+/* Targeted thing (Tab stepping or a resolved label) */
+.kc-target {
+  outline: 2px solid #81d4fa !important;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7), 0 0 12px rgba(79, 195, 247, 0.5) !important;
+}
+
+/* Text mode: the screen wears the orange overlay frame */
+body.kc-textmode .screen.on {
+  box-shadow: inset 0 0 0 3px rgba(232, 145, 45, 0.85);
+}
+
+/* Letter labels (Alt+L) */
+.kc-chip {
+  position: fixed;
+  z-index: 9990;
+  min-width: 17px;
+  padding: 1px 4px;
+  text-align: center;
+  font-family: var(--font-m, "JetBrains Mono", monospace);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #0a0f0a;
+  background: linear-gradient(180deg, #7ed67e, #5cb85c);
+  border: 1px solid #000;
+  border-radius: 3px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  pointer-events: none;
+  user-select: none;
+}
+.kc-chip.dim { opacity: 0.25; }
+.kc-chip.hit { background: linear-gradient(180deg, #baf0ba, #7ed67e); }
+
+/* Mode HUD — bottom-left, mono, in the system style */
+#kcHud {
+  position: fixed;
+  left: 10px;
+  bottom: 10px;
+  z-index: 9995;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 20px);
+  padding: 5px 10px;
+  font-family: var(--font-m, "JetBrains Mono", monospace);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  color: #a5a5a5;
+  background: linear-gradient(180deg, rgba(42, 42, 42, 0.94), rgba(18, 18, 18, 0.94));
+  border: 1px solid #000;
+  border-radius: 5px;
+  box-shadow: 3px 3px 5px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(80, 80, 80, 0.8);
+  pointer-events: none;
+  user-select: none;
+}
+#kcHud .kc-mode { color: #66ff66; font-weight: 700; }
+#kcHud.text .kc-mode { color: #e8912d; }
+#kcHud .kc-target { color: #d8d8d8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+#kcHud .kc-buffer { color: #81d4fa; font-weight: 700; }
+#kcHud .kc-hints { color: #636363; }
+#kcHud.kc-deny { animation: kc-shake 0.22s ease; }
+@keyframes kc-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+@media (max-width: 900px) {
+  #kcHud .kc-hints { display: none; }
+}
+
+/* Keyboard panel (Alt+K) — sparse bindings for the current scope */
+#kcPanel {
+  position: fixed;
+  right: 10px;
+  bottom: 10px;
+  z-index: 9995;
+  width: 620px;
+  max-width: calc(100vw - 20px);
+  max-height: 60vh;
+  overflow: auto;
+  padding: 8px 10px;
+  font-family: var(--font-m, "JetBrains Mono", monospace);
+  font-size: 10.5px;
+  color: #a5a5a5;
+  background: linear-gradient(180deg, rgba(35, 35, 35, 0.97), rgba(15, 15, 15, 0.97));
+  border: 1px solid #000;
+  border-radius: 6px;
+  box-shadow: 4px 4px 8px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(80, 80, 80, 0.8);
+  user-select: none;
+}
+#kcPanel .kc-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #747474;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+#kcPanel .kc-collapse {
+  flex: none;
+  width: 22px;
+  height: 20px;
+  color: #a5a5a5;
+  background: linear-gradient(145deg, #1f1f1f, #121212);
+  border: 1px solid #000;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 rgba(80, 80, 80, 0.8);
+  cursor: pointer;
+}
+
+/* The collapsed keyboard: a slim edge tab, present but out of the way */
+#kcTab {
+  position: fixed;
+  right: 0;
+  bottom: 64px;
+  z-index: 9994;
+  padding: 8px 4px;
+  writing-mode: vertical-rl;
+  font-family: var(--font-m, "JetBrains Mono", monospace);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: #8a8a8a;
+  background: linear-gradient(270deg, rgba(42, 42, 42, 0.95), rgba(18, 18, 18, 0.95));
+  border: 1px solid #000;
+  border-right: none;
+  border-radius: 5px 0 0 5px;
+  box-shadow: -2px 2px 5px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(80, 80, 80, 0.8);
+  cursor: pointer;
+  user-select: none;
+}
+#kcTab:hover { color: #e8e8e8; }
+#kcTab.open { color: #66ff66; }
+#kcPanel .kc-krow { display: flex; gap: 4px; margin-bottom: 4px; }
+#kcPanel .kc-cap {
+  height: 42px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 2px 1px;
+  font-family: inherit;
+  color: #636363;
+  background: linear-gradient(145deg, #1f1f1f, #121212);
+  border: 1px solid #000;
+  border-radius: 4px;
+  box-shadow: inset 0 1px 0 rgba(80, 80, 80, 0.8), 0 1px 2px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+#kcPanel .kc-cap .g { font-size: 11px; line-height: 1.1; }
+#kcPanel .kc-cap .n { font-size: 7.5px; letter-spacing: 0.04em; text-align: center; line-height: 1.15; color: #66ff66; font-weight: 700; }
+#kcPanel .kc-cap.bound { color: #e8e8e8; border-color: rgba(92, 184, 92, 0.55); background: linear-gradient(145deg, #243024, #131a13); }
+#kcPanel .kc-cap:hover { background: linear-gradient(145deg, #404040, #303030); color: #fff; }
+#kcPanel .kc-cap:active { background: linear-gradient(145deg, #151515, #0a0a0a); }
+
+/* F-click ripple at the cursor */
+.kc-ripple {
+  position: fixed;
+  z-index: 9989;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border: 2px solid rgba(92, 184, 92, 0.9);
+  border-radius: 50%;
+  pointer-events: none;
+  transition: all 0.45s ease-out;
+}
+.kc-ripple.go { width: 84px; height: 84px; margin: -42px 0 0 -42px; opacity: 0; }
+
+/* Window held by drag-lock */
+.nwin.kc-dragging {
+  outline: 2px solid #5cb85c;
+  outline-offset: 1px;
+  opacity: 0.96;
+}

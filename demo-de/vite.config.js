@@ -4,13 +4,21 @@ import { fileURLToPath } from 'node:url';
 
 // demo-de is a multi-page lab served by ONE Vite server:
 //
-//  - index.html      — FLAT SPACE, the 2D environment view
-//                      (src/flat-main.jsx): stationary panels + key-click
-//                      frames. The original vanilla key-clicks demo that
-//                      used to live here moved, untouched, to
-//                      index_fragment.html (sim.js / style.css) — a
-//                      source file the dev server serves as a plain
-//                      page, not a build input.
+//  - index.html      — NCT DESKTOP, the demo environment root:
+//                      login screen + desktop (windows, terminal,
+//                      settings, monitor). Plain static page —
+//                      styles/nct-desktop.css + scripts/nct-desktop.js,
+//                      no framework. Deliberately NOT a Vite build
+//                      input, so builds never overwrite it; the dev
+//                      server serves it as a plain page at `/`.
+//  - index-demo-paramorphic-1.html — FLAT SPACE, the 2D environment
+//                      view (src/flat-main.jsx): stationary panels +
+//                      key-click frames, built from
+//                      paramorphic-components. This was the root
+//                      index.html until the NCT Desktop took the root;
+//                      it stays a build input under its new name. The
+//                      original vanilla key-clicks demo lives at
+//                      index_fragment.html (sim.js / style.css).
 //  - react.html      — the React shell (src/main.jsx): grid-systems
 //                      foundation + the panelization view.
 //  - definition.html — the Grasshopper-style definition strip
@@ -25,7 +33,7 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        flatSpace: fileURLToPath(new URL('./index-demo-paramorphic-1.html', import.meta.url)),
         react: fileURLToPath(new URL('./react.html', import.meta.url)),
         definition: fileURLToPath(new URL('./definition.html', import.meta.url)),
         tangled: fileURLToPath(new URL('./tangled.html', import.meta.url)),
