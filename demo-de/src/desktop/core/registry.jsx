@@ -25,6 +25,7 @@ export const ICONS = {
   trash: '<svg class="ic" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5"/></svg>',
   info: '<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.1"/></svg>',
   file: '<svg class="ic" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v4h4"/></svg>',
+  graph: '<svg class="ic" viewBox="0 0 24 24"><path d="M12 5v4M12 9l-5.5 5M12 9l5.5 5M7 16.5 5 19M17 16.5 19 19"/><circle cx="12" cy="4" r="1.8"/><circle cx="5.5" cy="15.5" r="1.8"/><circle cx="18.5" cy="15.5" r="1.8"/><circle cx="4" cy="20" r="1.4"/><circle cx="20" cy="20" r="1.4"/></svg>',
 };
 
 export function Icon({ name }) {

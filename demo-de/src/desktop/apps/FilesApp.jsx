@@ -2,13 +2,9 @@ import { useState } from "react";
 import { useSlice } from "../core/react.js";
 import { Icon } from "../core/registry.jsx";
 import { StatusBar } from "./shared.jsx";
+import { FILEDATA } from "../services/fs.js";
 
-export const FILEDATA = {
-  Home: [["Documents", "—", "Folder"], ["Projects", "—", "Folder"], ["Pictures", "—", "Folder"], ["notes.txt", "2 KB", "Text"], [".profile", "1 KB", "Config"]],
-  Documents: [["report-q3.txt", "18 KB", "Text"], ["budget.csv", "44 KB", "Sheet"], ["letter.txt", "3 KB", "Text"], ["archive", "—", "Folder"]],
-  Projects: [["demo-de", "—", "Folder"], ["nct-ui", "—", "Folder"], ["whirlivector", "—", "Folder"], ["README.md", "6 KB", "Markdown"]],
-  Pictures: [["wall-01.png", "1.2 MB", "Image"], ["wall-02.png", "980 KB", "Image"], ["capture.png", "2.4 MB", "Image"]],
-};
+export { FILEDATA };
 
 export default function FilesApp() {
   const session = useSlice("session");

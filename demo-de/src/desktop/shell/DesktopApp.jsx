@@ -12,7 +12,7 @@
 import { useEffect, useState } from "react";
 import { store, useSlice } from "../core/react.js";
 import { bus } from "../core/bus.js";
-import { openWindow, moveWindow } from "../core/windows.js";
+import { openWindow, moveWindow, setVShade } from "../core/windows.js";
 import { lockScreen, logOut } from "./sessionActions.js";
 import { startKeyClicks } from "../../keyclicks/index.js";
 import Login from "./Login.jsx";
@@ -59,6 +59,11 @@ export default function DesktopApp() {
       store.set("ui", { dragLock: e.detail || null });
     }
     document.addEventListener("nct:winlock", onWinLock);
+    function onVShade(e) {
+      const d = e.detail || {};
+      if (d.id) setVShade(d.id, d.on);
+    }
+    document.addEventListener("nct:vshade", onVShade);
     return () => {
       offToast();
       offOpen();
@@ -68,6 +73,7 @@ export default function DesktopApp() {
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("nct:winmove", onWinMove);
       document.removeEventListener("nct:winlock", onWinLock);
+      document.removeEventListener("nct:vshade", onVShade);
     };
   }, []);
 

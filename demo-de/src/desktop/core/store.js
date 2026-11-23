@@ -38,6 +38,7 @@ const initialState = {
     toast: null, // {msg, at}
     battery: 87,
     dragLock: null,
+    layer: null, // desktop-layer app id ('navgraph') or null
   },
 };
 

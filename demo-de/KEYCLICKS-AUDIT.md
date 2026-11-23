@@ -109,3 +109,47 @@ Five behaviours added, each placed by the same rules:
   the fragments) is now actually emitted, and the HUD markup was
   aligned to the stylesheet's class names (`kc-mode` /
   `kc-target` / `kc-hints`).
+
+## Round 3 (2026-11-23)
+
+- **R = collapse + drag-lock in one press**: E's collapse-at-cursor,
+  then the lock engages on the next frame; a second R drops it.
+  Board cap: COLLAPSE+DRAG.
+- **T = vertical titlebar**: the window collapses to a 30px bar on
+  its left edge, as tall as the full window (content + titlebar);
+  the record keeps its w/h, so **E restores it exactly**. The state
+  crosses the bridge as `nct:vshade` and lives in the store as
+  `rec.vshaded`. Board cap: VERTICAL.
+- **Resizable windows**: eight handles per window, all *inside* the
+  border box (an earlier outside placement silently intercepted
+  clicks meant for neighbours). Size is store-owned
+  (`resizeWindow`, min 280×150), so it persists across re-renders.
+- **Space locks from anywhere in the window**, not just the
+  titlebar; the login window stays excluded.
+- **F is a genuine click everywhere**: on a control it clicks the
+  control (a `label` resolves to the control it wraps — Settings
+  checkboxes and radios included); on empty desktop it dispatches
+  the full mouse sequence at the cursor point, so the shell's own
+  outside-click handling runs — an open menu closes under F just
+  as it does under the mouse. F and Enter also fall back to the
+  element at the cursor point when nothing is hovered or targeted,
+  which is what lets F on the Terminal's output area refocus its
+  input and re-enter text mode after Esc (KeyPilot's behaviour for
+  any text entry area). The terminal input carries no `type`
+  attribute, so the engine picks the body's first genuine
+  text-entry control rather than matching a type selector.
+- **A closes an open system menu before it closes a window.**
+  Menu dismissal clicks are dispatched on `document.body` — a
+  click targeted at `document` itself has no `closest()`, and the
+  shell's menu handler silently died on it.
+- **Hover re-aims**: moving onto a different element clears a
+  stale Tab/label target, so F acts on what is under the cursor,
+  not on what was targeted earlier.
+- **The drag-lock reticle keeps following the cursor** while
+  locked (it still turns square for a window, bar for a range) —
+  the move handler returned early on the lock before repositioning
+  it.
+- **Single-click desktop icons** (and a single F), fast
+  collapse/expand/close transitions (~120ms), the HUD hint line
+  wears `kbd` chips like the board's caps, and the collapsed
+  KEYBOARD tab now docks on the **left** edge.

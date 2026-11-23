@@ -6,6 +6,8 @@ import { openWindow, focusWindow, minimizeWindow, showDesktop } from "../core/wi
 import { setSetting } from "../core/react.js";
 import { lockScreen, logOut } from "./sessionActions.js";
 import Window from "./Window.jsx";
+import NavGraphLayer from "./NavGraphLayer.jsx";
+import { toggleLayer } from "../core/layers.js";
 import { useNow, hms, hm, fullDate, pad } from "./useNow.js";
 
 const MENUS = {
@@ -57,9 +59,7 @@ export default function Desktop({ onShutdown }) {
 
   function iconClick(id) {
     setSelIcon(id);
-    const t = Date.now();
-    if (t - (lastIconClick.current[id] || 0) < 420 || window.innerWidth < 760) openWindow(id);
-    lastIconClick.current[id] = t;
+    openWindow(id);
   }
 
   return (
@@ -135,11 +135,24 @@ export default function Desktop({ onShutdown }) {
           setCtx({ x: Math.min(e.clientX, window.innerWidth - 226), y: Math.min(e.clientY, window.innerHeight - 300) });
         }}>
         <div className="icons">
-          {["home", "files", "terminal", "settings", "monitor", "notes"].map((id) => {
+          {["home", "files"].map((id) => {
             const ap = appById(id);
             return (
               <button key={id} className={"dicon" + (selIcon === id ? " sel" : "")}
-                onClick={() => iconClick(id)} onDoubleClick={() => openWindow(id)}>
+                onClick={() => iconClick(id)}>
+                <span className="dib"><Icon name={ap.icon} /></span><span>{ap.name}</span>
+              </button>
+            );
+          })}
+          <button className={"dicon" + (ui.layer === "navgraph" ? " sel" : "")}
+            onClick={() => { setSelIcon("navgraph"); toggleLayer("navgraph"); }}>
+            <span className="dib"><Icon name="graph" /></span><span>NavGraph</span>
+          </button>
+          {["terminal", "settings", "monitor", "notes"].map((id) => {
+            const ap = appById(id);
+            return (
+              <button key={id} className={"dicon" + (selIcon === id ? " sel" : "")}
+                onClick={() => iconClick(id)}>
                 <span className="dib"><Icon name={ap.icon} /></span><span>{ap.name}</span>
               </button>
             );
@@ -150,7 +163,7 @@ export default function Desktop({ onShutdown }) {
             const ap = appById(id);
             return (
               <button key={id} className={"dicon" + (selIcon === id ? " sel" : "")}
-                onClick={() => iconClick(id)} onDoubleClick={() => openWindow(id)}>
+                onClick={() => iconClick(id)}>
                 <span className="dib"><Icon name={ap.icon} /></span><span>{ap.name}</span>
               </button>
             );
@@ -169,6 +182,7 @@ export default function Desktop({ onShutdown }) {
             <div className="wmrow"><span>NET</span><div className="meter amber"><i style={{ width: load.net + "%" }}></i></div><b>{load.net}%</b></div>
           </div>
         </div>
+        {ui.layer === "navgraph" && <NavGraphLayer />}
         <div id="winLayer" style={{ position: "absolute", inset: 0 }}>
           {windows.order.map((id) => (
             <Window key={id} id={id} rec={windows.byId[id]} focused={windows.focusId === id} locked={!!(ui.dragLock && ui.dragLock.id === id)} />

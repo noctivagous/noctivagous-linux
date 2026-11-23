@@ -16,7 +16,7 @@ export const LABEL_ALPHABET = "ABEGHIJKLMNOPQRSTUWXYZ";
 export const BUFFER_MS = 1600;
 
 export const ADDRESSABLE =
-  "button, a[href], input, select, textarea, [tabindex], .nwin .titlebar, .dicon";
+  "button, a[href], input, select, textarea, label, [tabindex], .nwin .titlebar, .dicon";
 
 /** Two-letter labels once the alphabet is exhausted (AA, AB, ...). */
 export function labelForIndex(i) {

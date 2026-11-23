@@ -275,3 +275,56 @@ body.noanim *{animation-duration:.01ms !important;transition-duration:.01ms !imp
 .wall.para{background:transparent}
 #root{position:fixed;inset:0}
 .screen{z-index:1}
+
+/* --- Vertical shade (T key): a vertical titlebar, full height --- */
+.nwin.vshade{min-width:0;flex-direction:row}
+.vbar{flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;padding:8px 0;background:var(--grad-title);border-radius:inherit;cursor:grab;user-select:none}
+.vbar .vt{writing-mode:vertical-rl;font-family:var(--font-d);font-weight:600;font-size:11.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--title);flex:1;white-space:nowrap;overflow:hidden}
+.nwin.focused .vbar .vt{color:#a8a8a8}
+.vbar .wbtn{flex:none}
+
+/* --- Resize handles (invisible hit zones, cursor tells the edge) --- */
+.rsz{position:absolute;z-index:45}
+.rsz-n{top:0;left:12px;right:12px;height:6px;cursor:ns-resize}
+.rsz-s{bottom:0;left:12px;right:12px;height:6px;cursor:ns-resize}
+.rsz-e{right:0;top:12px;bottom:12px;width:6px;cursor:ew-resize}
+.rsz-w{left:0;top:12px;bottom:12px;width:6px;cursor:ew-resize}
+.rsz-ne{top:0;right:0;width:12px;height:12px;cursor:nesw-resize}
+.rsz-sw{bottom:0;left:0;width:12px;height:12px;cursor:nesw-resize}
+.rsz-nw{top:0;left:0;width:12px;height:12px;cursor:nwse-resize}
+.rsz-se{bottom:0;right:0;width:12px;height:12px;cursor:nwse-resize}
+
+/* --- Fast transitions: expand body in, close out --- */
+.nwin .wbody{animation:winBodyIn .13s ease}
+@keyframes winBodyIn{from{opacity:0}to{opacity:1}}
+.nwin.closing{animation:winClose .12s ease forwards}
+@keyframes winClose{to{opacity:0;transform:scale(.965)}}
+
+/* ——— NavGraph: desktop-layer app ———
+   Lives on the desk area under the window layer. The layer itself
+   takes no pointer events; its controls and graph nodes do, so
+   the desktop around the drawing keeps working. */
+.ng-layer{position:absolute;inset:0;pointer-events:none}
+.ng-svg{display:block;animation:winBodyIn .25s ease}
+.ng-bar{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:16px;pointer-events:auto;background:linear-gradient(180deg,#1c1f1e,#121413);border:1px solid var(--hair);border-radius:8px;padding:6px 8px 6px 14px;box-shadow:0 10px 28px rgba(0,0,0,.5);z-index:6}
+.ng-title{font-family:var(--font-d);font-size:11px;font-weight:700;letter-spacing:.22em;color:#e8e8e8}
+.ng-switch{display:flex;border:1px solid var(--hair);border-radius:999px;overflow:hidden}
+.ng-switch button{pointer-events:auto;background:transparent;border:0;color:#9a9a9a;font-family:var(--font-d);font-size:10px;font-weight:700;letter-spacing:.14em;padding:5px 13px;cursor:pointer}
+.ng-switch button.on{background:var(--green);color:#0a140c}
+.ng-legend{display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:.08em;color:#9a9a9a;font-family:var(--font-d)}
+.ng-legend i{display:inline-block;margin-left:8px}
+.ng-legend .lg-folder{width:9px;height:9px;border-radius:50%;background:var(--green)}
+.ng-legend .lg-file{width:8px;height:8px;background:#86a8cc;transform:rotate(45deg)}
+.ng-close{pointer-events:auto;background:#26282a;border:1px solid var(--hair);color:#cfd4d1;width:24px;height:24px;border-radius:6px;cursor:pointer;font-size:11px;line-height:1}
+.ng-close:hover{background:#3a3d3f;color:#fff}
+.ng-path{position:absolute;left:14px;bottom:10px;pointer-events:none;font-size:11px;color:#8f9791;letter-spacing:.04em;background:rgba(10,12,11,.55);padding:3px 8px;border-radius:4px}
+.ng-link{fill:none;stroke:rgba(160,190,170,.28);stroke-width:1.2}
+.ng-ring{fill:none;stroke:rgba(255,255,255,.055)}
+.ng-guide{stroke:rgba(255,255,255,.055)}
+.ng-node{cursor:pointer;pointer-events:auto;outline:none}
+.ng-node text{font-family:var(--font-m);font-size:11px;fill:#c9cfcb;paint-order:stroke;stroke:rgba(8,10,9,.85);stroke-width:3px}
+.ng-node.folder text{fill:#e6f2e7;font-weight:700}
+.ng-node:hover text,.ng-node:focus text{fill:#fff}
+.ng-dot-folder{fill:var(--green);stroke:#0d2b15;stroke-width:1.4}
+.ng-collapsed-ring{fill:none;stroke:var(--green);stroke-width:1.2;stroke-dasharray:3 3;opacity:.85}
+.ng-dot-file{fill:#86a8cc;stroke:#16283c;stroke-width:1}

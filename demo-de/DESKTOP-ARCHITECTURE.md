@@ -92,6 +92,16 @@ store hooks. Apps keep private state (terminal history, the open
 folder, monitor samples) inside themselves; it dies with the window,
 as it should.
 
+**Desktop-layer apps** are the second app form: they render on the
+desk area itself, under the window layer, with no window frame.
+The open one is named by the store's `ui.layer` field (actions in
+`core/layers.js`); the shell mounts it inside the desk area, and
+its surface takes pointer events only on its own controls and
+content, so the desktop around it keeps working. NavGraph
+(`shell/NavGraphLayer.jsx`) is the first: the file system drawn as
+a radial cluster or a tidy tree over the desk, fed by the same
+`services/fs.js` table the Files window reads.
+
 ## Input
 
 Key-clicks is deliberately **not** part of the React tree. It is a
@@ -107,7 +117,8 @@ it resolves its targets at event time. The DOM contract it may
 assume is written down in `KEYCLICKS-AUDIT.md`. Two host bridges
 keep it honest inside the architecture: where the shell owns the
 truth (window geometry), the engine emits `nct:winmove` (and
-`nct:winlock` for the drag-lock cast) and the
+`nct:winlock` for the drag-lock cast, `nct:vshade` for the
+vertical-titlebar collapse) and the
 window manager applies it, never a direct DOM write; and its mode
 changes go out on the bus as `kc:mode`. Its one concession to
 React is using the native value setter on range inputs so React's

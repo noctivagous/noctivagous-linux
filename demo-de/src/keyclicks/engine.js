@@ -52,7 +52,7 @@ export function createKeyClicks(hooks = {}) {
   root.id = "kcRoot";
   root.innerHTML = `
     <div id="kcReticle"></div>
-    <div id="kcHud"><span class="kc-mode">KEY-CLICK</span><span class="kc-target">target — —</span><span class="kc-hints">F click · E collapse · A close · D back · Tab target · Space drag-lock · Alt+L labels · Alt+K keys</span></div>
+    <div id="kcHud"><span class="kc-mode">KEY-CLICK</span><span class="kc-target">target — —</span><span class="kc-hints"><span class="kc-kbd">F</span> click <span class="kc-kbd">E</span> collapse <span class="kc-kbd">R</span> collapse+drag <span class="kc-kbd">T</span> vertical <span class="kc-kbd">A</span> close <span class="kc-kbd">D</span> back <span class="kc-kbd">Tab</span> target <span class="kc-kbd">Space</span> drag-lock <span class="kc-kbd">Alt+L</span> labels <span class="kc-kbd">Alt+K</span> keys</span></div>
     <button id="kcTab" type="button" aria-label="Toggle onscreen keyboard" title="Onscreen keyboard (Alt+K)">KEYBOARD</button>
     <div id="kcPanel" hidden></div>`;
   document.body.appendChild(root);
@@ -149,20 +149,58 @@ export function createKeyClicks(hooks = {}) {
     // F over a window's close/min/shade button must CLICK it, not
     // focus the window. Only bare titlebar surface focuses.
     const t = el.closest
-      ? el.closest("button, a[href], input, select, textarea, .dicon, [tabindex]")
+      ? el.closest("button, a[href], input, select, textarea, label, .dicon, [tabindex]")
       : null;
     if (t) {
+      // A label is clicked through its control (checkbox, radio):
+      // hovering the label's text must toggle it, not miss.
+      if (t.tagName === "LABEL") {
+        const c = t.control || t.querySelector("input, select, textarea, button");
+        if (c) {
+          c.click();
+          targeted = c;
+          ripple();
+          return true;
+        }
+      }
       if (t.focus && t.tagName !== "BUTTON") t.focus({ preventScroll: true });
       if (t.click) t.click();
       targeted = t;
       ripple();
       return true;
     }
+    // KeyPilot's terminal rule: F anywhere in the Terminal's
+    // content area focuses its input — the viewport is the field.
+    const twin = el.closest && el.closest('.nwin[data-app="terminal"]');
+    if (twin && !el.closest(".titlebar")) {
+      const ti = [...twin.querySelectorAll(".wbody input, .wbody textarea")].find(
+        (c) => isTextEntryControl(c),
+      );
+      if (ti) {
+        ti.focus({ preventScroll: true });
+        targeted = ti;
+        ripple();
+        return true;
+      }
+    }
     const tb = el.closest && el.closest(".nwin .titlebar");
     if (tb) {
       const w = tb.closest(".nwin");
       if (w) w.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
       targeted = tb;
+      return true;
+    }
+    // Nothing addressable here: F is still a click at the cursor
+    // point, with the full mouse sequence, so the shell's own
+    // outside-click handling runs (an open menu closes, exactly
+    // as a mouse click outside it would close it).
+    const at = document.elementFromPoint(mouseX, mouseY) || el;
+    if (at && at !== document.body && at !== document.documentElement) {
+      const init = { bubbles: true, cancelable: true, clientX: mouseX, clientY: mouseY };
+      at.dispatchEvent(new MouseEvent("mousedown", init));
+      at.dispatchEvent(new MouseEvent("mouseup", init));
+      at.dispatchEvent(new MouseEvent("click", init));
+      ripple();
       return true;
     }
     return false;
@@ -281,8 +319,7 @@ export function createKeyClicks(hooks = {}) {
       setMode();
       return;
     }
-    const tb = el.closest && el.closest(".nwin .titlebar");
-    const win = tb && tb.closest(".nwin");
+    const win = el.closest && el.closest(".nwin");
     if (win && !win.closest("#loginWin")) {
       win.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
       dragLock = {
@@ -330,9 +367,19 @@ export function createKeyClicks(hooks = {}) {
   // its vertical centre on the cursor, horizontal span unchanged
   // (the cursor was inside the window, so it stays over the bar).
   // Position goes through the host bridge, like drag-lock.
+  function vshade(id, on) {
+    document.dispatchEvent(
+      new CustomEvent("nct:vshade", { detail: { id, on } }),
+    );
+  }
   function collapseAtCursor() {
     const win = winAtCursor();
     if (!win) return false;
+    // E restores a vertically-shaded window to its full frame.
+    if (win.classList.contains("vshade")) {
+      vshade(win.getAttribute("data-app"), false);
+      return true;
+    }
     const shadeBtn = win.querySelector(".wbtn.shade");
     if (!shadeBtn) return false; // e.g. the login window cannot shade
     const wasShaded = !win.querySelector(".wbody");
@@ -345,12 +392,20 @@ export function createKeyClicks(hooks = {}) {
         const layerTop = win.offsetParent
           ? win.offsetParent.getBoundingClientRect().top
           : 0;
-        winMove(id, win.offsetLeft, Math.max(0, mouseY - layerTop - 11));
+        winMove(id, win.offsetLeft, Math.max(0, mouseY - layerTop - 15));
       }
     }
     return true;
   }
   function closeAtCursor() {
+    // A closes a system menu first, when one is open.
+    const openMenu = document.querySelector(
+      ".dropdown.open, .launcher.open, .ctxmenu.open",
+    );
+    if (openMenu) {
+      document.body.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      return true;
+    }
     const win = winAtCursor();
     if (!win) return false;
     const closeBtn = win.querySelector(".wbtn.close");
@@ -372,7 +427,7 @@ export function createKeyClicks(hooks = {}) {
       ".dropdown.open, .launcher.open, .ctxmenu.open",
     );
     if (openMenu) {
-      document.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      document.body.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       return true;
     }
     const sc = scope();
@@ -402,23 +457,26 @@ export function createKeyClicks(hooks = {}) {
   function onMouseMove(e) {
     mouseX = e.clientX;
     mouseY = e.clientY;
-    if (dragLock) { dragMove(e); return; }
     reticle.style.left = mouseX + "px";
     reticle.style.top = mouseY + "px";
+    if (dragLock) { dragMove(e); return; }
     const el = document.elementFromPoint(mouseX, mouseY);
     const t = el && el.closest
-      ? el.closest("button, a[href], input, select, textarea, .dicon, [tabindex], .nwin .titlebar")
+      ? el.closest("button, a[href], input, select, textarea, label, .dicon, [tabindex], .nwin .titlebar")
       : null;
     if (t !== hovered) {
       if (hovered) hovered.classList.remove("kc-hover");
       hovered = t;
+      // Moving onto a different element re-aims: a stale Tab/label
+      // target must not outrank the thing now under the cursor.
+      targeted = null;
       if (hovered) hovered.classList.add("kc-hover");
       setMode();
     }
   }
   function onMouseDown(e) {
     const t = e.target.closest
-      ? e.target.closest("button, a[href], input, select, textarea, .dicon, [tabindex], .nwin .titlebar")
+      ? e.target.closest("button, a[href], input, select, textarea, label, .dicon, [tabindex], .nwin .titlebar")
       : null;
     if (t) targeted = t;
     const w = e.target.closest && e.target.closest(".nwin");
@@ -621,7 +679,10 @@ export function createKeyClicks(hooks = {}) {
     switch (k) {
       case "f": case "F": {
         if (dragLock) { dropDragLock(); e.preventDefault(); return; }
-        const t = currentTarget();
+        // Fall back to the element at the cursor point: over a
+        // non-addressable area (the terminal's output viewport)
+        // there is no hovered control, but F still acts there.
+        const t = currentTarget() || document.elementFromPoint(mouseX, mouseY);
         if (t) { e.preventDefault(); kcClick(t); setMode(); renderBoard(true); }
         return;
       }
@@ -635,6 +696,27 @@ export function createKeyClicks(hooks = {}) {
         e.preventDefault();
         if (closeAtCursor()) setMode();
         return;
+      case "r": case "R":
+        // E + Space in one press: collapse, then drag-lock the
+        // titlebar that remains. A second R drops the lock.
+        e.preventDefault();
+        if (dragLock) dropDragLock();
+        else {
+          collapseAtCursor();
+          requestAnimationFrame(() => tryDragLock());
+        }
+        setMode();
+        return;
+      case "t": case "T": {
+        e.preventDefault();
+        const win = winAtCursor();
+        if (win && !win.classList.contains("vshade")) {
+          const id = win.getAttribute("data-app");
+          if (id) vshade(id, true);
+        }
+        setMode();
+        return;
+      }
       case "Tab":
         e.preventDefault(); stepTarget(e.shiftKey ? -1 : 1); return;
       case " ":
@@ -642,7 +724,7 @@ export function createKeyClicks(hooks = {}) {
         if (dragLock) dropDragLock(); else tryDragLock();
         return;
       case "Enter": {
-        const t = currentTarget();
+        const t = currentTarget() || document.elementFromPoint(mouseX, mouseY);
         if (t) { e.preventDefault(); kcClick(t); setMode(); }
         return;
       }

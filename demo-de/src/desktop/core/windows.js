@@ -1,6 +1,6 @@
 /* Window manager actions — the windows slice's only writers.
  *
- * Window records: {x, y, w, h, z, min, max, shaded, seq, prev}.
+ * Window records: {x, y, w, h, z, min, max, shaded, vshaded, seq, prev}.
  * Geometry lives in the store (not in component state) because the
  * taskbar, the window frames and key-clicks' D-back all read the
  * same table. Rendering is shell/Window.jsx.
@@ -39,6 +39,7 @@ export function openWindow(id) {
     min: false,
     max: false,
     shaded: false,
+    vshaded: false,
     seq: w.seq + 1,
     prev: null,
   };
@@ -103,6 +104,24 @@ export function toggleMax(id) {
 
 export function moveWindow(id, x, y) {
   patch(id, { x, y });
+}
+
+export function resizeWindow(id, w, h) {
+  const rec = store.get().windows.byId[id];
+  if (!rec) return;
+  patch(id, {
+    w: Math.max(280, Math.round(w)),
+    h: Math.max(150, Math.round(h)),
+  });
+}
+
+/** Vertical shade (the T key): the window becomes a vertical
+ * titlebar whose height stays the window's full height; w/h are
+ * kept untouched so restoring is exact. */
+export function setVShade(id, on) {
+  const rec = store.get().windows.byId[id];
+  if (!rec) return;
+  patch(id, { vshaded: !!on, shaded: on ? false : rec.shaded });
 }
 
 export function showDesktop() {
