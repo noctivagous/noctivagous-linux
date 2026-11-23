@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { publish, onDeliver } from "../core/patchbay.js";
 import { useSlice } from "../core/react.js";
 import { Icon } from "../core/registry.jsx";
 import { StatusBar } from "./shared.jsx";
@@ -10,6 +11,10 @@ export default function FilesApp() {
   const session = useSlice("session");
   const [folder, setFolder] = useState("Home");
   const [selRow, setSelRow] = useState(0);
+  useEffect(() => onDeliver("files", "folder-in", (v) => {
+    const name = String(v);
+    if (FILEDATA[name]) { setFolder(name); setSelRow(0); }
+  }), []);
   const rows = FILEDATA[folder];
   return (
     <>
@@ -26,7 +31,7 @@ export default function FilesApp() {
         <div className="tree" id="fileTree">
           {Object.keys(FILEDATA).map((k) => (
             <button key={k} className={k === folder ? "sel" : ""} data-folder={k}
-              onClick={() => { setFolder(k); setSelRow(0); }}>
+              onClick={() => { setFolder(k); setSelRow(0); publish("files", "folder", k); }}>
               <Icon name="folder" /> {k}
             </button>
           ))}
@@ -35,7 +40,7 @@ export default function FilesApp() {
           <div className="listhead"><span>Name</span><span>Size</span><span>Type</span></div>
           <div id="fileList">
             {rows.map((r, i) => (
-              <div key={r[0]} className={"lrow" + (i === selRow ? " sel" : "")} onClick={() => setSelRow(i)}>
+              <div key={r[0]} className={"lrow" + (i === selRow ? " sel" : "")} onClick={() => { setSelRow(i); publish("files", "selected", r[0]); }}>
                 <span>{r[2] === "Folder" ? "▸ " : "· "}{r[0]}</span>
                 <span className="sz">{r[1]}</span>
                 <span className="tp">{r[2]}</span>

@@ -10,6 +10,7 @@
  *   settings — volume, brightness, wallpaper, backdrop parameters
  *   windows  — the window manager's table (id -> window record)
  *   ui       — toast, battery readout (transient chrome state)
+ *   patch    — the patchbay: ports, cords, deliveries (core/patchbay.js)
  */
 
 import { BACKDROP_DEFAULTS } from "../services/surfaces.js";
@@ -39,6 +40,14 @@ const initialState = {
     battery: 87,
     dragLock: null,
     layer: null, // desktop-layer app id ('navgraph') or null
+  },
+  patch: {
+    openFor: {}, // owner id -> ports shown on its edges
+    cords: [], // {id, from:{owner,port}, to:{owner,port}}
+    pending: null, // {owner, port} — a cord being drawn
+    watch: null, // the Patch Viewer's target
+    values: {}, // "owner:port" -> last value seen there
+    log: [], // recent deliveries {at, cordId, from, to, value}
   },
 };
 

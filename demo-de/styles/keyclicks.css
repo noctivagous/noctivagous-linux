@@ -53,7 +53,7 @@ body.kc-textmode .screen.on {
 /* Mode HUD — bottom-left, mono, in the system style */
 #kcHud {
   position: fixed;
-  left: 10px;
+  left: 134px;
   bottom: 10px;
   z-index: 9995;
   display: flex;
@@ -72,6 +72,25 @@ body.kc-textmode .screen.on {
   pointer-events: none;
   user-select: none;
 }
+#kcHudBtn {
+  position: fixed;
+  left: 134px;
+  bottom: 10px;
+  z-index: 9995;
+  padding: 5px 12px;
+  font-family: var(--font-m, "JetBrains Mono", monospace);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #66ff66;
+  background: linear-gradient(180deg, rgba(42, 42, 42, 0.94), rgba(18, 18, 18, 0.94));
+  border: 1px solid #000;
+  border-radius: 5px;
+  box-shadow: 3px 3px 5px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(80, 80, 80, 0.8);
+  cursor: pointer;
+  user-select: none;
+}
+#kcHudBtn:hover { color: #a5ffa5; }
 #kcHud .kc-mode { color: #66ff66; font-weight: 700; }
 #kcHud.text .kc-mode { color: #e8912d; }
 #kcHud .kc-target { color: #d8d8d8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
@@ -90,8 +109,8 @@ body.kc-textmode .screen.on {
 /* Keyboard panel (Alt+K) — sparse bindings for the current scope */
 #kcPanel {
   position: fixed;
-  right: 10px;
-  bottom: 10px;
+  left: 10px;
+  top: 110px;
   z-index: 9995;
   width: 620px;
   max-width: calc(100vw - 20px);
@@ -276,3 +295,22 @@ body.kc-textmode #kcPanel { border-color: rgba(232, 145, 45, 0.55); }
   border-radius: 3px;
   box-shadow: inset 0 1px 0 rgba(120, 120, 120, 0.6), 0 1px 1px rgba(0, 0, 0, 0.5);
 }
+
+/* The grace period: an armed target in text mode wears a brighter,
+   pulsing green; the board's F cap lights while the countdown runs
+   (KeyPilot lights its Click Element key the same way). */
+.kc-armed {
+  outline: 3px solid #7be07b !important;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7), 0 0 16px rgba(92, 184, 92, 0.8) !important;
+  animation: kcArmPulse 1s ease-in-out infinite;
+}
+@keyframes kcArmPulse {
+  50% { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7), 0 0 26px rgba(92, 184, 92, 1) !important; }
+}
+body.kc-textarmed #kcPanel .kc-cap[data-code="KeyF"] {
+  border-color: #7be07b;
+  color: #eaffea;
+  background: linear-gradient(145deg, #2c4a2c, #16250f);
+}
+body.kc-textarmed #kcPanel .kc-cap[data-code="KeyF"] .g { color: #7be07b; }

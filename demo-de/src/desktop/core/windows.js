@@ -40,6 +40,7 @@ export function openWindow(id) {
     max: false,
     shaded: false,
     vshaded: false,
+    flipped: false,
     seq: w.seq + 1,
     prev: null,
   };
@@ -122,6 +123,11 @@ export function setVShade(id, on) {
   const rec = store.get().windows.byId[id];
   if (!rec) return;
   patch(id, { vshaded: !!on, shaded: on ? false : rec.shaded });
+}
+
+/* P flips a window onto its back, where its ports live. */
+export function setFlipped(id, on) {
+  patch(id, { flipped: on });
 }
 
 export function showDesktop() {

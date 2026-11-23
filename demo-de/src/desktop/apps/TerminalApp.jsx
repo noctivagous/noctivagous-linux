@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSlice } from "../core/react.js";
 import { closeWindow } from "../core/windows.js";
+import { publish, onDeliver } from "../core/patchbay.js";
 
 export default function TerminalApp() {
   const session = useSlice("session");
@@ -16,6 +17,19 @@ export default function TerminalApp() {
   useEffect(() => {
     if (bodyRef.current) bodyRef.current.scrollTop = 1e7;
   }, [out]);
+  useEffect(() => onDeliver("terminal", "run", (v) => {
+    const inp = inputRef.current;
+    if (!inp) return;
+    // The cord types the command in: focus for the keystroke,
+    // then hand focus back — a delivery must not steal the
+    // keyboard from whatever the user was doing.
+    const prev = document.activeElement;
+    inp.focus();
+    inp.value = String(v);
+    inp.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    if (prev && prev !== inp && prev !== document.body && prev.focus) prev.focus();
+    else inp.blur();
+  }), []);
 
   function run(e) {
     if (e.key === "ArrowUp") {
@@ -40,6 +54,7 @@ export default function TerminalApp() {
     if (cmd) {
       histRef.current.push(cmd);
       hiRef.current = histRef.current.length;
+      publish("terminal", "command", cmd);
     }
     if (!cmd) {
       setOut((o) => [...o, ...lines]);

@@ -14,6 +14,7 @@ import MonitorApp from "../apps/MonitorApp.jsx";
 import NotesApp from "../apps/NotesApp.jsx";
 import AboutApp from "../apps/AboutApp.jsx";
 import TrashApp from "../apps/TrashApp.jsx";
+import ViewerApp from "../apps/ViewerApp.jsx";
 
 export const ICONS = {
   home: '<svg class="ic" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7M6 9.5V20h12V9.5"/></svg>',
@@ -26,6 +27,7 @@ export const ICONS = {
   info: '<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.1"/></svg>',
   file: '<svg class="ic" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v4h4"/></svg>',
   graph: '<svg class="ic" viewBox="0 0 24 24"><path d="M12 5v4M12 9l-5.5 5M12 9l5.5 5M7 16.5 5 19M17 16.5 19 19"/><circle cx="12" cy="4" r="1.8"/><circle cx="5.5" cy="15.5" r="1.8"/><circle cx="18.5" cy="15.5" r="1.8"/><circle cx="4" cy="20" r="1.4"/><circle cx="20" cy="20" r="1.4"/></svg>',
+  patch: '<svg class="ic" viewBox="0 0 24 24"><circle cx="5" cy="5" r="2.6"/><circle cx="19" cy="19" r="2.6"/><path d="M7.5 7.5c5 5 4 4 9 9"/></svg>',
 };
 
 export function Icon({ name }) {
@@ -42,6 +44,7 @@ export const APPS = [
   { id: "notes", name: "Notes", icon: "note", hint: "WIN · N", component: NotesApp, defaultW: 480 },
   { id: "about", name: "About", icon: "info", hint: "SYS", component: AboutApp, defaultW: 480 },
   { id: "trash", name: "Trash", icon: "trash", hint: "0 ITEMS", component: TrashApp, defaultW: 480 },
+  { id: "viewer", name: "Patch Viewer", icon: "patch", hint: "PATCH", component: ViewerApp, defaultW: 470, defaultH: 430 },
 ];
 
 export function appById(id) {

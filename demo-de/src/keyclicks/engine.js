@@ -35,6 +35,12 @@ export function createKeyClicks(hooks = {}) {
   let targeted = null;
   let textMode = false;
   let textEl = null;
+  // The text-mode grace period (KeyPilot's armed-click countdown):
+  // while typing, moving the mouse over a clickable arms F for
+  // TEXT_ARM_SECONDS; F pressed inside the window leaves text
+  // mode and clicks the armed target instead of typing "f".
+  let textArm = null; // {target, remaining, timer}
+  const TEXT_ARM_SECONDS = 3;
   let labelsOn = false;
   let marks = [];
   let buffer = "";
@@ -53,9 +59,31 @@ export function createKeyClicks(hooks = {}) {
   root.innerHTML = `
     <div id="kcReticle"></div>
     <div id="kcHud"><span class="kc-mode">KEY-CLICK</span><span class="kc-target">target — —</span><span class="kc-hints"><span class="kc-kbd">F</span> click <span class="kc-kbd">E</span> collapse <span class="kc-kbd">R</span> collapse+drag <span class="kc-kbd">T</span> vertical <span class="kc-kbd">A</span> close <span class="kc-kbd">D</span> back <span class="kc-kbd">Tab</span> target <span class="kc-kbd">Space</span> drag-lock <span class="kc-kbd">Alt+L</span> labels <span class="kc-kbd">Alt+K</span> keys</span></div>
+    <button id="kcHudBtn" type="button" title="Key-click status — click to expand, right-click to collapse">KEY-CLICK</button>
     <button id="kcTab" type="button" aria-label="Toggle onscreen keyboard" title="Onscreen keyboard (Alt+K)">KEYBOARD</button>
     <div id="kcPanel" hidden></div>`;
   document.body.appendChild(root);
+  let hudCollapsed = false;
+  let inKcMousedown = false; // reentry guard for the kcRoot bridge below
+  function setHudCollapsed(on) {
+    hudCollapsed = on;
+    hud.style.display = on ? "none" : "";
+    hudBtn.style.display = on ? "" : "none";
+  }
+  // The HUD is pointer-events:none (it must never block the dock
+  // beneath it), so its right-click is caught by hit-testing the
+  // event's point against the bar's box in the capture phase.
+  function onHudContextMenu(e) {
+    const el = hudCollapsed ? hudBtn : hud;
+    const r = el.getBoundingClientRect();
+    if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
+      const under = document.elementFromPoint(e.clientX, e.clientY);
+      if (under && under.closest && under.closest(".nwin, .dicon, .dock .task")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setHudCollapsed(!hudCollapsed);
+    }
+  }
   const reticle = root.querySelector("#kcReticle");
   const hud = root.querySelector("#kcHud");
   const hudMode = hud.querySelector(".kc-mode");
@@ -81,6 +109,7 @@ export function createKeyClicks(hooks = {}) {
     textEl = t ? ae : null;
     if (t !== textMode) {
       textMode = t;
+      if (!t) disarmTextClick();
       document.body.classList.toggle("kc-textmode", t);
       setMode();
       renderBoard(true);
@@ -108,6 +137,50 @@ export function createKeyClicks(hooks = {}) {
     ringEl = target;
     if (ringEl) ringEl.classList.add("kc-textring");
   }
+  function armTextClick(target) {
+    disarmTextClick();
+    textArm = { target, remaining: TEXT_ARM_SECONDS, timer: null };
+    target.classList.add("kc-armed");
+    document.body.classList.add("kc-textarmed");
+    textArm.timer = setInterval(() => {
+      if (!textArm) return;
+      textArm.remaining -= 1;
+      if (textArm.remaining > 0) { setMode(); return; }
+      // Grace expired: the hover is just a hover again until the
+      // mouse moves and re-arms.
+      disarmTextClick();
+      setMode();
+    }, 1000);
+    setMode();
+  }
+  function disarmTextClick() {
+    if (!textArm) return;
+    clearInterval(textArm.timer);
+    if (textArm.target && textArm.target.isConnected) {
+      textArm.target.classList.remove("kc-armed");
+    }
+    textArm = null;
+    document.body.classList.remove("kc-textarmed");
+  }
+  // Re-evaluated on every mouse move while in text mode: a
+  // clickable under the cursor arms (a new target re-arms fresh),
+  // anything else disarms. The field being typed into and the
+  // engine's own furniture (board caps type in text mode) never
+  // arm.
+  function updateTextArm() {
+    const t = hovered;
+    const ok =
+      t &&
+      t !== textEl &&
+      visible(t) &&
+      !(t.closest && t.closest("#kcBoard, #kcPanel, #kcHud, #kcTab"));
+    if (!ok) {
+      if (textArm) { disarmTextClick(); setMode(); }
+      return;
+    }
+    if (textArm && textArm.target === t) return; // countdown runs on
+    armTextClick(t);
+  }
   function currentTarget() {
     if (targeted && targeted.isConnected && visible(targeted)) return targeted;
     if (hovered && hovered.isConnected && visible(hovered)) return hovered;
@@ -116,7 +189,9 @@ export function createKeyClicks(hooks = {}) {
   function setMode() {
     let m;
     if (textMode) {
-      m = "TEXT · " + (textEl ? nameOf(textEl) : "field");
+      m = textArm
+        ? "TEXT · F CLICKS " + textArm.remaining
+        : "TEXT · " + (textEl ? nameOf(textEl) : "field");
       hud.classList.add("text");
     } else if (labelsOn) {
       m = "LABELS" + (buffer ? " · " + buffer : "");
@@ -152,6 +227,11 @@ export function createKeyClicks(hooks = {}) {
       ? el.closest("button, a[href], input, select, textarea, label, .dicon, [tabindex]")
       : null;
     if (t) {
+      if (!inKcMousedown && t.closest && t.closest("#kcRoot")) {
+        inKcMousedown = true;
+        t.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        inKcMousedown = false;
+      }
       // A label is clicked through its control (checkbox, radio):
       // hovering the label's text must toggle it, not miss.
       if (t.tagName === "LABEL") {
@@ -453,6 +533,43 @@ export function createKeyClicks(hooks = {}) {
     return false;
   }
 
+  /* ---------- view operators (NavGraph first) ---------- */
+  // ; and ' rotate, [ and ] scale — they act on the NavGraph
+  // trees when the cursor is over the layer with nothing
+  // obscuring it (a window over the graph takes the point, and
+  // the keys stay inert). The layer owns the transform; the
+  // engine only names the operation, over the same window-event
+  // bridge the window actions use.
+  function navGraphOp(op) {
+    const layer = document.querySelector(".ng-layer");
+    if (!layer) return false;
+    const r = layer.getBoundingClientRect();
+    if (mouseX < r.left || mouseX > r.right || mouseY < r.top || mouseY > r.bottom) return false;
+    const el = document.elementFromPoint(mouseX, mouseY);
+    if (!el) return false;
+    if (el.closest && el.closest(".ng-layer")) {
+      window.dispatchEvent(new CustomEvent("nct:navgraph", { detail: { op } }));
+      return true;
+    }
+    // Off its nodes the layer lets the point through to the desk
+    // beneath — still over the graph, unless a window, a menu or
+    // desktop furniture is in the way.
+    if (el.closest && el.closest(".nwin, .dropdown, .ctxmenu, .sysbar, .dock, .dicon, .widgets, #kcRoot")) return false;
+    window.dispatchEvent(new CustomEvent("nct:navgraph", { detail: { op } }));
+    return true;
+  }
+  // - and = step the font size of whatever element is under the
+  // cursor: an inline size on that element, ratio steps so small
+  // UI text and big display text both move sensibly.
+  function fontStep(f) {
+    const el = document.elementFromPoint(mouseX, mouseY);
+    if (!el || el === document.body || el === document.documentElement) return false;
+    const cur = parseFloat(getComputedStyle(el).fontSize) || 16;
+    const next = Math.min(120, Math.max(6, Math.round(cur * f * 2) / 2));
+    el.style.fontSize = next + "px";
+    return true;
+  }
+
   /* ---------- pointer tracking ---------- */
   function onMouseMove(e) {
     mouseX = e.clientX;
@@ -473,8 +590,10 @@ export function createKeyClicks(hooks = {}) {
       if (hovered) hovered.classList.add("kc-hover");
       setMode();
     }
+    if (textMode) updateTextArm();
   }
   function onMouseDown(e) {
+    disarmTextClick(); // a real click supersedes the armed F
     const t = e.target.closest
       ? e.target.closest("button, a[href], input, select, textarea, label, .dicon, [tabindex], .nwin .titlebar")
       : null;
@@ -569,7 +688,17 @@ export function createKeyClicks(hooks = {}) {
     panel.hidden = !on;
     tab.classList.toggle("open", on);
     document.body.classList.toggle("kc-board-on", on);
-    if (on) renderBoard(true);
+    if (on) {
+      renderBoard(true);
+      // Home position: the left side of the screen, vertically
+      // centred. Activation always docks it there; dragging moves
+      // it from there for as long as it stays open.
+      panel.style.right = "auto";
+      panel.style.bottom = "auto";
+      panel.style.left = "10px";
+      const ph = panel.getBoundingClientRect().height;
+      panel.style.top = Math.max(52, Math.round((innerHeight - ph) / 2)) + "px";
+    }
   }
   function pressCap(code, glyph) {
     const key = keyForCap(code, glyph);
@@ -644,11 +773,29 @@ export function createKeyClicks(hooks = {}) {
     if (textMode) {
       if (e.key === "Escape") {
         e.preventDefault();
+        disarmTextClick();
         if (textEl) textEl.blur();
         syncTextMode();
         setMode();
+        return;
       }
-      return; // keys type; the engine only watches Esc
+      // Armed F — the one action key allowed out of text mode,
+      // and only inside the grace period. A real pointer click
+      // would blur the field first; a programmatic one does not,
+      // so leave text mode explicitly, then click.
+      if ((e.key === "f" || e.key === "F") && textArm) {
+        e.preventDefault();
+        e.stopPropagation();
+        const t = textArm.target;
+        disarmTextClick();
+        if (textEl) textEl.blur();
+        syncTextMode();
+        if (t && t.isConnected) kcClick(t);
+        setMode();
+        renderBoard(true);
+        return;
+      }
+      return; // keys type; the engine watches Esc and the armed F
     }
     if (e.metaKey || e.ctrlKey) return;
     if (e.altKey && (e.key === "l" || e.key === "L")) {
@@ -679,6 +826,18 @@ export function createKeyClicks(hooks = {}) {
     switch (k) {
       case "f": case "F": {
         if (dragLock) { dropDragLock(); e.preventDefault(); return; }
+        // A cord is being drawn: F completes it on a port, and
+        // cancels it anywhere else (the click is spent on the
+        // cord, not on whatever lies beneath).
+        if (document.body.classList.contains("patch-pending")) {
+          const pt = currentTarget() || document.elementFromPoint(mouseX, mouseY);
+          if (!(pt && pt.closest && pt.closest("[data-port]"))) {
+            e.preventDefault();
+            window.dispatchEvent(new CustomEvent("nct:patch", { detail: { op: "cancelPending" } }));
+            setMode();
+            return;
+          }
+        }
         // Fall back to the element at the cursor point: over a
         // non-addressable area (the terminal's output viewport)
         // there is no hovered control, but F still acts there.
@@ -686,6 +845,38 @@ export function createKeyClicks(hooks = {}) {
         if (t) { e.preventDefault(); kcClick(t); setMode(); renderBoard(true); }
         return;
       }
+      case "o": case "O": {
+        // Open the ports of the window or element under the
+        // cursor (the clock's ports too — not only windows).
+        e.preventDefault();
+        const el = document.elementFromPoint(mouseX, mouseY);
+        const own = el && el.closest && (el.closest("[data-patch-owner]") || el.closest(".nwin"));
+        if (own) {
+          const owner = own.getAttribute("data-patch-owner") || own.getAttribute("data-app");
+          if (owner) window.dispatchEvent(new CustomEvent("nct:patch", { detail: { op: "togglePorts", owner } }));
+        }
+        return;
+      }
+      case "p": case "P": {
+        // Flip the window under the cursor onto its back.
+        e.preventDefault();
+        const el = document.elementFromPoint(mouseX, mouseY);
+        const win = el && el.closest && el.closest(".nwin");
+        if (win) window.dispatchEvent(new CustomEvent("nct:winflip", { detail: { id: win.getAttribute("data-app") } }));
+        return;
+      }
+      case ";": case ":":
+        e.preventDefault(); navGraphOp("rotL"); return;
+      case "'": case "\"":
+        e.preventDefault(); navGraphOp("rotR"); return;
+      case "[":
+        e.preventDefault(); navGraphOp("scaleDown"); return;
+      case "]":
+        e.preventDefault(); navGraphOp("scaleUp"); return;
+      case "-": case "_":
+        e.preventDefault(); fontStep(1 / 1.1); return;
+      case "=": case "+":
+        e.preventDefault(); fontStep(1.1); return;
       case "d": case "D":
         e.preventDefault(); goBack(); setMode(); return;
       case "e": case "E":
@@ -694,6 +885,21 @@ export function createKeyClicks(hooks = {}) {
         return;
       case "a": case "A":
         e.preventDefault();
+        if (boardOn) { setBoard(false); setMode(); return; }
+        if (document.body.classList.contains("patch-pending")) {
+          window.dispatchEvent(new CustomEvent("nct:patch", { detail: { op: "cancelPending" } }));
+          setMode();
+          return;
+        }
+        {
+          const at = document.elementFromPoint(mouseX, mouseY);
+          const cord = at && at.closest && at.closest("[data-cord]");
+          if (cord) {
+            window.dispatchEvent(new CustomEvent("nct:patch", { detail: { op: "removeCord", id: cord.getAttribute("data-cord") } }));
+            setMode();
+            return;
+          }
+        }
         if (closeAtCursor()) setMode();
         return;
       case "r": case "R":
@@ -734,7 +940,12 @@ export function createKeyClicks(hooks = {}) {
         return;
       }
       case "Escape":
-        if (dragLock) { e.preventDefault(); cancelDragLock(); }
+        if (dragLock) { e.preventDefault(); cancelDragLock(); return; }
+        if (document.body.classList.contains("patch-pending")) {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent("nct:patch", { detail: { op: "cancelPending" } }));
+          setMode();
+        }
         return;
     }
   }
@@ -763,6 +974,10 @@ export function createKeyClicks(hooks = {}) {
   }
 
   /* ---------- wiring ---------- */
+  const hudBtn = root.querySelector("#kcHudBtn");
+  hudBtn.style.display = "none";
+  hudBtn.addEventListener("click", () => setHudCollapsed(false));
+  document.addEventListener("contextmenu", onHudContextMenu, true);
   tab.addEventListener("mousedown", (e) => {
     e.preventDefault();
     setBoard(!boardOn);
@@ -779,11 +994,13 @@ export function createKeyClicks(hooks = {}) {
 
   return {
     destroy() {
+      disarmTextClick();
       clearInterval(boardTimer);
       clearTimeout(bufferTimer);
       document.removeEventListener("mousemove", onMouseMove, true);
       document.removeEventListener("mousemove", onPanelMouseMove, true);
       document.removeEventListener("mouseup", onPanelMouseUp, true);
+      document.removeEventListener("contextmenu", onHudContextMenu, true);
       document.removeEventListener("mousedown", onMouseDown, true);
       document.removeEventListener("keydown", onKeyDown, true);
       document.removeEventListener("focusin", onFocusChange);

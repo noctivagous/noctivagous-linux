@@ -153,3 +153,108 @@ Five behaviours added, each placed by the same rules:
   collapse/expand/close transitions (~120ms), the HUD hint line
   wears `kbd` chips like the board's caps, and the collapsed
   KEYBOARD tab now docks on the **left** edge.
+
+## The grace period (2026-11-23)
+
+KeyPilot's text-mode click countdown, ported from
+keypilot-chrome-extension (`_armTextModeClick` /
+`_handleActivateFromTextFocus`): text mode isolates the keyboard
+— keys type, action keys do not run — with exactly two exceptions,
+Esc and the **armed F**.
+
+- **Mouse-move arms the click.** While in text mode, hovering a
+  clickable starts a 3-second countdown (the HUD mode line reads
+  `TEXT · F CLICKS 3…2…1`; the target wears a pulsing green
+  outline, `.kc-armed`; the board's F cap lights, as KeyPilot
+  lights its Click Element key).
+- **F inside the window** leaves text mode first — a real pointer
+  click would blur the field, a programmatic one does not — then
+  clicks the armed target. No `f` reaches the field.
+- **Expiry disarms**: after 3 seconds the hover is just a hover
+  again; F types `f` once more. Moving off the clickable (or onto
+  the field itself, or the board — caps type in text mode, so the
+  engine's own furniture never arms) disarms; moving onto a new
+  clickable re-arms fresh. Esc, a real mouse down, and leaving
+  text mode by any path all disarm.
+
+## Round 4 (2026-11-23): contextual menus, HUD manners, board home, view operators
+
+- **Right-click is contextual.** The desk-area menu now depends on
+  what was right-clicked: a window gets Focus / Collapse–Expand /
+  Vertical Titlebar / Minimize / Maximize–Restore / Close (and is
+  focused by the right-click); a desktop icon gets Open (NavGraph:
+  Open/Close, matching its toggle); a dock task gets Focus /
+  Minimize / Close in a menu that opens upward; the bare desk
+  keeps its original menu.
+- **The HUD moved over and learned to collapse.** It sat on the
+  dock's START button; it now starts at x=134, clear of it.
+  Right-clicking the bar collapses it into a KEY-CLICK button at
+  the same spot (click or right-click re-expands). The bar is
+  pointer-events:none so it never blocks the dock, so the
+  right-click is caught by hit-testing the point against the
+  bar's box in the capture phase — and it *yields* where a
+  window, icon or dock task with its own menu lies beneath it.
+- **The board homes on the left.** Activation docks the onscreen
+  keyboard at the left edge, vertically centred; dragging still
+  moves it while open. Its close button is F-clickable: caps, the
+  close button and the KEYBOARD tab all act on mousedown, so
+  kcClick delivers a mousedown first for anything inside the
+  engine's own root (a reentry guard keeps a cap's synthetic
+  keydown from doubling it). A closes the board before menus and
+  windows, on the same ladder as round 3's menu rung.
+- **View operators: `;` `'` rotate, `[` `]` scale.** They act
+  first on the NavGraph trees: 15° steps, ×1.15 scale clamped to
+  0.3–3, about the layout's pivot, over the `nct:navgraph`
+  bridge. "Hover over the graph" is tested as: the layer is
+  open, the point is inside its area, and nothing obscures it —
+  the layer is click-transparent off its nodes, so the point may
+  land on the desk beneath and still count; a window, menu, icon,
+  widget or the dock at the point makes the keys inert.
+- **Font stepping: `-` and `=`.** They shrink/grow the font size
+  of the element under the cursor (an inline size, ×/÷1.1 steps,
+  clamped 6–120px). In text mode they type, as characters should.
+- **NavGraph bar shading.** The RADIAL/TREE switch and the ✕
+  close now wear the system's shaded button language — gradient
+  fills, black borders, inset light — the switch as a recessed
+  track with a shaded green segment, like START.
+
+## Wiring up the windows (2026-11-23)
+
+The article's patch system (refs/nctos-wiringupthewindows.txt;
+interaction model from refs/ui/patch_synth_demo.html), built as
+`core/patchbay.js` + a `patch` store slice. Windows AND desktop
+elements publish ports; cords carry live data between them.
+
+- **Ports.** Inputs on the left edge, outputs on the right,
+  appended to the edge itself (15px dots, blue in / green out —
+  the folder/file colour family). Registry: clock (tick event),
+  sysload (cpu, mem), home (user out, status in), files
+  (selected, folder out/in), terminal (command event out, run
+  in), notes (text out/in), monitor (cpu), settings (wallpaper
+  out/in, wired at the store). A "value" port delivers only on
+  change (no echo loops); an "event" port delivers every time.
+- **O** opens the ports of the window or element under the
+  cursor — the clock widget included. **P** flips a window onto
+  its back: an overlay panel (the app stays mounted; its state
+  survives) listing each port, its live value and cord count.
+- **F** on a port begins a cord (dashed orange line follows the
+  cursor; compatible ports glow); F on a port of the opposite
+  direction completes it, and the source's current value flows
+  at once. F elsewhere, Esc or A cancels the drawing. **A** over
+  a cord removes it — a new rung on A's ladder, after the board
+  and the pending cord, before menus and windows. Cords are SVG
+  beziers on a layer above the windows; a wide invisible hit
+  stroke is what A and right-click find. Anchors prefer the live
+  dot and fall back to the owner's edge, so cords survive their
+  ports being hidden and follow windows as they move.
+- **Deliveries** are window events (`nct:deliver`); each app
+  applies its own. The terminal's run port types the command in
+  and hands focus back afterwards — a delivery must not steal
+  the keyboard (a stuck focus there silently ate the A and P
+  keys during testing: they typed into the terminal instead).
+- **Right-click** a port or a cord for its menu: Open Viewer,
+  Begin/Connect Cord, Disconnect, Remove Cord. The **Patch
+  Viewer** (a window app, also in the new sysbar **Patch** menu
+  beside Show All/Hide All Ports and Clear All Cords) watches a
+  port or cord: current value, the delivery stream, an inject
+  box for inputs, focus/remove/clear-log actions.

@@ -12,7 +12,8 @@
 import { useEffect, useState } from "react";
 import { store, useSlice } from "../core/react.js";
 import { bus } from "../core/bus.js";
-import { openWindow, moveWindow, setVShade } from "../core/windows.js";
+import { openWindow, moveWindow, setVShade, setFlipped } from "../core/windows.js";
+import { attachPatchbay } from "../core/patchbay.js";
 import { lockScreen, logOut } from "./sessionActions.js";
 import { startKeyClicks } from "../../keyclicks/index.js";
 import Login from "./Login.jsx";
@@ -64,6 +65,13 @@ export default function DesktopApp() {
       if (d.id) setVShade(d.id, d.on);
     }
     document.addEventListener("nct:vshade", onVShade);
+    function onWinFlip(e) {
+      const d = e.detail || {};
+      const rec = d.id && store.get().windows.byId[d.id];
+      if (rec) setFlipped(d.id, !rec.flipped);
+    }
+    window.addEventListener("nct:winflip", onWinFlip);
+    const detachPatchbay = attachPatchbay();
     return () => {
       offToast();
       offOpen();
@@ -74,6 +82,8 @@ export default function DesktopApp() {
       document.removeEventListener("nct:winmove", onWinMove);
       document.removeEventListener("nct:winlock", onWinLock);
       document.removeEventListener("nct:vshade", onVShade);
+      window.removeEventListener("nct:winflip", onWinFlip);
+      detachPatchbay();
     };
   }, []);
 

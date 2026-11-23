@@ -35,6 +35,10 @@ export default function NavGraphLayer() {
   const [mode, setMode] = useState("radial");
   const [, setTick] = useState(0);
   const [hoverPath, setHoverPath] = useState("/home/noctivagous");
+  // View transform from the key-click operators (; ' rotate,
+  // [ ] scale), sent over the nct:navgraph bridge when the cursor
+  // is over this layer unobscured. Shared by both layouts.
+  const [view, setView] = useState({ rot: 0, k: 1 });
   const root = useMemo(() => hierarchy(fsTree()), []);
 
   useEffect(() => {
@@ -46,6 +50,23 @@ export default function NavGraphLayer() {
     const ro = new ResizeObserver(read);
     ro.observe(el);
     return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const onOp = (e) => {
+      const op = e.detail && e.detail.op;
+      setView((v) => {
+        switch (op) {
+          case "rotL": return { ...v, rot: v.rot - 15 };
+          case "rotR": return { ...v, rot: v.rot + 15 };
+          case "scaleDown": return { ...v, k: Math.max(0.3, Math.round((v.k / 1.15) * 1000) / 1000) };
+          case "scaleUp": return { ...v, k: Math.min(3, Math.round(v.k * 1.15 * 1000) / 1000) };
+          default: return v;
+        }
+      });
+    };
+    window.addEventListener("nct:navgraph", onOp);
+    return () => window.removeEventListener("nct:navgraph", onOp);
   }, []);
 
   function nodeClick(d) {
@@ -60,6 +81,7 @@ export default function NavGraphLayer() {
 
   const { w, h } = size;
   let links = [], nodes = [], rings = [], guides = [], chartTransform = "";
+  let pivot = { x: 0, y: 0 };
   if (w > 0) {
     if (mode === "radial") {
       // Centre on the desk's open quarter (right and low, where
@@ -72,6 +94,7 @@ export default function NavGraphLayer() {
       links = root.links().map((l) => ({ key: l.target.data.path, d: radial(l) }));
       rings = [...new Set(root.descendants().map((d) => d.y))].filter((r) => r > 0);
       chartTransform = `translate(${cx},${cy})`;
+      pivot = { x: cx, y: cy };
       nodes = root.descendants().map((d) => {
         const leafSide = d.x < Math.PI === !hasKids(d);
         return {
@@ -92,6 +115,7 @@ export default function NavGraphLayer() {
       links = root.links().map((l) => ({ key: l.target.data.path, d: horiz(l) }));
       guides = [...new Set(root.descendants().map((d) => d.y))];
       chartTransform = `translate(${originX},86)`;
+      pivot = { x: originX + Math.max(160, w - originX - 210) / 2, y: 86 + Math.max(120, h - 170) / 2 };
       nodes = root.descendants().map((d) => ({
         key: d.data.path, d,
         transform: `translate(${d.y},${d.x})`,
@@ -121,6 +145,7 @@ export default function NavGraphLayer() {
       </div>
       {w > 0 && (
         <svg className="ng-svg" width={w} height={h} key={mode}>
+          <g className="ng-view" transform={`translate(${pivot.x},${pivot.y}) rotate(${view.rot}) scale(${view.k}) translate(${-pivot.x},${-pivot.y})`}>
           <g transform={chartTransform}>
             {mode === "radial"
               ? rings.map((r) => <circle key={r} className="ng-ring" r={r} />)
@@ -153,6 +178,7 @@ export default function NavGraphLayer() {
                 </g>
               );
             })}
+          </g>
           </g>
         </svg>
       )}

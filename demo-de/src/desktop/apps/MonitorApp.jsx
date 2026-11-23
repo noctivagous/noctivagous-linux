@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { store } from "../core/store.js";
+import { publish } from "../core/patchbay.js";
 import { StatusBar } from "./shared.jsx";
 
 const PROCS = [["window-manager", 412], ["files", 688], ["terminal", 731], ["settings", 802], ["monitor", 915], ["dock", 388]];
@@ -61,6 +62,7 @@ export default function MonitorApp() {
       // The desktop widget (W-02) reads the same samples — the shell
       // subscribes to this slice rather than sampling twice.
       store.set("ui", { load: { cpu, mem, net: Math.round(12 + Math.random() * 30) } });
+      publish("monitor", "cpu", cpu);
     }
     step();
     const iv = setInterval(step, 900);

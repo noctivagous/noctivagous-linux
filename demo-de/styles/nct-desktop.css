@@ -308,15 +308,17 @@ body.noanim *{animation-duration:.01ms !important;transition-duration:.01ms !imp
 .ng-svg{display:block;animation:winBodyIn .25s ease}
 .ng-bar{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:16px;pointer-events:auto;background:linear-gradient(180deg,#1c1f1e,#121413);border:1px solid var(--hair);border-radius:8px;padding:6px 8px 6px 14px;box-shadow:0 10px 28px rgba(0,0,0,.5);z-index:6}
 .ng-title{font-family:var(--font-d);font-size:11px;font-weight:700;letter-spacing:.22em;color:#e8e8e8}
-.ng-switch{display:flex;border:1px solid var(--hair);border-radius:999px;overflow:hidden}
-.ng-switch button{pointer-events:auto;background:transparent;border:0;color:#9a9a9a;font-family:var(--font-d);font-size:10px;font-weight:700;letter-spacing:.14em;padding:5px 13px;cursor:pointer}
-.ng-switch button.on{background:var(--green);color:#0a140c}
+.ng-switch{display:flex;background:linear-gradient(180deg,#0c0d0c,#161816);border:1px solid #000;border-radius:5px;overflow:hidden;box-shadow:inset 0 2px 5px rgba(0,0,0,.75),inset 0 -1px 0 rgba(255,255,255,.06),0 1px 0 rgba(255,255,255,.05)}
+.ng-switch button{pointer-events:auto;background:transparent;border:0;color:#8a8a8a;font-family:var(--font-d);font-size:10px;font-weight:700;letter-spacing:.14em;padding:5px 13px;cursor:pointer;text-shadow:0 1px 0 rgba(0,0,0,.8)}
+.ng-switch button:hover{color:#d8d8d8}
+.ng-switch button.on{background:var(--grad-primary);color:#d9ffd9;box-shadow:inset 0 1px 0 rgba(120,220,120,.35),inset 0 -1px 0 rgba(0,0,0,.45),0 1px 3px rgba(0,0,0,.5)}
 .ng-legend{display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:.08em;color:#9a9a9a;font-family:var(--font-d)}
 .ng-legend i{display:inline-block;margin-left:8px}
 .ng-legend .lg-folder{width:9px;height:9px;border-radius:50%;background:var(--green)}
 .ng-legend .lg-file{width:8px;height:8px;background:#86a8cc;transform:rotate(45deg)}
-.ng-close{pointer-events:auto;background:#26282a;border:1px solid var(--hair);color:#cfd4d1;width:24px;height:24px;border-radius:6px;cursor:pointer;font-size:11px;line-height:1}
-.ng-close:hover{background:#3a3d3f;color:#fff}
+.ng-close{pointer-events:auto;background:var(--grad-btn);border:1px solid #000;color:var(--gb0);width:24px;height:24px;border-radius:4px;cursor:pointer;font-size:11px;line-height:1;box-shadow:0 2px 4px rgba(0,0,0,.4),inset 0 1px 0 rgba(60,60,60,.9),inset 0 -1px 0 rgba(255,255,255,.1);text-shadow:0 1px 0 rgba(0,0,0,.8)}
+.ng-close:hover{filter:brightness(1.25);color:#fff}
+.ng-close:active{box-shadow:inset 0 2px 5px rgba(0,0,0,.7)}
 .ng-path{position:absolute;left:14px;bottom:10px;pointer-events:none;font-size:11px;color:#8f9791;letter-spacing:.04em;background:rgba(10,12,11,.55);padding:3px 8px;border-radius:4px}
 .ng-link{fill:none;stroke:rgba(160,190,170,.28);stroke-width:1.2}
 .ng-ring{fill:none;stroke:rgba(255,255,255,.055)}
@@ -328,3 +330,36 @@ body.noanim *{animation-duration:.01ms !important;transition-duration:.01ms !imp
 .ng-dot-folder{fill:var(--green);stroke:#0d2b15;stroke-width:1.4}
 .ng-collapsed-ring{fill:none;stroke:var(--green);stroke-width:1.2;stroke-dasharray:3 3;opacity:.85}
 .ng-dot-file{fill:#86a8cc;stroke:#16283c;stroke-width:1}
+
+/* ——— Patching: ports, cords, the window's back ———
+   Port dots are appended to an owner's edges (inputs left,
+   outputs right), in the folder/file colour family: green
+   outputs, blue inputs. Cords ride the layer above the windows. */
+.widget{position:relative}
+.pdot{position:absolute;width:15px;height:15px;min-height:0;border-radius:50%;border:2px solid #000;padding:0;cursor:pointer;z-index:30;transform:translateY(-50%);box-shadow:0 1px 4px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.25)}
+.pdot.in{left:-8px;background:#2c4a73;border-color:#86a8cc}
+.pdot.out{right:-8px;background:#2e5b34;border-color:#5cb85c}
+.pdot:hover{filter:brightness(1.5)}
+.pdot .pdot-tip{display:none;position:absolute;top:50%;transform:translateY(-50%);white-space:nowrap;font-family:var(--font-m);font-size:9.5px;letter-spacing:.04em;color:#ddd;background:rgba(10,10,10,.92);border:1px solid var(--hair);border-radius:3px;padding:2px 6px;pointer-events:none}
+.pdot.in .pdot-tip{right:20px}
+.pdot.out .pdot-tip{left:20px}
+.pdot:hover .pdot-tip{display:block}
+.pdot.compat{border-color:#ffe27a;box-shadow:0 0 0 3px rgba(255,226,122,.35),0 0 12px rgba(255,226,122,.55);animation:pdotPulse 1s ease-in-out infinite}
+.pdot.pending{background:#7be07b;border-color:#d9ffd9;box-shadow:0 0 0 3px rgba(123,224,123,.4),0 0 14px rgba(123,224,123,.7);animation:pdotPulse .8s ease-in-out infinite}
+@keyframes pdotPulse{50%{box-shadow:0 0 0 5px rgba(255,226,122,.18),0 0 18px rgba(255,226,122,.8)}}
+.patch-layer{position:absolute;inset:0;z-index:400;pointer-events:none;overflow:visible}
+.cord-line{fill:none;stroke:#69b969;stroke-width:2;filter:drop-shadow(0 1px 2px rgba(0,0,0,.65))}
+.cord-pending{stroke:#e8912d;stroke-dasharray:6 5}
+.cord-hit{fill:none;stroke:rgba(0,0,0,0);stroke-width:14;pointer-events:stroke;cursor:pointer}
+.cord-end{fill:#7be07b;stroke:#0d2b15;stroke-width:1}
+.wback{position:absolute;inset:0;z-index:5;overflow:auto;padding:12px 14px;background:linear-gradient(180deg,#1b1e1b,#101211);font-family:var(--font-m)}
+.wback-head{display:flex;align-items:center;justify-content:space-between;font-family:var(--font-d);font-size:11px;font-weight:700;letter-spacing:.2em;color:#e8e8e8;margin-bottom:10px}
+.wback-row{display:flex;align-items:center;gap:10px;padding:5px 2px;border-bottom:1px solid rgba(255,255,255,.06);font-size:11.5px}
+.wback-dir{flex:none;width:52px;font-weight:700}
+.wback-dir.out{color:#7be07b}
+.wback-dir.in{color:#a9c6e8}
+.wback-label{flex:1;color:#ddd}
+.wback-val{color:#7be07b;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wback-cords{flex:none;color:#888;font-size:10.5px}
+.wback-hint{margin-top:10px;color:#777;font-size:10.5px;letter-spacing:.03em}
+.ctxhead{padding:6px 9px 4px;font-family:var(--font-m);font-size:10px;letter-spacing:.06em;color:#8f9791;border-bottom:1px solid var(--hair);margin-bottom:4px}

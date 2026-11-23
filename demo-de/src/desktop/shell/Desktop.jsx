@@ -2,11 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import { useSlice } from "../core/react.js";
 import { APPS, appById, Icon } from "../core/registry.jsx";
 import { bus, toast } from "../core/bus.js";
-import { openWindow, focusWindow, minimizeWindow, showDesktop } from "../core/windows.js";
+import { openWindow, closeWindow, focusWindow, minimizeWindow, toggleShade, toggleMax, setVShade, showDesktop } from "../core/windows.js";
 import { setSetting } from "../core/react.js";
 import { lockScreen, logOut } from "./sessionActions.js";
 import Window from "./Window.jsx";
 import NavGraphLayer from "./NavGraphLayer.jsx";
+import PatchLayer from "./PatchLayer.jsx";
+import PortDots from "./PortDots.jsx";
+import {
+  publish, showAllPorts, hideAllPorts, clearCords, setWatch,
+  portPressed, disconnectPort, removeCord, cordsTouching, portDef,
+} from "../core/patchbay.js";
 import { toggleLayer } from "../core/layers.js";
 import { useNow, hms, hm, fullDate, pad } from "./useNow.js";
 
@@ -15,6 +21,7 @@ const MENUS = {
   Edit: [["Undo", "noop"], ["Redo", "noop"], ["—"], ["Settings…", "settings"]],
   View: [["Change Wallpaper", "wallpaper"], ["System Monitor", "monitor"], ["—"], ["Show Desktop", "showdesk"]],
   Window: [["Files", "files"], ["Terminal", "terminal"], ["Notes", "notes"], ["About", "about"]],
+  Patch: [["Patch Viewer", "viewer"], ["Show All Ports", "allports"], ["Hide All Ports", "hideports"], ["—"], ["Clear All Cords", "clearcords"]],
   Help: [["About This System", "about"], ["System Monitor", "monitor"]],
 };
 
@@ -24,6 +31,9 @@ export default function Desktop({ onShutdown }) {
   const windows = useSlice("windows");
   const ui = useSlice("ui");
   const now = useNow();
+  const patch = useSlice("patch");
+  // The clock widget publishes its tick for anything wired to it.
+  useEffect(() => { publish("clock", "tick", hms(now)); }, [now]);
   const [openMenu, setOpenMenu] = useState(null); // 'sys' | menu name | 'launcher' | null
   const [ctx, setCtx] = useState(null); // {x, y} | null
   const [selIcon, setSelIcon] = useState(null);
@@ -49,6 +59,9 @@ export default function Desktop({ onShutdown }) {
     else if (a === "wallpaper") cycleWallpaper();
     else if (a === "showdesk") showDesktop();
     else if (a === "noop") toast("Nothing to undo.");
+    else if (a === "allports") showAllPorts();
+    else if (a === "hideports") hideAllPorts();
+    else if (a === "clearcords") { clearCords(); toast("All patch cords removed."); }
     else openWindow(a);
   }
   function cycleWallpaper() {
@@ -129,29 +142,47 @@ export default function Desktop({ onShutdown }) {
 
       <div className="desk-area" id="deskArea"
         onContextMenu={(e) => {
-          if (e.target.closest(".nwin") || e.target.closest(".dicon")) return;
           e.preventDefault();
           setOpenMenu(null);
-          setCtx({ x: Math.min(e.clientX, window.innerWidth - 226), y: Math.min(e.clientY, window.innerHeight - 300) });
+          const x = Math.min(e.clientX, window.innerWidth - 226);
+          const y = Math.min(e.clientY, window.innerHeight - 330);
+          const portEl = e.target.closest("[data-port]");
+          const cordEl = e.target.closest("[data-cord]");
+          const winEl = e.target.closest(".nwin");
+          const iconEl = e.target.closest(".dicon");
+          if (portEl) {
+            const [owner, port] = portEl.getAttribute("data-port").split(":");
+            setCtx({ x, y, kind: "port", owner, port });
+          } else if (cordEl) {
+            setCtx({ x, y, kind: "cord", id: cordEl.getAttribute("data-cord") });
+          } else if (winEl) {
+            const id = winEl.getAttribute("data-app");
+            focusWindow(id);
+            setCtx({ x, y, kind: "win", id });
+          } else if (iconEl) {
+            setCtx({ x, y, kind: "icon", id: iconEl.getAttribute("data-icon") });
+          } else {
+            setCtx({ x, y, kind: "desk" });
+          }
         }}>
         <div className="icons">
           {["home", "files"].map((id) => {
             const ap = appById(id);
             return (
-              <button key={id} className={"dicon" + (selIcon === id ? " sel" : "")}
+              <button key={id} data-icon={id} className={"dicon" + (selIcon === id ? " sel" : "")}
                 onClick={() => iconClick(id)}>
                 <span className="dib"><Icon name={ap.icon} /></span><span>{ap.name}</span>
               </button>
             );
           })}
-          <button className={"dicon" + (ui.layer === "navgraph" ? " sel" : "")}
+          <button data-icon="navgraph" className={"dicon" + (ui.layer === "navgraph" ? " sel" : "")}
             onClick={() => { setSelIcon("navgraph"); toggleLayer("navgraph"); }}>
             <span className="dib"><Icon name="graph" /></span><span>NavGraph</span>
           </button>
           {["terminal", "settings", "monitor", "notes"].map((id) => {
             const ap = appById(id);
             return (
-              <button key={id} className={"dicon" + (selIcon === id ? " sel" : "")}
+              <button key={id} data-icon={id} className={"dicon" + (selIcon === id ? " sel" : "")}
                 onClick={() => iconClick(id)}>
                 <span className="dib"><Icon name={ap.icon} /></span><span>{ap.name}</span>
               </button>
@@ -162,7 +193,7 @@ export default function Desktop({ onShutdown }) {
           {["about", "trash"].map((id) => {
             const ap = appById(id);
             return (
-              <button key={id} className={"dicon" + (selIcon === id ? " sel" : "")}
+              <button key={id} data-icon={id} className={"dicon" + (selIcon === id ? " sel" : "")}
                 onClick={() => iconClick(id)}>
                 <span className="dib"><Icon name={ap.icon} /></span><span>{ap.name}</span>
               </button>
@@ -170,13 +201,15 @@ export default function Desktop({ onShutdown }) {
           })}
         </div>
         <div className="widgets">
-          <div className="widget">
+          <div className="widget" data-patch-owner="clock">
             <div className="cap" style={{ marginBottom: 6 }}>Local time · <span style={{ color: "#5c5c5c" }}>W-01</span></div>
             <div className="wtime">{hm(now)}</div>
             <div className="wdate">{fullDate(now)}</div>
+            {patch.openFor.clock && <PortDots owner="clock" />}
           </div>
-          <div className="widget">
+          <div className="widget" data-patch-owner="sysload">
             <div className="cap" style={{ marginBottom: 7 }}>System load · <span style={{ color: "#5c5c5c" }}>W-02</span></div>
+            {patch.openFor.sysload && <PortDots owner="sysload" />}
             <div className="wmrow"><span>CPU</span><div className="meter"><i style={{ width: load.cpu + "%" }}></i></div><b>{load.cpu}%</b></div>
             <div className="wmrow"><span>MEM</span><div className="meter blue"><i style={{ width: load.mem + "%" }}></i></div><b>{load.mem}%</b></div>
             <div className="wmrow"><span>NET</span><div className="meter amber"><i style={{ width: load.net + "%" }}></i></div><b>{load.net}%</b></div>
@@ -188,6 +221,7 @@ export default function Desktop({ onShutdown }) {
             <Window key={id} id={id} rec={windows.byId[id]} focused={windows.focusId === id} locked={!!(ui.dragLock && ui.dragLock.id === id)} />
           ))}
         </div>
+        <PatchLayer />
       </div>
 
       <div className={"launcher" + (openMenu === "launcher" ? " open" : "")} id="launcher">
@@ -227,6 +261,12 @@ export default function Desktop({ onShutdown }) {
                 onClick={() => {
                   if (rec.min || windows.focusId !== id) focusWindow(id);
                   else minimizeWindow(id);
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setOpenMenu(null);
+                  setCtx({ x: Math.min(e.clientX, window.innerWidth - 226), y: Math.max(44, e.clientY - 176), kind: "task", id });
                 }}>
                 <Icon name={ap.icon} /><span>{ap.name}</span>
               </button>
@@ -240,7 +280,7 @@ export default function Desktop({ onShutdown }) {
         </div>
       </footer>
 
-      {ctx && (
+      {ctx && ctx.kind === "desk" && (
         <div className="ctxmenu open" id="ctxMenu" style={{ left: ctx.x, top: ctx.y }}>
           <button data-c="wallpaper" onClick={() => { setCtx(null); cycleWallpaper(); }}>▦ &nbsp;Change Wallpaper</button>
           <button data-c="terminal" onClick={() => { setCtx(null); openWindow("terminal"); }}>▸ &nbsp;Open Terminal</button>
@@ -254,6 +294,62 @@ export default function Desktop({ onShutdown }) {
           </div>
         </div>
       )}
+      {ctx && ctx.kind === "win" && windows.byId[ctx.id] && (() => {
+        const rec = windows.byId[ctx.id];
+        const run = (fn) => () => { setCtx(null); fn(ctx.id); };
+        return (
+          <div className="ctxmenu open" id="ctxMenu" style={{ left: ctx.x, top: ctx.y }}>
+            <button onClick={run(focusWindow)}>Focus</button>
+            <button onClick={run(toggleShade)}>{rec.shaded ? "Expand" : "Collapse"}</button>
+            <button onClick={() => { setCtx(null); setVShade(ctx.id, !rec.vshaded); }}>{rec.vshaded ? "Restore Titlebar" : "Vertical Titlebar"}</button>
+            <button onClick={run(minimizeWindow)}>Minimize</button>
+            <button onClick={run(toggleMax)}>{rec.max ? "Restore" : "Maximize"}</button>
+            <div style={{ height: 1, background: "var(--hair)", margin: "4px 6px" }}></div>
+            <button onClick={run(closeWindow)}>Close</button>
+          </div>
+        );
+      })()}
+      {ctx && ctx.kind === "icon" && (
+        <div className="ctxmenu open" id="ctxMenu" style={{ left: ctx.x, top: ctx.y }}>
+          {ctx.id === "navgraph" ? (
+            <button onClick={() => { setCtx(null); toggleLayer("navgraph"); }}>{ui.layer === "navgraph" ? "Close NavGraph" : "Open NavGraph"}</button>
+          ) : (
+            <button onClick={() => { setCtx(null); iconClick(ctx.id); }}>Open {appById(ctx.id) ? appById(ctx.id).name : ctx.id}</button>
+          )}
+        </div>
+      )}
+      {ctx && ctx.kind === "port" && (() => {
+        const def = portDef(ctx.owner, ctx.port);
+        const n = cordsTouching(ctx.owner, ctx.port).length;
+        if (!def) return null;
+        return (
+          <div className="ctxmenu open" id="ctxMenu" style={{ left: ctx.x, top: ctx.y }}>
+            <div className="ctxhead">{ctx.owner} · {def.label} ({def.dir === "out" ? "output" : "input"})</div>
+            <button onClick={() => { setCtx(null); setWatch({ kind: "port", owner: ctx.owner, port: ctx.port }); openWindow("viewer"); }}>Open Viewer</button>
+            <button onClick={() => { setCtx(null); portPressed(ctx.owner, ctx.port); }}>{patch.pending ? "Connect Cord Here" : "Begin Cord"}</button>
+            {n > 0 && <button onClick={() => { setCtx(null); disconnectPort(ctx.owner, ctx.port); }}>Disconnect ({n})</button>}
+          </div>
+        );
+      })()}
+      {ctx && ctx.kind === "cord" && (
+        <div className="ctxmenu open" id="ctxMenu" style={{ left: ctx.x, top: ctx.y }}>
+          <div className="ctxhead">Patch cord</div>
+          <button onClick={() => { setCtx(null); setWatch({ kind: "cord", id: ctx.id }); openWindow("viewer"); }}>Open Viewer</button>
+          <button onClick={() => { setCtx(null); removeCord(ctx.id); }}>Remove Cord</button>
+        </div>
+      )}
+      {ctx && ctx.kind === "task" && windows.byId[ctx.id] && (() => {
+        const rec = windows.byId[ctx.id];
+        const run = (fn) => () => { setCtx(null); fn(ctx.id); };
+        return (
+          <div className="ctxmenu open" id="ctxMenu" style={{ left: ctx.x, top: ctx.y }}>
+            <button onClick={run(focusWindow)}>Focus</button>
+            {!rec.min && <button onClick={run(minimizeWindow)}>Minimize</button>}
+            <div style={{ height: 1, background: "var(--hair)", margin: "4px 6px" }}></div>
+            <button onClick={run(closeWindow)}>Close</button>
+          </div>
+        );
+      })()}
     </section>
   );
 }

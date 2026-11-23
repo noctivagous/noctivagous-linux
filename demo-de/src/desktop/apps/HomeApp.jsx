@@ -1,11 +1,17 @@
 import { useEffect, useState } from "react";
 import { useSlice } from "../core/react.js";
 import { openApp } from "../core/bus.js";
+import { publish, onDeliver } from "../core/patchbay.js";
 import { StatusBar, pad } from "./shared.jsx";
 
 export default function HomeApp() {
   const session = useSlice("session");
   const [up, setUp] = useState("00:00");
+  const [status, setStatus] = useState("READY");
+  useEffect(() => {
+    publish("home", "user", session.user);
+    return onDeliver("home", "status", (v) => setStatus(String(v)));
+  }, []);
   useEffect(() => {
     const t0 = Date.now();
     const iv = setInterval(() => {
@@ -37,7 +43,7 @@ export default function HomeApp() {
         <button className="btn sm" data-open="terminal" onClick={() => openApp("terminal")}>Open Terminal</button>
         <button className="btn sm" data-open="settings" onClick={() => openApp("settings")}>Settings</button>
       </div>
-      <StatusBar left="READY" right={"SESSION · " + session.sessionType.toUpperCase()} />
+      <StatusBar left={status} right={"SESSION · " + session.sessionType.toUpperCase()} />
     </>
   );
 }

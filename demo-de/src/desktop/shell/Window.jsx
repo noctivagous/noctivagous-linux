@@ -11,6 +11,10 @@
 
 import { useRef, useState } from "react";
 import { appById } from "../core/registry.jsx";
+import { useSlice } from "../core/react.js";
+import { ownerPorts, keyOf } from "../core/patchbay.js";
+import { setFlipped } from "../core/windows.js";
+import PortDots from "./PortDots.jsx";
 import {
   closeWindow,
   focusWindow,
@@ -27,6 +31,8 @@ const EDGES = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
 export default function Window({ id, rec, focused, locked }) {
   const ap = appById(id);
   const App = ap.component;
+  const patch = useSlice("patch");
+  const portsOpen = !!patch.openFor[id];
   const dragRef = useRef(null);
   const [closing, setClosing] = useState(false);
 
@@ -144,10 +150,34 @@ export default function Window({ id, rec, focused, locked }) {
         </span>
       </div>
       {!rec.shaded && (
-        <div className="wbody">
+        <div className="wbody" style={{ position: "relative" }}>
           <App />
+          {rec.flipped && (
+            <div className="wback">
+              <div className="wback-head">
+                <span>BACK · PORTS</span>
+                <button type="button" className="btn sm" onClick={() => setFlipped(id, false)}>Flip back (P)</button>
+              </div>
+              {ownerPorts(id).map((p) => {
+                const v = patch.values[keyOf(id, p.id)];
+                const n = patch.cords.filter(
+                  (c) => (c.from.owner === id && c.from.port === p.id) || (c.to.owner === id && c.to.port === p.id),
+                ).length;
+                return (
+                  <div className="wback-row" key={p.id}>
+                    <span className={"wback-dir " + p.dir}>{p.dir === "out" ? "▸ OUT" : "◂ IN"}</span>
+                    <span className="wback-label">{p.label}</span>
+                    <span className="wback-val">{v === undefined ? "—" : String(v)}</span>
+                    <span className="wback-cords">{n ? n + (n === 1 ? " cord" : " cords") : ""}</span>
+                  </div>
+                );
+              })}
+              <div className="wback-hint">O toggles the edge ports · F starts a cord on a port · A removes a cord</div>
+            </div>
+          )}
         </div>
       )}
+      {portsOpen && !rec.shaded && <PortDots owner={id} />}
       {!rec.max && !rec.shaded &&
         EDGES.map((edge) => (
           <div key={edge} className={"rsz rsz-" + edge} onMouseDown={onResizeMouseDown(edge)}></div>

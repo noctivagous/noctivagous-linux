@@ -1,5 +1,6 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "../core/bus.js";
+import { publish, onDeliver } from "../core/patchbay.js";
 import { StatusBar } from "./shared.jsx";
 
 export default function NotesApp() {
@@ -7,8 +8,15 @@ export default function NotesApp() {
   const [saved, setSaved] = useState(false);
   const taRef = useRef(null);
 
+  useEffect(() => onDeliver("notes", "text-in", (v) => {
+    if (taRef.current && taRef.current.value !== String(v)) {
+      taRef.current.value = String(v);
+      upd();
+    }
+  }), []);
   function upd() {
     const v = taRef.current ? taRef.current.value : "";
+    publish("notes", "text", v);
     const w = v.trim() ? v.trim().split(/\s+/).length : 0;
     setSaved(false);
     setStatus(w + " words · " + v.length + " chars");
