@@ -1,6 +1,28 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
+import { cpSync } from 'node:fs';
+import { join } from 'node:path';
+
+// The NCT Desktop root (index.html + styles/ + scripts/) is a plain
+// static page, not a Rollup input — Vite never processes it. But the
+// deployed site serves the BUILD OUTPUT, so without this copy step
+// dist/ has no index.html and the host answers 404 at `/`. Copy the
+// three static pieces into dist/ verbatim after every build; the
+// sources stay unprocessed, builds still never overwrite them.
+function copyDesktopRoot() {
+  return {
+    name: 'copy-desktop-root',
+    apply: 'build',
+    closeBundle() {
+      const root = fileURLToPath(new URL('.', import.meta.url));
+      const out = join(root, 'dist');
+      cpSync(join(root, 'index.html'), join(out, 'index.html'));
+      cpSync(join(root, 'styles'), join(out, 'styles'), { recursive: true });
+      cpSync(join(root, 'scripts'), join(out, 'scripts'), { recursive: true });
+    },
+  };
+}
 
 // demo-de is a multi-page lab served by ONE Vite server:
 //
@@ -10,7 +32,10 @@ import { fileURLToPath } from 'node:url';
 //                      styles/nct-desktop.css + scripts/nct-desktop.js,
 //                      no framework. Deliberately NOT a Vite build
 //                      input, so builds never overwrite it; the dev
-//                      server serves it as a plain page at `/`.
+//                      server serves it as a plain page at `/`, and
+//                      the copyDesktopRoot plugin below copies it
+//                      verbatim into dist/ so the deployed site has
+//                      an index.html at its root.
 //  - index-demo-paramorphic-1.html — FLAT SPACE, the 2D environment
 //                      view (src/flat-main.jsx): stationary panels +
 //                      key-click frames, built from
@@ -28,7 +53,7 @@ import { fileURLToPath } from 'node:url';
 // that prove out get promoted into the main file later. `appType:
 // 'mpa'` keeps each page at its own URL with no SPA fallback.
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), copyDesktopRoot()],
   appType: 'mpa',
   build: {
     rollupOptions: {
