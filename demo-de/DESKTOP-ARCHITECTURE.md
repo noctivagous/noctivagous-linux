@@ -106,7 +106,8 @@ over shell chrome and app content, and survives re-renders because
 it resolves its targets at event time. The DOM contract it may
 assume is written down in `KEYCLICKS-AUDIT.md`. Two host bridges
 keep it honest inside the architecture: where the shell owns the
-truth (window geometry), the engine emits `nct:winmove` and the
+truth (window geometry), the engine emits `nct:winmove` (and
+`nct:winlock` for the drag-lock cast) and the
 window manager applies it, never a direct DOM write; and its mode
 changes go out on the bus as `kc:mode`. Its one concession to
 React is using the native value setter on range inputs so React's

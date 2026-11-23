@@ -8,7 +8,7 @@ import { appById } from "../core/registry.jsx";
 import { closeWindow, focusWindow, minimizeWindow, toggleMax, toggleShade, moveWindow } from "../core/windows.js";
 import { pad3 } from "../apps/shared.jsx";
 
-export default function Window({ id, rec, focused }) {
+export default function Window({ id, rec, focused, locked }) {
   const ap = appById(id);
   const App = ap.component;
   const dragRef = useRef(null);
@@ -50,11 +50,12 @@ export default function Window({ id, rec, focused }) {
     style.height = "100%";
   } else {
     if (rec.w) style.width = rec.w + "px";
-    if (rec.h) style.height = rec.h + "px";
+    // A shaded window collapses to its titlebar: no fixed height.
+    if (rec.h && !rec.shaded) style.height = rec.h + "px";
   }
 
   return (
-    <div className={"nwin opening" + (focused ? " focused" : "")} data-app={id} style={style}
+    <div className={"nwin opening" + (focused ? " focused" : "") + (locked ? " kc-dragging" : "")} data-app={id} style={style}
       onMouseDown={() => focusWindow(id)}>
       <div className="titlebar" onMouseDown={onTitleMouseDown}
         onDoubleClick={(e) => { if (!e.target.closest(".wbtn")) toggleMax(id); }}>

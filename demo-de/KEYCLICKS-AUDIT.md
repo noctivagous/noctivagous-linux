@@ -72,3 +72,40 @@ class (design / implementation / knowledge):
 - Addressables: the selector list in `addressing.js`.
 - Host bridge: the host listens for `nct:winmove` (drag-lock) and
   renders window geometry from its own state.
+
+## Round 2 (user's specification, 2026-11-23)
+
+Five behaviours added, each placed by the same rules:
+
+- **E collapses the window under the cursor** (its own shade
+  button), and the remaining titlebar is placed directly under
+  the cursor. Placement goes through `nct:winmove`; the cursor's
+  viewport Y is converted into the window layer's frame first —
+  the first browser check caught a 34px miss from mixing the two
+  frames. E on a shaded window expands it in place.
+- **F precedence fixed**: a real control inside a titlebar (the
+  close/min/shade buttons) now wins over the titlebar itself —
+  before, F over ✕ focused the window instead of closing it.
+- **A closes the window under the cursor**, through its own close
+  button. E and A are ordinary operators outside label mode (in
+  label mode both letters still type labels) and are named on the
+  board (COLLAPSE / CLOSE WIN).
+- **Drag-lock states are visible three ways**: the reticle changes
+  shape (ring → green square for a window, amber bar for a range),
+  the system cursor follows (grabbing / ew-resize, via body
+  classes), and the locked window wears a light-green cast at
+  86% opacity. The cast is *host-rendered*: React owns the
+  window's className and a re-render wiped the engine's class, so
+  the engine reports the lock over a second bridge event
+  (`nct:winlock`) and the shell paints it from store state —
+  the same pattern as geometry.
+- **Text mode wears KeyPilot's mark**: an orange ring on the
+  terminal's content viewport when typing in the Terminal, on
+  the text field itself otherwise (login screen included), and
+  an orange cast over the board's caps while in text mode.
+- **The board is draggable** by its panel head; position is the
+  engine's own furniture, so it stays engine-owned.
+- The stylesheet's F-click ripple (`.kc-ripple`, carried since
+  the fragments) is now actually emitted, and the HUD markup was
+  aligned to the stylesheet's class names (`kc-mode` /
+  `kc-target` / `kc-hints`).

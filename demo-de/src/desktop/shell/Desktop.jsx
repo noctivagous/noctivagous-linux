@@ -171,7 +171,7 @@ export default function Desktop({ onShutdown }) {
         </div>
         <div id="winLayer" style={{ position: "absolute", inset: 0 }}>
           {windows.order.map((id) => (
-            <Window key={id} id={id} rec={windows.byId[id]} focused={windows.focusId === id} />
+            <Window key={id} id={id} rec={windows.byId[id]} focused={windows.focusId === id} locked={!!(ui.dragLock && ui.dragLock.id === id)} />
           ))}
         </div>
       </div>

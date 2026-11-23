@@ -42,6 +42,7 @@ export function createKeyClicks(hooks = {}) {
   let dragLock = null; // {kind:'win', el, id, dx, dy, ox, oy} | {kind:'range', el}
   let boardOn = false;
   let boardSig = "";
+  let ringEl = null;
   let filesFolder = "Home";
   const folderTrail = [];
   const winTrail = [];
@@ -51,14 +52,14 @@ export function createKeyClicks(hooks = {}) {
   root.id = "kcRoot";
   root.innerHTML = `
     <div id="kcReticle"></div>
-    <div id="kcHud"><span class="m">KEY-CLICK</span><span class="tgt">target — —</span><span class="hint">F click · D back · Tab target · Space drag-lock · Alt+L labels · Alt+K keys</span></div>
+    <div id="kcHud"><span class="kc-mode">KEY-CLICK</span><span class="kc-target">target — —</span><span class="kc-hints">F click · E collapse · A close · D back · Tab target · Space drag-lock · Alt+L labels · Alt+K keys</span></div>
     <button id="kcTab" type="button" aria-label="Toggle onscreen keyboard" title="Onscreen keyboard (Alt+K)">KEYBOARD</button>
     <div id="kcPanel" hidden></div>`;
   document.body.appendChild(root);
   const reticle = root.querySelector("#kcReticle");
   const hud = root.querySelector("#kcHud");
-  const hudMode = hud.querySelector(".m");
-  const hudTgt = hud.querySelector(".tgt");
+  const hudMode = hud.querySelector(".kc-mode");
+  const hudTgt = hud.querySelector(".kc-target");
   const tab = root.querySelector("#kcTab");
   const panel = root.querySelector("#kcPanel");
 
@@ -84,6 +85,28 @@ export function createKeyClicks(hooks = {}) {
       setMode();
       renderBoard(true);
     }
+    applyTextRing();
+  }
+  // KeyPilot's text-mode mark: an orange ring on the thing being
+  // typed into — the terminal's content viewport when the field
+  // belongs to the Terminal, the field itself otherwise (login
+  // screen included).
+  function applyTextRing() {
+    document.querySelectorAll(".kc-textring").forEach((e) => {
+      if (e !== ringEl) e.classList.remove("kc-textring");
+    });
+    let target = null;
+    if (textMode && textEl) {
+      const win = textEl.closest && textEl.closest(".nwin");
+      if (win && win.getAttribute("data-app") === "terminal") {
+        target = win.querySelector(".wbody") || textEl;
+      } else {
+        target = textEl;
+      }
+    }
+    if (ringEl && ringEl !== target) ringEl.classList.remove("kc-textring");
+    ringEl = target;
+    if (ringEl) ringEl.classList.add("kc-textring");
   }
   function currentTarget() {
     if (targeted && targeted.isConnected && visible(targeted)) return targeted;
@@ -122,6 +145,19 @@ export function createKeyClicks(hooks = {}) {
       targeted = range;
       return true;
     }
+    // A real control wins over the titlebar it may sit inside:
+    // F over a window's close/min/shade button must CLICK it, not
+    // focus the window. Only bare titlebar surface focuses.
+    const t = el.closest
+      ? el.closest("button, a[href], input, select, textarea, .dicon, [tabindex]")
+      : null;
+    if (t) {
+      if (t.focus && t.tagName !== "BUTTON") t.focus({ preventScroll: true });
+      if (t.click) t.click();
+      targeted = t;
+      ripple();
+      return true;
+    }
     const tb = el.closest && el.closest(".nwin .titlebar");
     if (tb) {
       const w = tb.closest(".nwin");
@@ -129,13 +165,7 @@ export function createKeyClicks(hooks = {}) {
       targeted = tb;
       return true;
     }
-    const t = el.closest
-      ? el.closest("button, a[href], input, select, textarea, .dicon, [tabindex]") || el
-      : el;
-    if (t.focus && t.tagName !== "BUTTON") t.focus({ preventScroll: true });
-    if (t.click) t.click();
-    targeted = t;
-    return true;
+    return false;
   }
   function setRangeFromCursor(range) {
     // A React host tracks range values: write through the native
@@ -151,6 +181,16 @@ export function createKeyClicks(hooks = {}) {
     setter.call(range, String(Math.round(min + f * (max - min))));
     range.dispatchEvent(new Event("input", { bubbles: true }));
     range.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function ripple() {
+    const r = document.createElement("div");
+    r.className = "kc-ripple";
+    r.style.left = mouseX + "px";
+    r.style.top = mouseY + "px";
+    document.body.appendChild(r);
+    requestAnimationFrame(() => r.classList.add("go"));
+    setTimeout(() => r.remove(), 500);
   }
 
   /* ---------- labels ---------- */
@@ -215,6 +255,20 @@ export function createKeyClicks(hooks = {}) {
       new CustomEvent("nct:winmove", { detail: { id, x, y } }),
     );
   }
+  function setLockState(kind, id) {
+    document.body.classList.toggle("kc-lock-win", kind === "win");
+    document.body.classList.toggle("kc-lock-range", kind === "range");
+    reticle.classList.toggle("lock-win", kind === "win");
+    reticle.classList.toggle("lock-range", kind === "range");
+    // The locked window's cast is host-rendered: React owns the
+    // window's className, so the engine reports the lock and the
+    // shell paints it (same bridge pattern as nct:winmove).
+    document.dispatchEvent(
+      new CustomEvent("nct:winlock", {
+        detail: kind === "win" ? { id: id || null, kind } : null,
+      }),
+    );
+  }
   function tryDragLock() {
     const el = document.elementFromPoint(mouseX, mouseY);
     if (!el) return;
@@ -222,6 +276,7 @@ export function createKeyClicks(hooks = {}) {
     if (range) {
       dragLock = { kind: "range", el: range };
       range.classList.add("kc-dragging");
+      setLockState("range");
       setRangeFromCursor(range);
       setMode();
       return;
@@ -239,7 +294,7 @@ export function createKeyClicks(hooks = {}) {
         ox: win.offsetLeft,
         oy: win.offsetTop,
       };
-      win.classList.add("kc-dragging");
+      setLockState("win", win.getAttribute("data-app"));
       setMode();
     }
   }
@@ -254,13 +309,54 @@ export function createKeyClicks(hooks = {}) {
     }
   }
   function dropDragLock() {
-    if (dragLock && dragLock.el) dragLock.el.classList.remove("kc-dragging");
+    if (dragLock && dragLock.el && dragLock.kind === "range")
+      dragLock.el.classList.remove("kc-dragging");
     dragLock = null;
+    setLockState(null);
     setMode();
   }
   function cancelDragLock() {
     if (dragLock && dragLock.kind === "win") winMove(dragLock.id, dragLock.ox, dragLock.oy);
     dropDragLock();
+  }
+
+  /* ---------- E collapse / A close, at the cursor ---------- */
+  function winAtCursor() {
+    const el = document.elementFromPoint(mouseX, mouseY);
+    return el && el.closest ? el.closest(".nwin") : null;
+  }
+  // Collapse (shade) through the window's own shade button; the
+  // titlebar that remains is placed directly under the cursor —
+  // its vertical centre on the cursor, horizontal span unchanged
+  // (the cursor was inside the window, so it stays over the bar).
+  // Position goes through the host bridge, like drag-lock.
+  function collapseAtCursor() {
+    const win = winAtCursor();
+    if (!win) return false;
+    const shadeBtn = win.querySelector(".wbtn.shade");
+    if (!shadeBtn) return false; // e.g. the login window cannot shade
+    const wasShaded = !win.querySelector(".wbody");
+    shadeBtn.click();
+    if (!wasShaded) {
+      const id = win.getAttribute("data-app");
+      if (id) {
+        // mouseY is viewport coordinates; window positions live in
+        // the window layer's frame — convert before bridging.
+        const layerTop = win.offsetParent
+          ? win.offsetParent.getBoundingClientRect().top
+          : 0;
+        winMove(id, win.offsetLeft, Math.max(0, mouseY - layerTop - 11));
+      }
+    }
+    return true;
+  }
+  function closeAtCursor() {
+    const win = winAtCursor();
+    if (!win) return false;
+    const closeBtn = win.querySelector(".wbtn.close");
+    if (!closeBtn) return false;
+    closeBtn.click();
+    return true;
   }
 
   /* ---------- back (D): one rung at a time ---------- */
@@ -375,6 +471,11 @@ export function createKeyClicks(hooks = {}) {
       setBoard(false);
     });
     head.appendChild(collapse);
+    head.addEventListener("mousedown", (ev) => {
+      if (ev.target.closest(".kc-collapse")) return;
+      ev.preventDefault();
+      beginPanelDrag(ev);
+    });
     panel.appendChild(head);
     const altDown = false;
     for (const row of BOARD_ROWS) {
@@ -526,6 +627,14 @@ export function createKeyClicks(hooks = {}) {
       }
       case "d": case "D":
         e.preventDefault(); goBack(); setMode(); return;
+      case "e": case "E":
+        e.preventDefault();
+        if (collapseAtCursor()) setMode();
+        return;
+      case "a": case "A":
+        e.preventDefault();
+        if (closeAtCursor()) setMode();
+        return;
       case "Tab":
         e.preventDefault(); stepTarget(e.shiftKey ? -1 : 1); return;
       case " ":
@@ -548,12 +657,37 @@ export function createKeyClicks(hooks = {}) {
     }
   }
 
+  /* ---------- board dragging (by the panel head) ---------- */
+  let panelDrag = null;
+  function onPanelMouseMove(e) {
+    if (!panelDrag) return;
+    const w = panel.offsetWidth;
+    const h = panel.offsetHeight;
+    panel.style.left =
+      Math.min(innerWidth - 60, Math.max(-w + 80, e.clientX - panelDrag.dx)) + "px";
+    panel.style.top =
+      Math.min(innerHeight - 30, Math.max(0, e.clientY - panelDrag.dy)) + "px";
+  }
+  function onPanelMouseUp() {
+    panelDrag = null;
+  }
+  function beginPanelDrag(e) {
+    const r = panel.getBoundingClientRect();
+    panelDrag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+    panel.style.left = r.left + "px";
+    panel.style.top = r.top + "px";
+    panel.style.right = "auto";
+    panel.style.bottom = "auto";
+  }
+
   /* ---------- wiring ---------- */
   tab.addEventListener("mousedown", (e) => {
     e.preventDefault();
     setBoard(!boardOn);
   });
   document.addEventListener("mousemove", onMouseMove, true);
+  document.addEventListener("mousemove", onPanelMouseMove, true);
+  document.addEventListener("mouseup", onPanelMouseUp, true);
   document.addEventListener("mousedown", onMouseDown, true);
   document.addEventListener("keydown", onKeyDown, true);
   document.addEventListener("focusin", onFocusChange);
@@ -566,6 +700,8 @@ export function createKeyClicks(hooks = {}) {
       clearInterval(boardTimer);
       clearTimeout(bufferTimer);
       document.removeEventListener("mousemove", onMouseMove, true);
+      document.removeEventListener("mousemove", onPanelMouseMove, true);
+      document.removeEventListener("mouseup", onPanelMouseUp, true);
       document.removeEventListener("mousedown", onMouseDown, true);
       document.removeEventListener("keydown", onKeyDown, true);
       document.removeEventListener("focusin", onFocusChange);

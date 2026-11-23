@@ -55,6 +55,10 @@ export default function DesktopApp() {
       if (d.id) moveWindow(d.id, d.x, d.y);
     }
     document.addEventListener("nct:winmove", onWinMove);
+    function onWinLock(e) {
+      store.set("ui", { dragLock: e.detail || null });
+    }
+    document.addEventListener("nct:winlock", onWinLock);
     return () => {
       offToast();
       offOpen();
@@ -63,6 +67,7 @@ export default function DesktopApp() {
       clearInterval(batt);
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("nct:winmove", onWinMove);
+      document.removeEventListener("nct:winlock", onWinLock);
     };
   }, []);
 

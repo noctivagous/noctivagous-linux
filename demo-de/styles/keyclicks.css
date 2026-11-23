@@ -192,9 +192,71 @@ body.kc-textmode .screen.on {
 }
 .kc-ripple.go { width: 84px; height: 84px; margin: -42px 0 0 -42px; opacity: 0; }
 
-/* Window held by drag-lock */
+/* Window held by drag-lock: light green cast, semi-transparent */
 .nwin.kc-dragging {
   outline: 2px solid #5cb85c;
   outline-offset: 1px;
-  opacity: 0.96;
+  opacity: 0.86;
+  filter: brightness(1.07) saturate(1.05);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7), 0 0 26px rgba(92, 184, 92, 0.35),
+    10px 14px 34px rgba(0, 0, 0, 0.75);
 }
+.nwin.kc-dragging::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(102, 255, 102, 0.07);
+  pointer-events: none;
+  z-index: 60;
+}
+input[type="range"].kc-dragging {
+  outline: 2px solid #5cb85c;
+  outline-offset: 1px;
+  box-shadow: 0 0 12px rgba(92, 184, 92, 0.5);
+}
+
+/* The reticle: the key-click cursor. One shape per drag-lock state */
+#kcReticle {
+  position: fixed;
+  z-index: 9996;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border: 2px solid rgba(92, 184, 92, 0.9);
+  border-radius: 50%;
+  pointer-events: none;
+}
+#kcReticle.lock-win {
+  background: rgba(92, 184, 92, 0.35);
+  border-color: #66ff66;
+  border-radius: 3px;
+}
+#kcReticle.lock-range {
+  width: 26px;
+  height: 10px;
+  margin: -5px 0 0 -13px;
+  border-color: #e8c33a;
+  border-radius: 5px;
+  background: rgba(232, 195, 58, 0.25);
+}
+body.kc-lock-win, body.kc-lock-win * { cursor: grabbing !important; }
+body.kc-lock-range, body.kc-lock-range * { cursor: ew-resize !important; }
+
+/* Text mode (KeyPilot's mark): orange ring on the typing target —
+   the terminal's content viewport, or the text field itself */
+.kc-textring {
+  outline: 2px solid rgba(232, 145, 45, 0.95) !important;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7), 0 0 16px rgba(232, 145, 45, 0.45) !important;
+}
+/* …and an orange cast over the onscreen keyboard while typing */
+body.kc-textmode .kc-cap {
+  border-color: rgba(232, 145, 45, 0.5);
+  color: #c9a184;
+}
+body.kc-textmode .kc-cap .g { color: #ffb27a; }
+body.kc-textmode #kcPanel { border-color: rgba(232, 145, 45, 0.55); }
+
+/* The board's head is its drag handle */
+#kcPanel .kc-panel-head { cursor: grab; }
+#kcPanel .kc-panel-head:active { cursor: grabbing; }

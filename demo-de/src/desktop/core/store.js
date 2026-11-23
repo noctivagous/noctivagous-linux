@@ -37,6 +37,7 @@ const initialState = {
   ui: {
     toast: null, // {msg, at}
     battery: 87,
+    dragLock: null,
   },
 };
 

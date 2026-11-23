@@ -46,7 +46,8 @@ export const SCOPE_FOR_APP = {
 
 const BINDINGS = {
   shell: {
-    KeyF: "CLICK", KeyD: "BACK", Tab: "TARGET", Space: "DRAG·LOCK",
+    KeyF: "CLICK", KeyD: "BACK", KeyE: "COLLAPSE", KeyA: "CLOSE WIN",
+    Tab: "TARGET", Space: "DRAG·LOCK",
     Enter: "OPEN", Slash: "LAUNCH", Escape: "UNWIND",
     AltLeft: "ALT+", KeyL: "LABELS", KeyK: "BOARD",
     ArrowUp: "SCROLL ↑", ArrowDown: "SCROLL ↓",
