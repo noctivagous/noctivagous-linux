@@ -12,12 +12,13 @@
 import { useEffect, useState } from "react";
 import { store, useSlice } from "../core/react.js";
 import { bus } from "../core/bus.js";
-import { openWindow, moveWindow, setVShade, setFlipped, toggleHidden, closeWindow } from "../core/windows.js";
+import { openWindow, focusWindow, moveWindow, setVShade, setFlipped, toggleHidden, closeWindow, resizeTo, transformWindow, toggleFrozen } from "../core/windows.js";
+import { toggleLayerFrozen } from "../core/layers.js";
 import { attachPatchbay } from "../core/patchbay.js";
 import { lockScreen, logOut } from "./sessionActions.js";
 import { startKeyClicks } from "../../keyclicks/index.js";
 import Login from "./Login.jsx";
-import Desktop from "./Desktop.jsx";
+import Desktop, { WIDGET_STYLES } from "./Desktop.jsx";
 import BackdropView from "./BackdropView.jsx";
 
 export default function DesktopApp() {
@@ -56,8 +57,69 @@ export default function DesktopApp() {
       if (d.id) moveWindow(d.id, d.x, d.y);
     }
     document.addEventListener("nct:winmove", onWinMove);
+    // The WindowTransformerRegion claims a window when it is
+    // dropped into the square — by a titlebar drag (nct:windrop)
+    // or by a drag-lock release (the winlock bridge going
+    // quiet). Configuration: only windows collapsed into
+    // titlebars transform.
+    const WTR_CONFIG = { accepts: "titlebar" };
+    function maybeTransform(id) {
+      const rec = store.get().windows.byId[id];
+      if (!rec || rec.stacked) return;
+      if (WTR_CONFIG.accepts === "titlebar" && !rec.shaded) return;
+      const region = document.querySelector(".wtr");
+      const winEl = document.querySelector('.nwin[data-app="' + id + '"]');
+      if (!region || !winEl) return;
+      const a = region.getBoundingClientRect();
+      const b = winEl.getBoundingClientRect();
+      const cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+      if (cx > a.left && cx < a.right && cy > a.top && cy < a.bottom) {
+        transformWindow(id);
+      }
+    }
+    const onWinDrop = (e) => {
+      const d = e.detail || {};
+      if (d.id) maybeTransform(d.id);
+    };
+    window.addEventListener("nct:windrop", onWinDrop);
+    // The 0 key cycles a widget's built-in style set.
+    const onWidgetStyle = (e) => {
+      const id = e.detail && e.detail.id;
+      if (!id) return;
+      const st = store.get().settings;
+      const ws = { ...(st.widgetStyles || {}) };
+      ws[id] = ((ws[id] || 0) + 1) % WIDGET_STYLES.length;
+      store.set("settings", { ...st, widgetStyles: ws });
+    };
+    window.addEventListener("nct:widgetstyle", onWidgetStyle);
+    // The \ key's freeze toggle (window or desktop-layer app).
+    const onFreeze = (e) => {
+      const d = e.detail || {};
+      if (d.target === "window" && d.id) toggleFrozen(d.id);
+      else if (d.target === "layer" && d.id) toggleLayerFrozen(d.id);
+    };
+    window.addEventListener("nct:freeze", onFreeze);
+    // The Configure key (\): open the Settings app on the
+    // hovered element's page — configuration lives outside the
+    // thing being configured.
+    const onConfigure = (e) => {
+      const target = e.detail && e.detail.target;
+      if (!target) return;
+      store.set("ui", { appSettingsTarget: target });
+      const w = store.get().windows;
+      if (w.byId.settings) focusWindow("settings");
+      else openWindow("settings");
+    };
+    window.addEventListener("nct:configure", onConfigure);
+    let lastLockId = null;
     function onWinLock(e) {
       store.set("ui", { dragLock: e.detail || null });
+      if (e.detail && e.detail.id) lastLockId = e.detail.id;
+      else if (lastLockId) {
+        const id = lastLockId;
+        lastLockId = null;
+        maybeTransform(id);
+      }
     }
     document.addEventListener("nct:winlock", onWinLock);
     function onVShade(e) {
@@ -78,6 +140,11 @@ export default function DesktopApp() {
       else if (op === "quit") closeWindow(app);
     };
     window.addEventListener("nct:appctl", onAppCtl);
+    const onWinResize = (e) => {
+      const d = e.detail || {};
+      if (d.id) resizeTo(d.id, d);
+    };
+    window.addEventListener("nct:winresize", onWinResize);
     const detachPatchbay = attachPatchbay();
     return () => {
       offToast();
@@ -88,9 +155,14 @@ export default function DesktopApp() {
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("nct:winmove", onWinMove);
       document.removeEventListener("nct:winlock", onWinLock);
+      window.removeEventListener("nct:windrop", onWinDrop);
+      window.removeEventListener("nct:widgetstyle", onWidgetStyle);
+      window.removeEventListener("nct:freeze", onFreeze);
+      window.removeEventListener("nct:configure", onConfigure);
       document.removeEventListener("nct:vshade", onVShade);
       window.removeEventListener("nct:winflip", onWinFlip);
       window.removeEventListener("nct:appctl", onAppCtl);
+      window.removeEventListener("nct:winresize", onWinResize);
       detachPatchbay();
     };
   }, []);

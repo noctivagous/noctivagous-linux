@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { useSlice } from "../core/react.js";
-import { APPS, appById, Icon } from "../core/registry.jsx";
+import { useSlice, store } from "../core/react.js";
+import { APPS, appById, Icon, GROUPS, groupById } from "../core/registry.jsx";
 import { bus, toast } from "../core/bus.js";
-import { openWindow, closeWindow, focusWindow, minimizeWindow, toggleShade, toggleMax, setVShade, showDesktop, toggleHidden } from "../core/windows.js";
+import { openWindow, closeWindow, focusWindow, minimizeWindow, toggleShade, toggleMax, setVShade, showDesktop, toggleHidden, restoreFromStack, toggleFrozen } from "../core/windows.js";
 import { setSetting } from "../core/react.js";
 import { lockScreen, logOut } from "./sessionActions.js";
 import Window from "./Window.jsx";
@@ -13,7 +13,7 @@ import {
   publish, showAllPorts, hideAllPorts, clearCords, setWatch,
   portPressed, disconnectPort, removeCord, cordsTouching, portDef,
 } from "../core/patchbay.js";
-import { toggleLayer } from "../core/layers.js";
+import { toggleLayer, toggleLayerFrozen, closeLayer, appMode, setAppMode } from "../core/layers.js";
 import { useNow, hms, hm, fullDate, pad } from "./useNow.js";
 
 const MENUS = {
@@ -24,6 +24,11 @@ const MENUS = {
   Patch: [["Patch Viewer", "viewer"], ["Show All Ports", "allports"], ["Hide All Ports", "hideports"], ["—"], ["Clear All Cords", "clearcords"]],
   Help: [["About This System", "about"], ["System Monitor", "monitor"]],
 };
+
+/* The desktop widgets' built-in style sets. The 0 key cycles
+ * the set of the widget under the cursor; the shell stores the
+ * selected index per widget (settings.widgetStyles). */
+export const WIDGET_STYLES = ["panel", "glass", "recessed"];
 
 export default function Desktop({ onShutdown }) {
   const session = useSlice("session");
@@ -37,6 +42,7 @@ export default function Desktop({ onShutdown }) {
   const [openMenu, setOpenMenu] = useState(null); // 'sys' | menu name | 'launcher' | null
   const [ctx, setCtx] = useState(null); // {x, y} | null
   const [selIcon, setSelIcon] = useState(null);
+  const [openGroups, setOpenGroups] = useState(() => (settings.launchColumn && settings.launchColumn.utilitiesOpen ? { utilities: true } : {})); // launch-column groups currently opened up
   const lastIconClick = useRef({});
   const load = ui.load || { cpu: 34, mem: 52, net: 21 };
 
@@ -70,10 +76,56 @@ export default function Desktop({ onShutdown }) {
     toast("Wallpaper " + (w + 1) + " / 3");
   }
 
+  /* A stack item's click restores its window to a titlebar at
+   * the click point and hands it to drag-lock, so the bar
+   * arrives already carried by the cursor. */
+  const widgetStyle = (id) =>
+    WIDGET_STYLES[((settings.widgetStyles || {})[id] || 0) % WIDGET_STYLES.length];
+
+  const restoreStacked = (id) => (e) => {
+    const rec = windows.byId[id];
+    if (!rec) return;
+    const area = document.getElementById("winLayer").getBoundingClientRect();
+    const w = rec.w || 480;
+    restoreFromStack(
+      id,
+      Math.round(e.clientX - area.left - w / 2),
+      Math.round(e.clientY - area.top - 14),
+    );
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      window.dispatchEvent(new CustomEvent("nct:lockwin", { detail: { id } }));
+    }));
+  };
+
   function iconClick(id) {
     setSelIcon(id);
+    // An app in desktop-layer mode opens on the layer, not in
+    // a window (the mode contract, core/layers.js).
+    if (appMode(id) === "layer") { toggleLayer(id); return; }
     openWindow(id);
   }
+
+  /* Switch an app's mode from outside it (its launch menu or
+   * its settings page), migrating a live instance across. */
+  const switchMode = (id) => {
+    const next = appMode(id) === "layer" ? "window" : "layer";
+    setAppMode(id, next);
+    if (next === "layer") {
+      if (windows.byId[id]) closeWindow(id);
+      store.set("ui", { layer: id });
+    } else {
+      if (ui.layer === id) closeLayer();
+      openWindow(id);
+    }
+  };
+
+  /* App settings live outside the app: the launch menu's
+   * Settings… opens the Settings app on that app's page. */
+  const openAppSettings = (id) => {
+    store.set("ui", { appSettingsTarget: id });
+    if (windows.byId.settings) focusWindow("settings");
+    else openWindow("settings");
+  };
 
   return (
     <section className="screen on" id="desktopScreen">
@@ -160,54 +212,109 @@ export default function Desktop({ onShutdown }) {
             focusWindow(id);
             setCtx({ x, y, kind: "win", id });
           } else if (iconEl) {
-            setCtx({ x, y, kind: "icon", id: iconEl.getAttribute("data-icon") });
+            const iid = iconEl.getAttribute("data-icon");
+            if (groupById(iid)) setCtx({ x, y, kind: "group", id: iid });
+            else setCtx({ x, y, kind: "icon", id: iid });
           } else {
-            setCtx({ x, y, kind: "desk" });
+            // A frozen window's body takes no events, so a
+            // right-click over it lands here: if the point is
+            // inside a frozen window, open that window's menu —
+            // its Unfreeze lives there.
+            const layerEl = document.getElementById("winLayer");
+            const lr = layerEl ? layerEl.getBoundingClientRect() : { left: 0, top: 0 };
+            const px = e.clientX - lr.left, py = e.clientY - lr.top;
+            const fid = windows.order.find((id) => {
+              const r = windows.byId[id];
+              if (!r || !r.frozen || r.min || r.hidden || r.stacked) return false;
+              const hh = r.shaded ? 34 : r.h || 320;
+              return px >= r.x && px <= r.x + (r.w || 480) && py >= r.y && py <= r.y + hh;
+            });
+            if (fid) setCtx({ x, y, kind: "win", id: fid });
+            else setCtx({ x, y, kind: "desk" });
           }
         }}>
-        <div className="icons">
+        <div className="icons" data-configure="launchcolumn">
           {["home", "files"].map((id) => {
             const ap = appById(id);
             return (
-              <button key={id} data-icon={id} className={"dicon" + (selIcon === id ? " sel" : "") + (windows.byId[id] ? " open" : "") + (windows.byId[id] && windows.byId[id].hidden ? " hidden" : "")}
+              <button key={id} data-icon={id} data-configure={id} className={"dicon" + (selIcon === id ? " sel" : "") + (windows.byId[id] ? " open" : "") + (windows.byId[id] && windows.byId[id].hidden ? " hidden" : "")}
                 onClick={() => iconClick(id)}>
                 <span className="dib"><Icon name={ap.icon} /></span><span>{ap.name}</span>
               </button>
             );
           })}
-          <button data-icon="navgraph" className={"dicon" + (ui.layer === "navgraph" ? " sel" : "")}
-            onClick={() => { setSelIcon("navgraph"); toggleLayer("navgraph"); }}>
+          <button data-icon="navgraph" data-configure="navgraph" className={"dicon layer" + (ui.layer === "navgraph" || windows.byId.navgraph ? " sel" : "") + (windows.byId.navgraph ? " open" : "") + (settings.launchColumn && settings.launchColumn.layerBadge === false ? " nobadge" : "")}
+            onClick={() => iconClick("navgraph")}>
             <span className="dib"><Icon name="graph" /></span><span>NavGraph</span>
           </button>
           {["terminal", "browser", "settings", "monitor", "notes"].map((id) => {
             const ap = appById(id);
             return (
-              <button key={id} data-icon={id} className={"dicon" + (selIcon === id ? " sel" : "") + (windows.byId[id] ? " open" : "") + (windows.byId[id] && windows.byId[id].hidden ? " hidden" : "")}
+              <button key={id} data-icon={id} data-configure={id} className={"dicon" + (selIcon === id ? " sel" : "") + (windows.byId[id] ? " open" : "") + (windows.byId[id] && windows.byId[id].hidden ? " hidden" : "")}
                 onClick={() => iconClick(id)}>
                 <span className="dib"><Icon name={ap.icon} /></span><span>{ap.name}</span>
               </button>
             );
           })}
+          {GROUPS.map((g) => (
+            <div key={g.id} className="dgroup">
+              <button data-icon={g.id} className={"dicon group" + (openGroups[g.id] ? " sel" : "")}
+                onClick={() => { setSelIcon(g.id); setOpenGroups((o) => ({ ...o, [g.id]: !o[g.id] })); }}>
+                <span className="dib"><Icon name={g.icon} /></span><span>{g.name}</span>
+                <span className="dchev">{openGroups[g.id] ? "▾" : "▸"}</span>
+              </button>
+              {openGroups[g.id] && g.members.map((id) => {
+                const ap = appById(id);
+                return (
+                  <button key={id} data-icon={id} data-configure={id} className={"dicon member" + (selIcon === id ? " sel" : "") + (windows.byId[id] ? " open" : "") + (windows.byId[id] && windows.byId[id].hidden ? " hidden" : "")}
+                    onClick={() => iconClick(id)}>
+                    <span className="dib"><Icon name={ap.icon} /></span><span>{ap.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </div>
         <div className="icons right">
           {["about", "trash"].map((id) => {
             const ap = appById(id);
             return (
-              <button key={id} data-icon={id} className={"dicon" + (selIcon === id ? " sel" : "") + (windows.byId[id] ? " open" : "") + (windows.byId[id] && windows.byId[id].hidden ? " hidden" : "")}
+              <button key={id} data-icon={id} data-configure={id} className={"dicon" + (selIcon === id ? " sel" : "") + (windows.byId[id] ? " open" : "") + (windows.byId[id] && windows.byId[id].hidden ? " hidden" : "")}
                 onClick={() => iconClick(id)}>
                 <span className="dib"><Icon name={ap.icon} /></span><span>{ap.name}</span>
               </button>
             );
           })}
         </div>
+        {/* WindowTransformerRegion — List mode, vertical,
+            stacking up: collapsed titlebars dropped into the
+            square become items of this stack. */}
+        <div className="wtr-stack">
+          {(windows.stack || []).map((id) => {
+            const ap = appById(id);
+            if (!ap) return null;
+            return (
+              <button key={id} className="wtr-item" data-stack-item={id} onClick={restoreStacked(id)}>
+                <Icon name={ap.icon} /><span>{ap.name}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="wtr"><span>STACK</span></div>
         <div className="widgets">
-          <div className="widget" data-patch-owner="clock">
+          <div className={"widget ws-" + widgetStyle("clock")} data-widget="clock" data-configure="widget:clock" data-patch-owner="clock">
             <div className="cap" style={{ marginBottom: 6 }}>Local time · <span style={{ color: "#5c5c5c" }}>W-01</span></div>
-            <div className="wtime">{hm(now)}</div>
+            <div className="wtime">{(() => {
+              const h24 = !settings.appSettings || !settings.appSettings.clock || settings.appSettings.clock.hour24 !== false;
+              if (h24) return hm(now);
+              let h = now.getHours() % 12;
+              if (h === 0) h = 12;
+              return <>{pad(h) + ":" + pad(now.getMinutes())}<span className="wampm">{now.getHours() < 12 ? "AM" : "PM"}</span></>;
+            })()}</div>
             <div className="wdate">{fullDate(now)}</div>
             {patch.openFor.clock && <PortDots owner="clock" />}
           </div>
-          <div className="widget" data-patch-owner="sysload">
+          <div className={"widget ws-" + widgetStyle("sysload")} data-widget="sysload" data-configure="widget:sysload" data-patch-owner="sysload">
             <div className="cap" style={{ marginBottom: 7 }}>System load · <span style={{ color: "#5c5c5c" }}>W-02</span></div>
             {patch.openFor.sysload && <PortDots owner="sysload" />}
             <div className="wmrow"><span>CPU</span><div className="meter"><i style={{ width: load.cpu + "%" }}></i></div><b>{load.cpu}%</b></div>
@@ -215,7 +322,23 @@ export default function Desktop({ onShutdown }) {
             <div className="wmrow"><span>NET</span><div className="meter amber"><i style={{ width: load.net + "%" }}></i></div><b>{load.net}%</b></div>
           </div>
         </div>
-        {ui.layer === "navgraph" && <NavGraphLayer />}
+        {ui.layer === "navgraph" && <NavGraphLayer frozen={!!(ui.frozenLayers && ui.frozenLayers.navgraph)} />}
+        {ui.layer && ui.layer !== "navgraph" && (() => {
+          const ap = appById(ui.layer);
+          const App = ap.component;
+          const isFrozen = !!(ui.frozenLayers && ui.frozenLayers[ui.layer]);
+          return (
+            <div className={"app-layer" + (isFrozen ? " frozen" : "")} data-layer-app={ui.layer}>
+              <div className="app-layer-bar">
+                <span className="app-layer-name">{ap.name} — desktop layer</span>
+                <span className="sp"></span>
+                <button className="btn sm" onClick={() => switchMode(ui.layer)}>Run in a window</button>
+                <button className="btn sm" onClick={() => closeLayer()}>Close</button>
+              </div>
+              <div className="app-layer-body"><App /></div>
+            </div>
+          );
+        })()}
         <div id="winLayer" style={{ position: "absolute", inset: 0 }}>
           {windows.order.map((id) => (
             <Window key={id} id={id} rec={windows.byId[id]} focused={windows.focusId === id} locked={!!(ui.dragLock && ui.dragLock.id === id)} />
@@ -282,6 +405,9 @@ export default function Desktop({ onShutdown }) {
 
       {ctx && ctx.kind === "desk" && (
         <div className="ctxmenu open" id="ctxMenu" style={{ left: ctx.x, top: ctx.y }}>
+          {ui.frozenLayers && ui.frozenLayers.navgraph && (
+            <button onClick={() => { setCtx(null); toggleLayerFrozen("navgraph"); }}>Unfreeze NavGraph</button>
+          )}
           <button data-c="wallpaper" onClick={() => { setCtx(null); cycleWallpaper(); }}>▦ &nbsp;Change Wallpaper</button>
           <button data-c="terminal" onClick={() => { setCtx(null); openWindow("terminal"); }}>▸ &nbsp;Open Terminal</button>
           <button data-c="settings" onClick={() => { setCtx(null); openWindow("settings"); }}>⚙ &nbsp;Settings…</button>
@@ -304,6 +430,7 @@ export default function Desktop({ onShutdown }) {
             <button onClick={() => { setCtx(null); setVShade(ctx.id, !rec.vshaded); }}>{rec.vshaded ? "Restore Titlebar" : "Vertical Titlebar"}</button>
             <button onClick={run(minimizeWindow)}>Minimize</button>
             <button onClick={run(toggleMax)}>{rec.max ? "Restore" : "Maximize"}</button>
+            <button onClick={run(toggleFrozen)}>{rec.frozen ? "Unfreeze" : "Freeze"}</button>
             <div style={{ height: 1, background: "var(--hair)", margin: "4px 6px" }}></div>
             <button onClick={run(closeWindow)}>Close</button>
           </div>
@@ -312,7 +439,15 @@ export default function Desktop({ onShutdown }) {
       {ctx && ctx.kind === "icon" && (
         <div className="ctxmenu open" id="ctxMenu" style={{ left: ctx.x, top: ctx.y }}>
           {ctx.id === "navgraph" ? (
-            <button onClick={() => { setCtx(null); toggleLayer("navgraph"); }}>{ui.layer === "navgraph" ? "Close NavGraph" : "Open NavGraph"}</button>
+            <>
+              <button onClick={() => { setCtx(null); iconClick("navgraph"); }}>Open NavGraph</button>
+              {ui.layer === "navgraph" && (
+                <button onClick={() => { setCtx(null); toggleLayerFrozen("navgraph"); }}>{ui.frozenLayers && ui.frozenLayers.navgraph ? "Unfreeze NavGraph" : "Freeze NavGraph"}</button>
+              )}
+              {windows.byId.navgraph && (
+                <button onClick={() => { setCtx(null); closeWindow("navgraph"); }}>Quit NavGraph</button>
+              )}
+            </>
           ) : (
             <>
               <button onClick={() => { setCtx(null); iconClick(ctx.id); }}>Open {appById(ctx.id) ? appById(ctx.id).name : ctx.id}</button>
@@ -324,6 +459,16 @@ export default function Desktop({ onShutdown }) {
               )}
             </>
           )}
+          <div style={{ height: 1, background: "var(--hair)", margin: "4px 6px" }}></div>
+          <button onClick={() => { setCtx(null); switchMode(ctx.id); }}>{appMode(ctx.id) === "layer" ? "✓ " : ""}Desktop-layer mode</button>
+          <button onClick={() => { setCtx(null); openAppSettings(ctx.id); }}>Settings…</button>
+        </div>
+      )}
+      {ctx && ctx.kind === "group" && (
+        <div className="ctxmenu open" id="ctxMenu" style={{ left: ctx.x, top: ctx.y }}>
+          <button onClick={() => { setCtx(null); setOpenGroups((o) => ({ ...o, [ctx.id]: !o[ctx.id] })); }}>
+            {openGroups[ctx.id] ? "Close" : "Open"} {groupById(ctx.id) ? groupById(ctx.id).name : ctx.id}
+          </button>
         </div>
       )}
       {ctx && ctx.kind === "port" && (() => {

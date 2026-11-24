@@ -1,9 +1,14 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSlice, setSetting, setBackdrop } from "../core/react.js";
 import { toast } from "../core/bus.js";
 import { playTestTone } from "../services/soundService.js";
 import { BACKDROP_SURFACES, BACKDROP_DENSITIES } from "../services/surfaces.js";
 import { StatusBar } from "./shared.jsx";
+import { APPS } from "../core/registry.jsx";
+import { WIDGET_STYLES } from "../shell/Desktop.jsx";
+import { appMode, setAppMode } from "../core/layers.js";
+import { store } from "../core/react.js";
+import { SettingsKit } from "./settingsKit.jsx";
 
 function Slider({ label, min, max, step, value, onChange, format }) {
   return (
@@ -16,10 +21,32 @@ function Slider({ label, min, max, step, value, onChange, format }) {
   );
 }
 
+const SHELL_PAGES = [
+  { id: "launchcolumn", name: "Launch Column" },
+  { id: "widget:clock", name: "Clock Widget" },
+  { id: "widget:sysload", name: "System Load Widget" },
+];
+
 export default function SettingsApp() {
   const settings = useSlice("settings");
+  const ui = useSlice("ui");
   const bd = settings.backdrop;
   const [tab, setTab] = useState(0);
+  const [selPage, setSelPage] = useState("calculator");
+
+  // The Configure key (\\) and the launch menus name a target;
+  // when one arrives, show its page.
+  useEffect(() => {
+    if (ui.appSettingsTarget) {
+      setTab(3);
+      setSelPage(ui.appSettingsTarget);
+    }
+  }, [ui.appSettingsTarget]);
+
+  const setAppSetting = (id, value) =>
+    store.set("settings", { ...settings, appSettings: { ...(settings.appSettings || {}), [id]: value } });
+  const setWidgetStyle = (id, idx) =>
+    store.set("settings", { ...settings, widgetStyles: { ...(settings.widgetStyles || {}), [id]: idx } });
   const [ptr, setPtr] = useState(50);
   const [xy, setXy] = useState({ x: 0.5, y: 0.5 });
   const [soundMsg, setSoundMsg] = useState("Output: Speakers · 48 kHz");
@@ -39,7 +66,7 @@ export default function SettingsApp() {
     <>
       <div className="tabs">
         <div className="tabstrip">
-          {["Appearance", "Controls", "Sound"].map((n, i) => (
+          {["Appearance", "Controls", "Sound", "Applications"].map((n, i) => (
             <button key={n} className={tab === i ? "sel" : ""} data-tab={i} onClick={() => setTab(i)}>{n}</button>
           ))}
         </div>
@@ -144,6 +171,86 @@ export default function SettingsApp() {
             <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center" }}>
               <button className="btn sm" onClick={() => setSoundMsg("Test tone played · " + playTestTone() + "%")}>Test sound</button>
               <span className="mono" style={{ fontSize: 11, color: "#888" }}>{soundMsg}</span>
+            </div>
+          </div>
+        )}
+        {tab === 3 && (
+          <div className="tabpane sel" data-pane="3">
+            <div className="appset">
+              <div className="appset-list">
+                {APPS.map((ap) => (
+                  <button key={ap.id} className={selPage === ap.id ? "sel" : ""} onClick={() => setSelPage(ap.id)}>{ap.name}</button>
+                ))}
+                <div className="appset-sep"></div>
+                {SHELL_PAGES.map((pg) => (
+                  <button key={pg.id} className={selPage === pg.id ? "sel" : ""} onClick={() => setSelPage(pg.id)}>{pg.name}</button>
+                ))}
+              </div>
+              <div className="appset-page">
+                {(() => {
+                  const ap = APPS.find((a) => a.id === selPage);
+                  if (ap) {
+                    const Own = ap.Settings;
+                    const mine = (settings.appSettings && settings.appSettings[ap.id]) || {};
+                    return (
+                      <>
+                        <div className="appset-title">{ap.name}</div>
+                        <SettingsKit
+                          spec={[{ key: "mode", label: "Runs as", type: "segment", options: [
+                            { value: "window", label: "Window" },
+                            { value: "layer", label: "Desktop layer" },
+                          ] }]}
+                          value={{ mode: appMode(ap.id) }}
+                          onChange={(v) => setAppMode(ap.id, v.mode)} />
+                        {ap.settingsSpec ? (
+                          <SettingsKit spec={ap.settingsSpec} value={mine} onChange={(v) => setAppSetting(ap.id, v)} />
+                        ) : Own ? (
+                          <Own value={mine} onChange={(v) => setAppSetting(ap.id, v)} />
+                        ) : (
+                          <div className="cap">{ap.name} has no settings of its own yet.</div>
+                        )}
+                      </>
+                    );
+                  }
+                  if (selPage === "launchcolumn") {
+                    const lc = settings.launchColumn || {};
+                    return (
+                      <>
+                        <div className="appset-title">Launch Column</div>
+                        <SettingsKit
+                          spec={[
+                            { key: "utilitiesOpen", type: "checkbox", label: "Utilities group starts open", default: false },
+                            { key: "layerBadge", type: "checkbox", label: "Show the diamond badge on desktop-layer app icons", default: true },
+                          ]}
+                          value={lc}
+                          onChange={(v) => store.set("settings", { ...settings, launchColumn: v })} />
+                      </>
+                    );
+                  }
+                  if (selPage.startsWith("widget:")) {
+                    const wid = selPage.slice(7);
+                    const cur = ((settings.widgetStyles || {})[wid] || 0) % WIDGET_STYLES.length;
+                    const clockMine = (settings.appSettings && settings.appSettings.clock) || {};
+                    return (
+                      <>
+                        <div className="appset-title">{wid === "clock" ? "Clock Widget" : "System Load Widget"}</div>
+                        <SettingsKit
+                          spec={[{ key: "style", label: "Style set", type: "segment",
+                            options: WIDGET_STYLES.map((n, i) => ({ value: i, label: n })) }]}
+                          value={{ style: cur }}
+                          onChange={(v) => setWidgetStyle(wid, v.style)} />
+                        {wid === "clock" && (
+                          <SettingsKit
+                            spec={[{ key: "hour24", type: "checkbox", label: "24-hour time", default: true }]}
+                            value={clockMine}
+                            onChange={(v) => setAppSetting("clock", v)} />
+                        )}
+                      </>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
             </div>
           </div>
         )}

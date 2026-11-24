@@ -29,7 +29,12 @@ const hiddenCount = (d) =>
     0,
   );
 
-export default function NavGraphLayer() {
+export default function NavGraphLayer({ frozen, framed }) {
+  // Frozen (the \ key / Freeze): the layer sits on the desk
+  // inert — view ops are ignored and the CSS kills its pointer
+  // events — until unfrozen.
+  const frozenRef = useRef(false);
+  frozenRef.current = !!frozen;
   const ref = useRef(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [mode, setMode] = useState("radial");
@@ -54,6 +59,7 @@ export default function NavGraphLayer() {
 
   useEffect(() => {
     const onOp = (e) => {
+      if (frozenRef.current) return;
       const op = e.detail && e.detail.op;
       setView((v) => {
         switch (op) {
@@ -130,7 +136,7 @@ export default function NavGraphLayer() {
   }
 
   return (
-    <div className="ng-layer" ref={ref}>
+    <div className={"ng-layer" + (frozen ? " frozen" : "") + (framed ? " framed" : "")} data-layer-app="navgraph" ref={ref}>
       <div className="ng-bar">
         <span className="ng-title">NAVGRAPH</span>
         <div className="ng-switch" role="group" aria-label="Layout">

@@ -396,3 +396,90 @@ body.noanim *{animation-duration:.01ms !important;transition-duration:.01ms !imp
 body.kc-textmode #desktopScreen .sysbar{box-shadow:inset 0 0 0 999px rgba(255,122,26,.16),inset 0 -2px 0 rgba(255,122,26,.55),0 1px 0 rgba(255,255,255,.05)}
 body.kc-textmode .dock{box-shadow:inset 0 0 0 999px rgba(255,122,26,.16),inset 0 2px 0 rgba(255,122,26,.55),0 -1px 0 rgba(255,255,255,.05)}
 body.kc-textmode #loginScreen .topbar{box-shadow:inset 0 0 0 999px rgba(255,122,26,.16),inset 0 -2px 0 rgba(255,122,26,.55),0 1px 0 rgba(255,255,255,.05)}
+
+/* WindowTransformerRegion: a fixed square at the lower right
+ * (it never changes size) and its stack — list mode, vertical,
+ * stacking up from the square. */
+.wtr{position:absolute;right:10px;bottom:58px;width:104px;height:104px;border:1.5px dashed rgba(255,255,255,.35);border-radius:6px;background:rgba(255,255,255,.03);display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px;z-index:5}
+.wtr span{font-family:var(--font-m,monospace);font-size:9px;font-weight:700;letter-spacing:.3em;color:rgba(255,255,255,.45)}
+.wtr-stack{position:absolute;right:10px;bottom:170px;width:104px;display:flex;flex-direction:column-reverse;gap:4px;z-index:5}
+.wtr-item{display:flex;align-items:center;gap:6px;height:30px;min-height:0;padding:0 8px;background:linear-gradient(180deg,#2c2c2c,#1b1b1b);border:1px solid #000;border-radius:4px;color:#ddd;font-size:11px;box-shadow:0 1px 0 rgba(255,255,255,.06);cursor:pointer;text-align:left}
+.wtr-item .ic{width:14px;height:14px;flex:none}
+
+/* Desktop-layer apps (NavGraph) carry a different icon style
+ * from the launch stack's window apps: a teal family, a
+ * diamond badge for the layer, a teal selection. */
+.dicon.layer .dib{background:linear-gradient(145deg,#123a36,#0a1f1d);color:#7fe8d8;border-color:#04211d}
+.dicon.layer::after{content:"";position:absolute;top:5px;right:8px;width:7px;height:7px;background:#37e0c8;transform:rotate(45deg);box-shadow:0 0 5px rgba(55,224,200,.7)}
+.dicon.layer.sel{background:rgba(55,224,200,.12);border-color:rgba(55,224,200,.45)}
+.dicon.layer.sel span{color:#a9f2e6}
+
+/* Widget style sets (the 0 key cycles them per widget).
+ * panel = the default dark plate; glass = lighter and more
+ * transparent; recessed = sunken into the desktop. */
+.widget.ws-glass{background:linear-gradient(180deg,rgba(96,116,134,.38),rgba(40,52,66,.30));border-color:rgba(255,255,255,.22);box-shadow:5px 6px 16px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.22)}
+.widget.ws-recessed{background:linear-gradient(180deg,#0e0e0e,#171717);border-color:#000;box-shadow:inset 0 3px 12px rgba(0,0,0,.85),inset 0 -1px 0 rgba(255,255,255,.05)}
+
+/* Frozen elements (the \ key): a frost cast, desaturated and
+ * brightened; the body takes no events, so hosted content and
+ * iframes go inert too. */
+.nwin.frozen{filter:saturate(.45) brightness(1.07)}
+.nwin.frozen::after{content:"";position:absolute;inset:0;background:rgba(165,220,255,.10);box-shadow:inset 0 0 0 1px rgba(165,220,255,.35);pointer-events:none;z-index:60}
+.nwin.frozen .wbody{pointer-events:none}
+.ng-layer.frozen .ng-svg{filter:saturate(.4) brightness(1.12);opacity:.8}
+.ng-layer.frozen .ng-bar,.ng-layer.frozen .ng-svg *{pointer-events:none !important}
+.ng-layer.frozen::after{content:"FROZEN";position:absolute;left:14px;bottom:60px;font-family:var(--font-m,monospace);font-size:9px;font-weight:700;letter-spacing:.3em;color:rgba(165,220,255,.75)}
+
+/* Launch-column groups: a group launch item opens up to show
+ * its member apps, indented under a rail. */
+.dgroup{display:flex;flex-direction:column}
+.dicon.group{position:relative}
+.dicon.group .dib{background:linear-gradient(145deg,#3a3420,#241f14);color:#e8d9a0}
+.dicon .dchev{position:absolute;right:5px;top:5px;font-size:8px;color:#999}
+.dicon.member{margin-left:13px;border-left:2px solid rgba(255,255,255,.13);border-radius:0 5px 5px 0;padding-left:2px}
+.dicon.member .dib{width:31px;height:31px}
+
+/* Calculator */
+.calc{display:flex;flex-direction:column;gap:10px;height:100%}
+.calc-screen{background:linear-gradient(180deg,#101410,#0a0c0a);border:1px solid #000;border-radius:6px;box-shadow:inset 0 2px 8px rgba(0,0,0,.8);padding:10px 12px;text-align:right}
+.calc-expr{font-family:var(--font-m,monospace);font-size:11px;color:#7d9b7d;min-height:14px}
+.calc-disp{font-family:var(--font-d);font-size:32px;font-weight:600;color:#eaffea;line-height:1.15;font-variant-numeric:tabular-nums;overflow:hidden}
+.calc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;flex:1}
+.calc-key{background:linear-gradient(180deg,#2e2e2e,#1b1b1b);border:1px solid #000;border-radius:6px;color:#e8e8e8;font-family:var(--font-d);font-size:16px;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 2px 4px rgba(0,0,0,.4);min-height:0}
+.calc-key:hover{filter:brightness(1.25)}
+.calc-key:active{transform:translateY(1px)}
+.calc-key.util{color:#a9c8a9;font-size:13px}
+.calc-key.op{color:#8fd18f}
+.calc-key.op.on{background:var(--grad-primary);color:#eaffea}
+.calc-key.eq{background:var(--grad-primary);color:#eaffea;font-weight:700}
+.calc-key.wide{grid-column:span 2}
+
+/* TextTransformer */
+.tt{display:flex;flex-direction:column;gap:8px;height:100%}
+.tt .tinput{flex:1;min-height:0;resize:none}
+.tt-fns{display:flex;flex-wrap:wrap;gap:6px}
+
+/* Settings app: the Applications tab (per-app pages + shell
+ * pages), rendered through the stock settings kit. */
+.appset{display:flex;gap:14px;align-items:flex-start}
+.appset-list{display:flex;flex-direction:column;gap:2px;min-width:148px;flex:none}
+.appset-list button{background:transparent;border:1px solid transparent;border-radius:4px;color:#bbb;font-size:12px;text-align:left;padding:5px 8px;cursor:pointer;min-height:0}
+.appset-list button:hover{background:rgba(255,255,255,.05)}
+.appset-list button.sel{background:rgba(92,184,92,.14);border-color:rgba(92,184,92,.4);color:#eaffea}
+.appset-sep{height:1px;background:var(--hair);margin:6px 2px}
+.appset-page{flex:1;min-width:0}
+.appset-title{font-family:var(--font-d);font-size:14px;font-weight:700;color:#eee;margin-bottom:8px}
+.setrow{display:flex;gap:8px;align-items:center;padding:5px 0;font-size:12px;color:#ccc;cursor:pointer}
+.segrow{display:flex;gap:6px}
+.setkit .srow{margin:2px 0}
+.dicon.layer.nobadge::after{display:none}
+.wampm{font-size:13px;color:#999;margin-left:5px;letter-spacing:.08em}
+
+/* A window app running as a desktop layer (the mode
+ * contract): a shell frame on the desk, the app at full size. */
+.app-layer{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column}
+.app-layer-bar{display:flex;align-items:center;gap:8px;margin:10px auto 0;padding:6px 8px 6px 14px;background:linear-gradient(180deg,#1c1f1e,#121413);border:1px solid var(--hair);border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.5);z-index:6}
+.app-layer-name{font-family:var(--font-d);font-size:11px;font-weight:700;letter-spacing:.18em;color:#e8e8e8}
+.app-layer-body{flex:1;min-height:0;margin:10px 14px 58px;background:linear-gradient(180deg,rgba(24,24,24,.92),rgba(12,12,12,.92));border:1px solid #000;border-radius:8px;box-shadow:0 14px 34px rgba(0,0,0,.5);padding:12px;overflow:hidden}
+.app-layer.frozen .app-layer-body{pointer-events:none;filter:saturate(.45) brightness(1.07)}
+.ng-layer.framed{position:relative;inset:auto;width:100%;height:100%}

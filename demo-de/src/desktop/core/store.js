@@ -26,11 +26,15 @@ const initialState = {
     volume: 62,
     brightness: 78,
     wallpaper: 0, // classic gradient index (backdrop.mode 'classic')
+    widgetStyles: {}, // widget id -> built-in style-set index (the 0 key cycles it)
+    appSettings: {}, // app id -> that app's own settings (edited from its launch menu's Settings…)
+    launchColumn: {}, // the launch column's own settings (its Configure page)
     backdrop: { ...BACKDROP_DEFAULTS },
   },
   windows: {
     order: [], // app ids, in open order (taskbar order)
-    byId: {}, // id -> {x,y,w,h,z,min,max,shaded,seq,prev}
+    byId: {}, // id -> {x,y,w,h,z,min,max,shaded,stacked,seq,prev}
+    stack: [], // app ids transformed into the WindowTransformerRegion, in arrival order
     focusId: null,
     zTop: 10,
     seq: 0,
@@ -40,6 +44,9 @@ const initialState = {
     battery: 87,
     dragLock: null,
     layer: null, // desktop-layer app id ('navgraph') or null
+    frozenLayers: {}, // layer id -> frozen (the \ key / Freeze): inert until unfrozen
+    appModes: {}, // app id -> "window" | "layer" (default: navgraph layer, the rest window)
+    appSettingsTarget: null, // app id whose settings the Settings app should show
   },
   patch: {
     openFor: {}, // owner id -> ports shown on its edges

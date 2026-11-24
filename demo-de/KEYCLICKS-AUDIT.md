@@ -333,3 +333,171 @@ holds the keyboard (text mode) letters type, and while a frame
 holds focus its keys belong to the page — Esc is the way back
 in both. The Browser's address bar therefore hands the keyboard
 back on Enter, like the Terminal's run port.
+
+## H: resize to the cursor point (2026-11-23)
+
+H resizes the FOCUSED window to the cursor. The window's edges,
+extended, divide the space around it into 8 sections; the
+section the cursor occupies decides what moves: E pulls the
+right edge to the cursor's x, W the left edge, S the bottom, N
+the top, and the four corners land the corner itself on the
+cursor point (both axes). Inside the window there is no section
+and H does nothing — the cursor is outside the target by
+definition, which is why the target is the focused window
+rather than the window at the cursor as with E/R/T.
+
+The engine computes the section and the candidate geometry
+from the rendered rect (converted through the offsetParent,
+like the drag-lock) and sends it over an `nct:winresize`
+bridge; the store's `resizeTo` writer owns the rules: minimums
+280×150 (the same as the drag handles), a maximised window
+refuses, a vertical resize unshades a shaded window into its
+new height while a sideways one leaves its shade and stored
+height untouched. Sections outside the window can only grow
+it, so the minimums are a safety net rather than a behaviour.
+H is a reserved slot (window-geometry family, with E/R/T).
+
+## WindowTransformerRegion (2026-11-23)
+
+A fixed 104×104 square at the desktop's lower right (it never
+changes size), in List mode: vertical orientation, stack
+direction Up. Configuration (`WTR_CONFIG` in DesktopApp):
+`accepts: "titlebar"` — only windows collapsed into titlebars
+transform.
+
+Dropping a collapsed titlebar into the square — by a mouse
+titlebar drag (`nct:windrop`, dispatched by Window.jsx at drag
+end) or by a drag-lock release (DesktopApp watches the
+`nct:winlock` bridge go quiet) — transforms the window into a
+list item of the region's stack when the titlebar's centre
+lands inside the square. The window's record keeps its
+geometry and gains `stacked`; the stack list lives in the
+windows slice, in arrival order, rendered upward from the
+square (first arrival nearest it). Uncollapsed windows are
+refused.
+
+Clicking a stack item restores the window to its titlebar at
+the click point and, by default, turns drag-lock on for that
+titlebar: the shell dispatches `nct:lockwin` after the restore,
+and the engine engages the lock with a centre grab, so the bar
+arrives already carried and Space drops it where wanted —
+including back into the region, which transforms it again.
+
+Coordinate note: windows live in `#winLayer`, whose origin is
+34px below the viewport top (the sysbar). Both the restore
+placement and the engine's centre grab convert through the
+offsetParent — the engine's dragMove speaks client-minus-grab
+coordinates, so the grab offset carries the origin back in.
+
+## Round 7: wheel zoom, layer icons, HUD collapse, E/R swap, 0 styles (2026-11-23)
+
+Four changes:
+
+- **Wheel zoom for desktop-layer apps.** With a layer mounted
+  (NavGraph), wheel steps over the desktop walk the same scale
+  as `[` / `]` (nct:navgraph scaleUp/scaleDown, ×1.15, clamped
+  0.3–3). Windows, frames and the engine's own furniture keep
+  their wheel. Steps accumulate at 50px per step so trackpad
+  flicks don't slam the clamp. Layer apps also got their own
+  icon style in the launch stack: the NavGraph icon carries a
+  `layer` class — teal family, a diamond badge, teal selection —
+  distinct from window-app icons.
+- **The status bar collapses into the task bar.** The bar
+  gained a visible collapse control (▾, its one pointer-events
+  island); collapsing swaps it for the KEY-CLICK button in the
+  same task-bar spot, and clicking that re-expands. E (or R)
+  over the bar toggles the same collapse — a geometric test,
+  since the bar takes no pointer events, with the context
+  menu's courtesy that a window, icon or task at the point
+  wins. Right-click collapse from round 4 still works.
+- **E and R swapped.** E is now collapse + drag-lock (the old
+  R): the collapse lands its titlebar on the cursor and the
+  lock engages on the same press, because what is underneath
+  is draggable — all windows are. A second E drops the lock.
+  R is the plain collapse (the old E).
+- **0 cycles built-in style sets.** Pressing 0 over an element
+  with a style set cycles it (nct:widgetstyle). First carriers:
+  the desktop widgets — System Load and Local Time each have
+  panel (default), glass (lighter, more transparent) and
+  recessed (sunken) sets, stored per widget in
+  settings.widgetStyles. 0 is a reserved slot.
+
+## Freeze (2026-11-23)
+
+`\` toggles Freeze on the element under the cursor — a window,
+or the desktop-layer app beneath it. A frozen element stays
+exactly in place and accepts no key or mouse events until
+unfrozen: operators skip it (winAtCursor/appAtCursor treat it
+as absent, F-clicks refuse its subtree, drag-lock won't take
+it, H refuses it), its frame swallows presses and clicks, its
+body is pointer-events:none so hosted content and iframes go
+inert, and it wears a frost cast (desaturated, brightened, a
+pale-blue wash). State: `frozen` on the window record;
+`ui.frozenLayers` for layers. Frozen windows are found for the
+`\` toggle geometrically (their bodies take no events, so
+hit-testing alone can miss them).
+
+Unfreeze has several doors, per the standing principle now
+written in UI-FLOW.md at the repo root (functions approachable
+from different points): `\` again, the window's context menu
+(a right-click over a frozen body opens that window's menu —
+the desk handler finds it geometrically), the desk menu and
+the icon menu for a frozen layer. A frozen NavGraph ignores
+view ops, its bar and nodes take no pointer events, and the
+wheel passes it by — it can sit on the desk indefinitely
+without conflicting with other interactions. `\` is a
+reserved slot.
+
+
+## Addendum — launch groups, app modes, external settings, the Configure key (2026-11-23)
+
+Four system pieces landed together; the key-click-relevant
+parts:
+
+- **Groups in the launch column.** A group is a launch item
+  that opens its contents in place (Utilities → Calculator,
+  TextTransformer — the latter carrying caseconvert.net's
+  function set: UPPER, lower, Sentence, Title, Capital,
+  Hyphenated). Members are ordinary icons: F clicks them, their
+  menus are the standard ones.
+- **Window mode / desktop-layer mode.** Every app has a mode
+  (`ui.appModes`; NavGraph defaults to layer, the rest to
+  window). The icon menu's **Desktop-layer mode** toggle (and
+  Settings' **Runs as**) switches it, migrating a live instance:
+  window-born apps get a shell frame on the desk with the app at
+  full size; NavGraph in window mode renders framed inside a
+  conventional window. Apps use the same hooks and callbacks in
+  either mode. A layer app of either kind shows in the launch
+  column with the teal layer style and diamond badge.
+- **Settings live outside the app.** `settings.appSettings`
+  holds each app's own settings; the doors are the icon menu's
+  **Settings…**, the Configure key (below), and Settings →
+  Applications (which also hosts shell pages: Launch Column,
+  the two desktop widgets). Apps declare settings as a
+  **property list** rendered by the **stock settings kit**
+  (`apps/settingsKit.jsx` — checkbox / select / segment /
+  slider / text, one binding convention), or provide their own
+  GUI as an escape hatch.
+- **`\` is the global Configure key** (it was Freeze for one
+  round; Freeze keeps its context menus). Elements declare
+  `data-configure`; the engine resolves the nearest hook, else
+  the window's or layer's app id, else a frozen window found
+  geometrically, and dispatches `nct:configure`; the shell opens
+  Settings on that target. No hook → the reticle shakes with a
+  red ring (`kc-noconfig`) and nothing opens. `\` stays a
+  RESERVED key.
+- **The HUD's target cell is a fixed 210px** — the rest of the
+  bar's layout no longer shifts as the target readout changes.
+
+Verified in Chromium (24 checks across two suites): the group
+opens; Calculator computes and honours its kit-bound rounding
+(1 ÷ 3 = 0.33 at 2 places); TextTransformer's three spot-checked
+conversions and its kit checkbox (sentence-case rest off keeps
+"HELLO WORLD"); `\` over an icon / the clock / a column gap
+opens Notes' / the Clock Widget's / the Launch Column's page;
+the kit segment sets the clock's style; bare desktop gives the
+shake and no page change; Calculator migrates window → layer →
+window and computes inside the layer; NavGraph's mode toggle is
+checked by default and migrates it layer → window (framed) →
+layer; freeze/unfreeze still work from the window menu; the
+HUD target width and hints offset are identical across targets.

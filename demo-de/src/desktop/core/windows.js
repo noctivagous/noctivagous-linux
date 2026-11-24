@@ -44,6 +44,8 @@ export function openWindow(id) {
     shaded: false,
     vshaded: false,
     hidden: false,
+    stacked: false,
+    frozen: false,
     flipped: false,
     seq: w.seq + 1,
     prev: null,
@@ -51,6 +53,7 @@ export function openWindow(id) {
   store.replace("windows", {
     order: [...w.order, id],
     byId: { ...w.byId, [id]: rec },
+    stack: w.stack || [],
     focusId: id,
     zTop: w.zTop + 1,
     seq: w.seq + 1,
@@ -64,6 +67,7 @@ export function closeWindow(id) {
   store.replace("windows", {
     ...w,
     order: w.order.filter((x) => x !== id),
+    stack: (w.stack || []).filter((x) => x !== id),
     byId,
     focusId: w.focusId === id ? null : w.focusId,
   });
@@ -109,6 +113,25 @@ export function toggleMax(id) {
 
 export function moveWindow(id, x, y) {
   patch(id, { x, y });
+}
+
+/* H: resize the window to the cursor point. The engine works
+ * out the section (one of the 8 around the window) and the new
+ * geometry; this writer applies it — x/w always, y/h only when
+ * the section has a vertical part (v), so a sideways resize of
+ * a shaded window leaves its shade and stored height alone,
+ * while a vertical one unshades into the new height. A
+ * maximised window refuses: restore it first. */
+export function resizeTo(id, geo) {
+  const rec = store.get().windows.byId[id];
+  if (!rec || rec.max) return;
+  const p = { x: Math.round(geo.x), w: Math.max(280, Math.round(geo.w)) };
+  if (geo.v) {
+    p.y = Math.max(0, Math.round(geo.y));
+    p.h = Math.max(150, Math.round(geo.h));
+    if (rec.shaded) p.shaded = false;
+  }
+  patch(id, p);
 }
 
 export function resizeWindow(id, w, h) {
@@ -161,4 +184,42 @@ export function toggleHidden(id) {
       byId: { ...w.byId, [id]: { ...rec, hidden: true } },
     });
   }
+}
+
+/* The WindowTransformerRegion: a collapsed titlebar dragged
+ * into the region becomes a list item of its stack. The record
+ * keeps its geometry; `stacked` windows render nowhere. */
+export function transformWindow(id) {
+  const w = store.get().windows;
+  const rec = w.byId[id];
+  if (!rec || rec.stacked) return;
+  store.replace("windows", {
+    ...w,
+    stack: [...(w.stack || []), id],
+    focusId: w.focusId === id ? null : w.focusId,
+    byId: { ...w.byId, [id]: { ...rec, stacked: true } },
+  });
+}
+
+/* Clicking a stack item restores the window to its titlebar at
+ * the given desk position; the caller then hands it to
+ * drag-lock (nct:lockwin) so it arrives already carried. */
+export function restoreFromStack(id, x, y) {
+  const w = store.get().windows;
+  const rec = w.byId[id];
+  if (!rec) return;
+  store.replace("windows", {
+    ...w,
+    stack: (w.stack || []).filter((v) => v !== id),
+    byId: { ...w.byId, [id]: { ...rec, stacked: false, shaded: true, x, y } },
+  });
+  focusWindow(id);
+}
+
+/* Freeze: the window stays exactly where it is and accepts no
+ * key or mouse events until unfrozen (the \ key, or the
+ * window's context menu). */
+export function toggleFrozen(id) {
+  const rec = store.get().windows.byId[id];
+  if (rec) patch(id, { frozen: !rec.frozen });
 }

@@ -29,6 +29,15 @@ import { pad3 } from "../apps/shared.jsx";
 const EDGES = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
 
 export default function Window({ id, rec, focused, locked }) {
+  // A frozen window swallows presses and clicks at its frame;
+  // its body is pointer-events:none (see .nwin.frozen CSS), so
+  // even hosted content and iframes go inert.
+  const frozenGuard = rec.frozen
+    ? {
+        onMouseDownCapture: (e) => e.stopPropagation(),
+        onClickCapture: (e) => e.stopPropagation(),
+      }
+    : {};
   const ap = appById(id);
   const App = ap.component;
   const patch = useSlice("patch");
@@ -37,6 +46,7 @@ export default function Window({ id, rec, focused, locked }) {
   const [closing, setClosing] = useState(false);
 
   function onTitleMouseDown(e) {
+    if (rec.frozen) return; // frozen: stays in place, takes no events
     if (e.target.closest(".wbtn")) return;
     focusWindow(id);
     if (rec.max) return;
@@ -56,6 +66,9 @@ export default function Window({ id, rec, focused, locked }) {
       dragRef.current = null;
       document.removeEventListener("mousemove", move);
       document.removeEventListener("mouseup", up);
+      // The shell checks the drop point (the transformer
+      // region claims collapsed titlebars dropped into it).
+      window.dispatchEvent(new CustomEvent("nct:windrop", { detail: { id } }));
     }
     document.addEventListener("mousemove", move);
     document.addEventListener("mouseup", up);
@@ -64,6 +77,7 @@ export default function Window({ id, rec, focused, locked }) {
 
   function onResizeMouseDown(edge) {
     return (e) => {
+      if (rec.frozen) return;
       e.preventDefault();
       e.stopPropagation();
       focusWindow(id);
@@ -102,7 +116,7 @@ export default function Window({ id, rec, focused, locked }) {
     left: rec.x + "px",
     top: rec.y + "px",
     zIndex: rec.z,
-    display: rec.min || rec.hidden ? "none" : "flex",
+    display: rec.min || rec.hidden || rec.stacked ? "none" : "flex",
   };
   if (rec.max) {
     style.width = "100%";
@@ -121,11 +135,12 @@ export default function Window({ id, rec, focused, locked }) {
     (focused ? " focused" : "") +
     (locked ? " kc-dragging" : "") +
     (rec.vshaded ? " vshade" : "") +
+    (rec.frozen ? " frozen" : "") +
     (closing ? " closing" : "");
 
   if (rec.vshaded) {
     return (
-      <div className={className} data-app={id} style={style}
+      <div className={className} data-app={id} style={style} {...frozenGuard}
         onMouseDown={() => focusWindow(id)}>
         <div className="vbar">
           <span className="vt">{ap.name}</span>
@@ -136,7 +151,7 @@ export default function Window({ id, rec, focused, locked }) {
   }
 
   return (
-    <div className={className} data-app={id} style={style}
+    <div className={className} data-app={id} style={style} {...frozenGuard}
       onMouseDown={() => focusWindow(id)}>
       <div className="titlebar" onMouseDown={onTitleMouseDown}
         onDoubleClick={(e) => { if (!e.target.closest(".wbtn")) toggleMax(id); }}>

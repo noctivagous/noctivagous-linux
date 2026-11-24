@@ -59,7 +59,7 @@ export function createKeyClicks(hooks = {}) {
   root.id = "kcRoot";
   root.innerHTML = `
     <div id="kcReticle"></div>
-    <div id="kcHud"><span class="kc-mode">KEY-CLICK</span><span class="kc-target">target — —</span><span class="kc-hints"><span class="kc-kbd">F</span> click <span class="kc-kbd">E</span> collapse <span class="kc-kbd">R</span> collapse+drag <span class="kc-kbd">T</span> vertical <span class="kc-kbd">A</span> close <span class="kc-kbd">G</span> hide <span class="kc-kbd">D</span> back <span class="kc-kbd">Tab</span> target <span class="kc-kbd">Space</span> drag-lock <span class="kc-kbd">Alt+L</span> labels <span class="kc-kbd">Alt+K</span> keys</span></div>
+    <div id="kcHud"><span class="kc-mode">KEY-CLICK</span><span class="kc-target">target — —</span><span class="kc-hints"><span class="kc-kbd">F</span> click <span class="kc-kbd">E</span> collapse+drag <span class="kc-kbd">R</span> collapse <span class="kc-kbd">T</span> vertical <span class="kc-kbd">A</span> close <span class="kc-kbd">G</span> hide <span class="kc-kbd">H</span> resize <span class="kc-kbd">D</span> back <span class="kc-kbd">Tab</span> target <span class="kc-kbd">Space</span> drag-lock <span class="kc-kbd">Alt+L</span> labels <span class="kc-kbd">Alt+K</span> keys <span class="kc-kbd">\</span> configure</span><button id="kcHudCollapse" type="button" title="Collapse the status bar into the task bar (or hover it and press E)">▾</button></div>
     <button id="kcHudBtn" type="button" title="Key-click status — click to expand, right-click to collapse">KEY-CLICK</button>
     <button id="kcTab" type="button" aria-label="Toggle onscreen keyboard" title="Onscreen keyboard (Alt+K)">KEYBOARD</button>
     <div id="kcPanel" hidden></div>`;
@@ -214,6 +214,8 @@ export function createKeyClicks(hooks = {}) {
   /* ---------- activation (through the elements' own handlers) --- */
   function kcClick(el) {
     if (!el) return false;
+    // A frozen element accepts no events at all.
+    if (el.closest && el.closest(".frozen")) return false;
     const range = el.closest && el.closest('input[type="range"]');
     if (range) {
       setRangeFromCursor(range);
@@ -391,6 +393,7 @@ export function createKeyClicks(hooks = {}) {
   function tryDragLock() {
     const el = document.elementFromPoint(mouseX, mouseY);
     if (!el) return;
+    if (el.closest && el.closest(".frozen")) return;
     const range = el.closest && el.closest('input[type="range"]');
     if (range) {
       dragLock = { kind: "range", el: range };
@@ -426,6 +429,34 @@ export function createKeyClicks(hooks = {}) {
       setRangeFromCursor(dragLock.el);
     }
   }
+  /* The shell can hand a window to drag-lock directly (the
+   * transformer stack restores a titlebar already carried).
+   * The grab is the titlebar's centre, so the bar stays centred
+   * on the cursor it was clicked at. */
+  function lockWindowById(id) {
+    const win = document.querySelector('.nwin[data-app="' + id + '"]');
+    if (!win) return;
+    win.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    const op = win.offsetParent
+      ? win.offsetParent.getBoundingClientRect()
+      : { left: 0, top: 0 };
+    dragLock = {
+      kind: "win",
+      el: win,
+      id,
+      dx: win.offsetWidth / 2 + op.left,
+      dy: 14 + op.top,
+      ox: win.offsetLeft,
+      oy: win.offsetTop,
+    };
+    setLockState("win", id);
+    setMode();
+  }
+  window.addEventListener("nct:lockwin", (e) => {
+    const id = e.detail && e.detail.id;
+    if (id) lockWindowById(id);
+  });
+
   function dropDragLock() {
     if (dragLock && dragLock.el && dragLock.kind === "range")
       dragLock.el.classList.remove("kc-dragging");
@@ -442,6 +473,7 @@ export function createKeyClicks(hooks = {}) {
   function appAtCursor() {
     const el = document.elementFromPoint(mouseX, mouseY);
     const win = el && el.closest && el.closest(".nwin");
+    if (win && win.classList.contains("frozen")) return null;
     return win ? win.getAttribute("data-app") : null;
   }
   function iconAtCursor() {
@@ -449,9 +481,73 @@ export function createKeyClicks(hooks = {}) {
     const ic = el && el.closest && el.closest(".dicon");
     return ic ? ic.getAttribute("data-icon") : null;
   }
+  /* H: resize the focused window to the cursor point. The
+   * window's edges, extended, divide the space around it into
+   * 8 sections; the section the cursor sits in decides which
+   * edge — or corner — moves to the cursor. Inside the window
+   * there is no section and H does nothing. Geometry goes
+   * through the nct:winresize bridge; the store's writer owns
+   * clamps, shade and max. */
+  function resizeToCursor() {
+    const win = focusedWin();
+    if (!win || win.classList.contains("vshade") || win.classList.contains("frozen")) return false;
+    const id = win.getAttribute("data-app");
+    if (!id) return false;
+    const r = win.getBoundingClientRect();
+    const op = win.offsetParent
+      ? win.offsetParent.getBoundingClientRect()
+      : { left: 0, top: 0 };
+    const cx = mouseX - op.left, cy = mouseY - op.top;
+    const x0 = r.left - op.left, y0 = r.top - op.top;
+    const x1 = x0 + r.width, y1 = y0 + r.height;
+    const col = cx < x0 ? "w" : cx > x1 ? "e" : "";
+    const row = cy < y0 ? "n" : cy > y1 ? "s" : "";
+    if (!col && !row) return false;
+    let nx = x0, ny = y0, nw = r.width, nh = r.height;
+    if (col === "e") nw = cx - x0;
+    if (col === "w") { nw = x1 - cx; nx = x1 - nw; }
+    if (row === "s") nh = cy - y0;
+    if (row === "n") { nh = y1 - cy; ny = y1 - nh; }
+    window.dispatchEvent(
+      new CustomEvent("nct:winresize", {
+        detail: { id, x: nx, y: ny, w: nw, h: nh, v: row !== "" },
+      }),
+    );
+    return true;
+  }
   function winAtCursor() {
     const el = document.elementFromPoint(mouseX, mouseY);
-    return el && el.closest ? el.closest(".nwin") : null;
+    const win = el && el.closest ? el.closest(".nwin") : null;
+    // Frozen windows are invisible to the operators: they stay
+    // in place and accept nothing until unfrozen.
+    return win && win.classList.contains("frozen") ? null : win;
+  }
+  /* The frozen window at the cursor, found geometrically —
+   * a frozen window's body takes no events, so hit-testing
+   * alone can miss it. The \ key uses this to unfreeze. */
+  /* The configure target at the cursor: the nearest
+   * data-configure hook, else the window's app, else the
+   * layer app, else a frozen window found geometrically. */
+  function configureTargetAtCursor() {
+    const el = document.elementFromPoint(mouseX, mouseY);
+    if (el && el.closest) {
+      const c = el.closest("[data-configure]");
+      if (c) return c.getAttribute("data-configure");
+      const win = el.closest(".nwin");
+      if (win && !win.closest("#loginWin")) return win.getAttribute("data-app");
+      const layer = el.closest("[data-layer-app]");
+      if (layer) return layer.getAttribute("data-layer-app");
+    }
+    const fw = frozenWinAtCursor();
+    return fw ? fw.getAttribute("data-app") : null;
+  }
+  function frozenWinAtCursor() {
+    const wins = document.querySelectorAll(".nwin.frozen");
+    for (const w of wins) {
+      const r = w.getBoundingClientRect();
+      if (mouseX >= r.left && mouseX <= r.right && mouseY >= r.top && mouseY <= r.bottom) return w;
+    }
+    return null;
   }
   // Collapse (shade) through the window's own shade button; the
   // titlebar that remains is placed directly under the cursor —
@@ -462,6 +558,20 @@ export function createKeyClicks(hooks = {}) {
     document.dispatchEvent(
       new CustomEvent("nct:vshade", { detail: { id, on } }),
     );
+  }
+  /* Is the cursor over the key-click status bar (or its
+   * collapsed button in the task bar)? The bar is
+   * pointer-events:none, so this is a geometric test, with the
+   * context menu's courtesy: a window, icon or task under the
+   * point wins. */
+  function hudAtCursor() {
+    const el = hudCollapsed ? hudBtn : hud;
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    if (mouseX < r.left || mouseX > r.right || mouseY < r.top || mouseY > r.bottom) return false;
+    const under = document.elementFromPoint(mouseX, mouseY);
+    if (under && under.closest && under.closest(".nwin, .dicon, .dock .task")) return false;
+    return true;
   }
   function collapseAtCursor() {
     const win = winAtCursor();
@@ -912,11 +1022,26 @@ export function createKeyClicks(hooks = {}) {
         setMode();
         return;
       }
+      case "h": case "H":
+        e.preventDefault();
+        if (resizeToCursor()) setMode();
+        return;
       case "d": case "D":
         e.preventDefault(); goBack(); setMode(); return;
       case "e": case "E":
+        // E and R swapped (the user's default): E is collapse +
+        // drag-lock — the titlebar that remains is already
+        // carried, because what is underneath is draggable (all
+        // windows are). A second E drops the lock. Over the
+        // status bar, E collapses the bar into the task bar.
         e.preventDefault();
-        if (collapseAtCursor()) setMode();
+        if (hudAtCursor()) { setHudCollapsed(!hudCollapsed); setMode(); return; }
+        if (dragLock) dropDragLock();
+        else {
+          collapseAtCursor();
+          requestAnimationFrame(() => tryDragLock());
+        }
+        setMode();
         return;
       case "a": case "A":
         e.preventDefault();
@@ -949,16 +1074,49 @@ export function createKeyClicks(hooks = {}) {
         if (closeAtCursor()) setMode();
         return;
       case "r": case "R":
-        // E + Space in one press: collapse, then drag-lock the
-        // titlebar that remains. A second R drops the lock.
+        // R took E's old job in the swap: the plain collapse,
+        // no lock. Over the status bar it collapses the bar too.
         e.preventDefault();
-        if (dragLock) dropDragLock();
-        else {
-          collapseAtCursor();
-          requestAnimationFrame(() => tryDragLock());
+        if (hudAtCursor()) { setHudCollapsed(!hudCollapsed); setMode(); return; }
+        if (collapseAtCursor()) setMode();
+        return;
+      case "0": {
+        // Cycle the built-in style set of the element under the
+        // cursor — desktop widgets carry data-widget and the
+        // shell owns their style sets. Everywhere else 0 is
+        // left alone.
+        const at = document.elementFromPoint(mouseX, mouseY);
+        const w = at && at.closest && at.closest("[data-widget]");
+        if (w) {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent("nct:widgetstyle", { detail: { id: w.getAttribute("data-widget") } }));
+          setMode();
+        }
+        return;
+      }
+      case "\\": {
+        // The global Configure key: whatever the cursor hovers
+        // that carries a configure hook gets its Settings
+        // opened — a launch item, the launch column itself, a
+        // widget, a window's app, a layer app. Elements declare
+        // the hook with data-configure; windows and layer apps
+        // resolve through their app id. With no hook under the
+        // cursor, the reticle says so (a shake) and nothing
+        // opens. (Freeze, this key's previous job, keeps its
+        // context menus.)
+        e.preventDefault();
+        const target = configureTargetAtCursor();
+        if (target) {
+          window.dispatchEvent(new CustomEvent("nct:configure", { detail: { target } }));
+        } else {
+          reticle.classList.remove("kc-noconfig");
+          void reticle.offsetWidth;
+          reticle.classList.add("kc-noconfig");
+          setTimeout(() => reticle.classList.remove("kc-noconfig"), 420);
         }
         setMode();
         return;
+      }
       case "t": case "T": {
         e.preventDefault();
         const win = winAtCursor();
@@ -1023,6 +1181,30 @@ export function createKeyClicks(hooks = {}) {
   const hudBtn = root.querySelector("#kcHudBtn");
   hudBtn.style.display = "none";
   hudBtn.addEventListener("click", () => setHudCollapsed(false));
+  root.querySelector("#kcHudCollapse").addEventListener("click", () => setHudCollapsed(true));
+
+  /* The scroll wheel zooms desktop-layer apps (NavGraph
+   * today): with a layer mounted, wheel steps over the desktop
+   * walk the same scale the [ ] keys walk. Windows, frames and
+   * the engine's own furniture keep their wheel. Steps
+   * accumulate, so a trackpad flick doesn't slam the clamp. */
+  let wheelAcc = 0;
+  document.addEventListener("wheel", (e) => {
+    const t = e.target;
+    if (t && t.closest && t.closest(".nwin, iframe, #kcRoot")) return;
+    if (!document.querySelector(".ng-layer")) return;
+    if (document.querySelector(".ng-layer.frozen")) return;
+    e.preventDefault();
+    wheelAcc += e.deltaY;
+    while (wheelAcc <= -50) {
+      window.dispatchEvent(new CustomEvent("nct:navgraph", { detail: { op: "scaleUp" } }));
+      wheelAcc += 50;
+    }
+    while (wheelAcc >= 50) {
+      window.dispatchEvent(new CustomEvent("nct:navgraph", { detail: { op: "scaleDown" } }));
+      wheelAcc -= 50;
+    }
+  }, { capture: true, passive: false });
   document.addEventListener("contextmenu", onHudContextMenu, true);
   tab.addEventListener("mousedown", (e) => {
     e.preventDefault();
