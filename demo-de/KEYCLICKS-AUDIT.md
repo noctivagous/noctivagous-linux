@@ -278,3 +278,58 @@ through the NCT proxy, which strips framing refusals and
 injects the bridge. The proxy, its lock, and its local/network
 modes are documented in BROWSER-PROXY.md. Patch ports: `url`
 out, `visit` in.
+
+## Hide/show, icon states, and the text-mode cast (2026-11-23)
+
+Windows gained a `hidden` state (the G key). G over an app's
+desktop icon — or over the app's window — toggles it: the
+window stops displaying but the app stays open and mounted, so
+its state survives (unlike close; unlike min it is driven from
+the icon as a toggle). The icon column now carries state: an
+open app shows a green rail beside its icon, a hidden app is
+dimmed and greyed with a grey rail, and the dock's task buttons
+mark hidden windows too. The icon's right-click menu gained
+Hide/Show and Quit. A over an app icon quits the app — a new
+rung on A's ladder, placed after cords and after any open menu
+(menus still close first). The engine reaches the store through
+an `nct:appctl` bridge ({op: toggleHide | quit, app}), the same
+pattern as the other shell bridges.
+
+Text mode now casts the system bars orange: while the keyboard
+belongs to a text field (`body.kc-textmode`, set by the
+engine's existing text-mode tracking), the sysbar, the dock and
+the login topbar carry an orange tint with a stronger orange
+edge line, so the mode is visible at the system's frame, not
+only at the field's ring.
+
+## Keymap layering: global and app contexts (2026-11-23)
+
+`src/desktop/core/keymaps.js` sorts out the relationship the
+Browser window called for. Two contexts decide what a press
+means: GLOBAL (the shell's operators) and APP — the keymap of
+the app whose window is under the cursor; the hovered rectangle
+is the context, not keyboard focus. Physical slots split in
+two:
+
+- RESERVED — the system's operators; apps cannot override
+  them. F above all: F is the system left-click inside and
+  outside apps, on every layout. Also A, G, O, P, E, R, T, Tab,
+  Space, Esc, Alt+K, Alt+L.
+- OVERRIDABLE — slots an app may bind for its own windows. A
+  binding consumes the press inside that app's windows;
+  everywhere else the slot keeps its global meaning.
+
+Apps bind slots to GENERIC ACTIONS from a system vocabulary
+(HISTORY_BACK, HISTORY_FORWARD, DELETE, …): the system supplies
+the vocabulary and the dispatch — an `nct:key` window event
+{app, key, action}, delivered by the engine when the press
+lands on that app's window — and the app supplies the meaning.
+First binding: the Browser's D → HISTORY_BACK. Inside a proxied
+page the bridge's D does the same for the page's own history,
+so D means "back" at both levels of the browser's context.
+
+Two boundaries are intrinsic, not bugs: while a text field
+holds the keyboard (text mode) letters type, and while a frame
+holds focus its keys belong to the page — Esc is the way back
+in both. The Browser's address bar therefore hands the keyboard
+back on Enter, like the Terminal's run port.

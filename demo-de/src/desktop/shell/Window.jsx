@@ -102,7 +102,7 @@ export default function Window({ id, rec, focused, locked }) {
     left: rec.x + "px",
     top: rec.y + "px",
     zIndex: rec.z,
-    display: rec.min ? "none" : "flex",
+    display: rec.min || rec.hidden ? "none" : "flex",
   };
   if (rec.max) {
     style.width = "100%";

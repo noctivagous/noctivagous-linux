@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSlice } from "../core/react.js";
 import { APPS, appById, Icon } from "../core/registry.jsx";
 import { bus, toast } from "../core/bus.js";
-import { openWindow, closeWindow, focusWindow, minimizeWindow, toggleShade, toggleMax, setVShade, showDesktop } from "../core/windows.js";
+import { openWindow, closeWindow, focusWindow, minimizeWindow, toggleShade, toggleMax, setVShade, showDesktop, toggleHidden } from "../core/windows.js";
 import { setSetting } from "../core/react.js";
 import { lockScreen, logOut } from "./sessionActions.js";
 import Window from "./Window.jsx";
@@ -169,7 +169,7 @@ export default function Desktop({ onShutdown }) {
           {["home", "files"].map((id) => {
             const ap = appById(id);
             return (
-              <button key={id} data-icon={id} className={"dicon" + (selIcon === id ? " sel" : "")}
+              <button key={id} data-icon={id} className={"dicon" + (selIcon === id ? " sel" : "") + (windows.byId[id] ? " open" : "") + (windows.byId[id] && windows.byId[id].hidden ? " hidden" : "")}
                 onClick={() => iconClick(id)}>
                 <span className="dib"><Icon name={ap.icon} /></span><span>{ap.name}</span>
               </button>
@@ -182,7 +182,7 @@ export default function Desktop({ onShutdown }) {
           {["terminal", "browser", "settings", "monitor", "notes"].map((id) => {
             const ap = appById(id);
             return (
-              <button key={id} data-icon={id} className={"dicon" + (selIcon === id ? " sel" : "")}
+              <button key={id} data-icon={id} className={"dicon" + (selIcon === id ? " sel" : "") + (windows.byId[id] ? " open" : "") + (windows.byId[id] && windows.byId[id].hidden ? " hidden" : "")}
                 onClick={() => iconClick(id)}>
                 <span className="dib"><Icon name={ap.icon} /></span><span>{ap.name}</span>
               </button>
@@ -193,7 +193,7 @@ export default function Desktop({ onShutdown }) {
           {["about", "trash"].map((id) => {
             const ap = appById(id);
             return (
-              <button key={id} data-icon={id} className={"dicon" + (selIcon === id ? " sel" : "")}
+              <button key={id} data-icon={id} className={"dicon" + (selIcon === id ? " sel" : "") + (windows.byId[id] ? " open" : "") + (windows.byId[id] && windows.byId[id].hidden ? " hidden" : "")}
                 onClick={() => iconClick(id)}>
                 <span className="dib"><Icon name={ap.icon} /></span><span>{ap.name}</span>
               </button>
@@ -257,7 +257,7 @@ export default function Desktop({ onShutdown }) {
             const ap = appById(id);
             const rec = windows.byId[id];
             return (
-              <button key={id} className={"task" + (windows.focusId === id ? " active" : "") + (rec.min ? " min" : "")}
+              <button key={id} className={"task" + (windows.focusId === id ? " active" : "") + (rec.min ? " min" : "") + (rec.hidden ? " hidden" : "")}
                 onClick={() => {
                   if (rec.min || windows.focusId !== id) focusWindow(id);
                   else minimizeWindow(id);
@@ -314,7 +314,15 @@ export default function Desktop({ onShutdown }) {
           {ctx.id === "navgraph" ? (
             <button onClick={() => { setCtx(null); toggleLayer("navgraph"); }}>{ui.layer === "navgraph" ? "Close NavGraph" : "Open NavGraph"}</button>
           ) : (
-            <button onClick={() => { setCtx(null); iconClick(ctx.id); }}>Open {appById(ctx.id) ? appById(ctx.id).name : ctx.id}</button>
+            <>
+              <button onClick={() => { setCtx(null); iconClick(ctx.id); }}>Open {appById(ctx.id) ? appById(ctx.id).name : ctx.id}</button>
+              {windows.byId[ctx.id] && (
+                <button onClick={() => { setCtx(null); toggleHidden(ctx.id); }}>{windows.byId[ctx.id].hidden ? "Show" : "Hide"} {appById(ctx.id) ? appById(ctx.id).name : ctx.id}</button>
+              )}
+              {windows.byId[ctx.id] && (
+                <button onClick={() => { setCtx(null); closeWindow(ctx.id); }}>Quit {appById(ctx.id) ? appById(ctx.id).name : ctx.id}</button>
+              )}
+            </>
           )}
         </div>
       )}

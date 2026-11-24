@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { publish, onDeliver } from "../core/patchbay.js";
+import { onAppAction } from "../core/keymaps.js";
 
 /* Browser — a window on the web. Pages load through the NCT
  * proxy by default (proxy/handler.mjs): the proxy strips the
@@ -160,6 +161,12 @@ export default function BrowserApp() {
     if (v) navigate(String(v), false);
   }), [idx, entries]);
 
+  /* This app's keymap: D is bound to the generic HISTORY_BACK
+   * action (core/keymaps.js). The engine delivers it only while
+   * the cursor is over this window; inside a proxied page the
+   * bridge's own D does the same for the page's history. */
+  useEffect(() => onAppAction("browser", "HISTORY_BACK", () => go(-1)), [idx, entries]);
+
   const go = (d) => {
     const n = idx + d;
     if (n < 0 || n >= entries.length) return;
@@ -184,7 +191,16 @@ export default function BrowserApp() {
         <input ref={addrRef} className="tinput baddr" value={input}
           placeholder="Address or search"
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") navigate(input, false); }} />
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              // Committing an address hands the keyboard back
+              // to the desktop, like the Terminal's run port:
+              // a field that keeps focus would eat the operator
+              // keys (D = HISTORY_BACK in this app) as text.
+              navigate(input, false);
+              e.currentTarget.blur();
+            }
+          }} />
         <button className={"wbtn bproxy" + (proxyOn ? " on" : "")}
           onClick={() => { setProxyOn((v) => !v); setNotice(null); }}
           title="Route pages through the NCT proxy">

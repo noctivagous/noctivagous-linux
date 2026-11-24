@@ -26,6 +26,7 @@ import {
   addressablesIn,
 } from "./addressing.js";
 import { BOARD_ROWS, keyForCap, bindingFor, SCOPE_FOR_APP } from "./board.js";
+import { appActionFor, OVERRIDABLE_KEYS } from "../desktop/core/keymaps.js";
 
 export function createKeyClicks(hooks = {}) {
   const onMode = hooks.onMode || (() => {});
@@ -58,7 +59,7 @@ export function createKeyClicks(hooks = {}) {
   root.id = "kcRoot";
   root.innerHTML = `
     <div id="kcReticle"></div>
-    <div id="kcHud"><span class="kc-mode">KEY-CLICK</span><span class="kc-target">target — —</span><span class="kc-hints"><span class="kc-kbd">F</span> click <span class="kc-kbd">E</span> collapse <span class="kc-kbd">R</span> collapse+drag <span class="kc-kbd">T</span> vertical <span class="kc-kbd">A</span> close <span class="kc-kbd">D</span> back <span class="kc-kbd">Tab</span> target <span class="kc-kbd">Space</span> drag-lock <span class="kc-kbd">Alt+L</span> labels <span class="kc-kbd">Alt+K</span> keys</span></div>
+    <div id="kcHud"><span class="kc-mode">KEY-CLICK</span><span class="kc-target">target — —</span><span class="kc-hints"><span class="kc-kbd">F</span> click <span class="kc-kbd">E</span> collapse <span class="kc-kbd">R</span> collapse+drag <span class="kc-kbd">T</span> vertical <span class="kc-kbd">A</span> close <span class="kc-kbd">G</span> hide <span class="kc-kbd">D</span> back <span class="kc-kbd">Tab</span> target <span class="kc-kbd">Space</span> drag-lock <span class="kc-kbd">Alt+L</span> labels <span class="kc-kbd">Alt+K</span> keys</span></div>
     <button id="kcHudBtn" type="button" title="Key-click status — click to expand, right-click to collapse">KEY-CLICK</button>
     <button id="kcTab" type="button" aria-label="Toggle onscreen keyboard" title="Onscreen keyboard (Alt+K)">KEYBOARD</button>
     <div id="kcPanel" hidden></div>`;
@@ -438,6 +439,16 @@ export function createKeyClicks(hooks = {}) {
   }
 
   /* ---------- E collapse / A close, at the cursor ---------- */
+  function appAtCursor() {
+    const el = document.elementFromPoint(mouseX, mouseY);
+    const win = el && el.closest && el.closest(".nwin");
+    return win ? win.getAttribute("data-app") : null;
+  }
+  function iconAtCursor() {
+    const el = document.elementFromPoint(mouseX, mouseY);
+    const ic = el && el.closest && el.closest(".dicon");
+    return ic ? ic.getAttribute("data-icon") : null;
+  }
   function winAtCursor() {
     const el = document.elementFromPoint(mouseX, mouseY);
     return el && el.closest ? el.closest(".nwin") : null;
@@ -823,6 +834,21 @@ export function createKeyClicks(hooks = {}) {
       }
       return;
     }
+    // App keymaps: an overridable slot pressed over an app's
+    // window belongs to that app — the hovered rectangle is the
+    // context. Reserved slots (F above all: the system click)
+    // never reach this check; an app with no binding for the
+    // slot gets the global behaviour below.
+    if (OVERRIDABLE_KEYS.has(k.toLowerCase())) {
+      const app = appAtCursor();
+      const action = app && appActionFor(app, k.toLowerCase());
+      if (action) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("nct:key", { detail: { app, key: k.toLowerCase(), action } }));
+        setMode();
+        return;
+      }
+    }
     switch (k) {
       case "f": case "F": {
         if (dragLock) { dropDragLock(); e.preventDefault(); return; }
@@ -877,6 +903,15 @@ export function createKeyClicks(hooks = {}) {
         e.preventDefault(); fontStep(1 / 1.1); return;
       case "=": case "+":
         e.preventDefault(); fontStep(1.1); return;
+      case "g": case "G": {
+        // Hide/show toggle: over an app icon it hides or shows
+        // that app; over a window it hides that window's app.
+        e.preventDefault();
+        const app = iconAtCursor() || appAtCursor();
+        if (app) window.dispatchEvent(new CustomEvent("nct:appctl", { detail: { op: "toggleHide", app } }));
+        setMode();
+        return;
+      }
       case "d": case "D":
         e.preventDefault(); goBack(); setMode(); return;
       case "e": case "E":
@@ -896,6 +931,17 @@ export function createKeyClicks(hooks = {}) {
           const cord = at && at.closest && at.closest("[data-cord]");
           if (cord) {
             window.dispatchEvent(new CustomEvent("nct:patch", { detail: { op: "removeCord", id: cord.getAttribute("data-cord") } }));
+            setMode();
+            return;
+          }
+        }
+        {
+          // Over an app icon, A quits the app (an open menu
+          // still closes first — that courtesy is the ladder's).
+          const menuOpen = document.querySelector(".dropdown.open, .launcher.open, .ctxmenu.open");
+          const ic = !menuOpen && iconAtCursor();
+          if (ic) {
+            window.dispatchEvent(new CustomEvent("nct:appctl", { detail: { op: "quit", app: ic } }));
             setMode();
             return;
           }

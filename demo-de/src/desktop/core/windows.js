@@ -1,6 +1,9 @@
 /* Window manager actions — the windows slice's only writers.
  *
- * Window records: {x, y, w, h, z, min, max, shaded, vshaded, seq, prev}.
+ * Window records: {x, y, w, h, z, min, max, shaded, vshaded, hidden, seq, prev}.
+ * `hidden` is the G-key state: the window is not displayed but
+ * the app stays open and mounted (unlike close, unlike min it
+ * is driven from the app's icon as a hide/show toggle).
  * Geometry lives in the store (not in component state) because the
  * taskbar, the window frames and key-clicks' D-back all read the
  * same table. Rendering is shell/Window.jsx.
@@ -22,7 +25,7 @@ function patch(id, p) {
 export function openWindow(id) {
   const w = store.get().windows;
   if (w.byId[id]) {
-    patch(id, { min: false });
+    patch(id, { min: false, hidden: false });
     focusWindow(id);
     return;
   }
@@ -40,6 +43,7 @@ export function openWindow(id) {
     max: false,
     shaded: false,
     vshaded: false,
+    hidden: false,
     flipped: false,
     seq: w.seq + 1,
     prev: null,
@@ -73,7 +77,7 @@ export function focusWindow(id) {
     ...w,
     focusId: id,
     zTop: z,
-    byId: { ...w.byId, [id]: { ...w.byId[id], z, min: false } },
+    byId: { ...w.byId, [id]: { ...w.byId[id], z, min: false, hidden: false } },
   });
 }
 
@@ -139,4 +143,22 @@ export function showDesktop() {
 
 export function clearWindows() {
   store.replace("windows", { order: [], byId: {}, focusId: null, zTop: 10, seq: 0 });
+}
+
+/* G: hide/show. Hiding keeps the record (and the mounted app);
+ * showing brings the window back focused. */
+export function toggleHidden(id) {
+  const w = store.get().windows;
+  const rec = w.byId[id];
+  if (!rec) return;
+  if (rec.hidden) {
+    patch(id, { hidden: false });
+    focusWindow(id);
+  } else {
+    store.replace("windows", {
+      ...w,
+      focusId: w.focusId === id ? null : w.focusId,
+      byId: { ...w.byId, [id]: { ...rec, hidden: true } },
+    });
+  }
 }
