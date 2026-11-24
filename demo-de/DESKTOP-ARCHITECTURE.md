@@ -97,6 +97,21 @@ store hooks. Apps keep private state (terminal history, the open
 folder, monitor samples) inside themselves; it dies with the window,
 as it should.
 
+**The Greeter Dashboard** (`src/desktop/greeter/`) is the login
+screen's widget surround: top and bottom strips plus panels
+(weather, system, email, calendar, network, power, updates,
+notifications, now playing, storage, security) arranged around
+the login panel by `Login`. The greeter is a flex column — strip /
+content row (`flex:1; min-height:0`) / strip — so the strips
+reserve space structurally. A greeter-local profile state
+(personal / household / public) masks or hides personal panels;
+panel data lives in one data module (`greeterData.js`), swapped
+for live sources later. As the viewport shrinks in either axis
+the panels compact, then shed group by group (CSS classes
+`gd-s1`…`gd-s4`, core three last), until only the login modal
+remains. It is shell furniture — `NCT-WL-COMPOSITOR` in the map's
+terms — and the desktop after login is untouched by it.
+
 **Desktop-layer apps** are the second app form: they render on the
 desk area itself, under the window layer, with no window frame.
 The open one is named by the store's `ui.layer` field (actions in

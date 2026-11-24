@@ -3,6 +3,14 @@ import { store, useSlice } from "../core/react.js";
 import { toast } from "../core/bus.js";
 import { enterDesktop, finishUnlock } from "./sessionActions.js";
 import { useNow, hm, hms, fullDate, MONS } from "./useNow.js";
+import GreeterDashboard from "../greeter/GreeterDashboard.jsx";
+import { HOSTNAME } from "../greeter/greeterData.js";
+
+const PROFILES = [
+  { id: "personal", label: "PERSONAL" },
+  { id: "household", label: "HOUSEHOLD" },
+  { id: "public", label: "PUBLIC" },
+];
 
 const SESSIONS = ["Flat Space", "ZUI Plane", "ZUI Spatial"];
 const USERS = [
@@ -21,7 +29,12 @@ const BOOT_LINES = (user, sess) => [
 export default function Login({ onPower, onRestart }) {
   const session = useSlice("session");
   const settings = useSlice("settings");
+  const ui = useSlice("ui");
   const now = useNow();
+  // Greeter Dashboard profile: greeter-local state (pre-login,
+  // no session exists yet), defaulting to the personal
+  // workstation configuration.
+  const [profile, setProfile] = useState("personal");
   const [chip, setChip] = useState(0);
   const [showPw, setShowPw] = useState(false);
   const [caps, setCaps] = useState(false);
@@ -121,18 +134,29 @@ export default function Login({ onPower, onRestart }) {
       <div id="brightVeilLogin" style={{ position: "absolute", inset: 0, background: "#000", opacity: ((100 - settings.brightness) / 100) * 0.55, pointerEvents: "none", zIndex: 40 }}></div>
       <header className="topbar">
         <div className="wordmark"><span className="sq"></span>NOCTIVAGOUS <small>OS 4.2 · KERNEL 6.8-NCT</small></div>
+        <div className="gd-topdate">{fullDate(now)}</div>
         <div className="top-right">
           <span className="stat hidem"><span className="led"></span><span>ETH0 · LINK</span></span>
+          <span className="stat hidem">HOST · {HOSTNAME}</span>
+          <span className="stat hidem">UPS {ui.battery}%</span>
           <span className="stat hidem">VOL {settings.volume}%</span>
           <span className="stat"><span>{now.getDate()} {MONS[now.getMonth()].slice(0, 3).toUpperCase()} {now.getFullYear()}</span></span>
           <span className="stat" style={{ fontWeight: 700, color: "#eee" }}>{hms(now)}</span>
+          <span className="seg gd-prof" role="group" aria-label="Dashboard profile">
+            {PROFILES.map((p) => (
+              <button type="button" key={p.id} className={profile === p.id ? "sel" : ""} data-profile={p.id}
+                onClick={() => setProfile(p.id)}>
+                {p.label}
+              </button>
+            ))}
+          </span>
           <button className="iconbtn" aria-label="Power options" title="Power" onClick={onPower}>
             <svg className="ic" viewBox="0 0 24 24"><path d="M12 3v8M6.3 6.5a8 8 0 1 0 11.4 0" /></svg>
           </button>
         </div>
       </header>
 
-      <div className="login-wrap">
+      <GreeterDashboard profile={profile}>
         <div className="login-clock">
           <div className="time">{hm(now)}</div>
           <div className="date">{fullDate(now)}</div>
@@ -239,14 +263,16 @@ export default function Login({ onPower, onRestart }) {
             </button>
           ))}
         </div>
-      </div>
+      </GreeterDashboard>
 
       <footer className="login-bottom">
         <button className="btn sm" onClick={() => toast("Accessibility: large text off · screen reader off · high contrast off")}>
           <svg className="ic" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6" /><path d="M4 9.5c5.3 1.2 10.7 1.2 16 0M12 11v4l-3 6M12 15l3 6" /></svg> Accessibility
         </button>
         <span className="kbd hidem">KB · US &nbsp;·&nbsp; ⌨ EN-US</span>
+        <span className="kbd hidem">BT · OFF &nbsp;·&nbsp; AUDIO · HDMI &nbsp;·&nbsp; DASH · {profile.toUpperCase()}</span>
         <span className="sp"></span>
+        <button className="btn sm" onClick={() => { setStatus("SLEEP · REQUESTED"); toast("Sleep requested — suspend is disabled in this demo"); }}>☾ Sleep</button>
         <button className="btn sm" onClick={onRestart}>↻ Restart</button>
         <button className="btn sm danger" onClick={onPower}>
           <svg className="ic" viewBox="0 0 24 24"><path d="M12 3v8M6.3 6.5a8 8 0 1 0 11.4 0" /></svg> Shut Down

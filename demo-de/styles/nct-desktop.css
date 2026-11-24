@@ -99,7 +99,38 @@ input[type=range].sys::-moz-range-thumb{width:13px;height:19px;background:#2c2c2
 .top-right .stat{display:flex;align-items:center;gap:6px}
 .iconbtn{background:transparent;border:1px solid transparent;color:#aaa;width:36px;height:30px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;border-radius:3px}
 .iconbtn:hover{background:var(--grad-btn-h);border-color:#000;color:#fff}
-.login-wrap{position:absolute;inset:34px 0 46px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:18px;overflow:auto}
+/* The greeter is a flex column — top strip / content row /
+   bottom strip — so the strips reserve their space
+   structurally and can never paint over the login panel.
+   The content row is the Greeter Dashboard grid. */
+#loginScreen.on{display:flex;flex-direction:column}
+#loginScreen .topbar{position:relative;flex:none}
+.login-wrap{position:relative;flex:1;min-height:0;overflow:hidden;display:grid;grid-template-columns:296px minmax(0,auto) 296px;gap:14px;align-items:stretch;justify-content:center;padding:14px 16px}
+.gd-center{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;min-height:0;min-width:0}
+.gd-topdate{flex:1;text-align:center;font-family:var(--font-m);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#8d8d8d;white-space:nowrap;overflow:hidden}
+.seg.gd-prof{flex:none}
+.seg.gd-prof button{min-height:22px;padding:2px 8px;font-size:9.5px}
+.seg.gd-prof button.sel{padding-top:0;border-top-width:2px}
+/* Greeter Dashboard widget panels */
+.gd-col{display:flex;flex-direction:column;gap:10px;min-height:0;overflow:hidden}
+.gd-panel{background:linear-gradient(180deg,rgba(26,26,26,.93),rgba(13,13,13,.93));border:1px solid #000;border-radius:5px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05),4px 5px 14px rgba(0,0,0,.45);padding:9px 11px;font-size:11.5px;color:#cfcfcf}
+.gd-ptitle{font-family:var(--font-m);font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:#8d8d8d;display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.gd-ptitle .led{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 6px rgba(92,184,92,.8);flex:none}
+.gd-big{font-family:var(--font-d);font-weight:600;font-size:21px;color:#f0f0f0;line-height:1.1;font-variant-numeric:tabular-nums}
+.gd-cond{font-family:var(--font-m);font-weight:400;font-size:10px;letter-spacing:.06em;color:#9d9d9d}
+.gd-row{display:flex;justify-content:space-between;gap:10px;padding:1.5px 0;font-size:11px}
+.gd-k{font-family:var(--font-m);font-size:10px;letter-spacing:.05em;color:#8d8d8d;white-space:nowrap}
+.gd-v{color:#ddd;text-align:right;font-variant-numeric:tabular-nums}
+.gd-bar{height:7px;background:var(--grad-track);border:1px solid #000;border-radius:2px;box-shadow:inset 0 1px 3px rgba(0,0,0,.7);overflow:hidden;margin:3px 0 5px}
+.gd-bar>i{display:block;height:100%;background:linear-gradient(90deg,#2a6b2a,#5cb85c)}
+.gd-barrow{padding:1px 0}
+.gd-hourly{display:flex;gap:6px;margin:5px 0 3px}
+.gd-hour{flex:1;text-align:center;font-family:var(--font-m);font-size:10px;color:#bdbdbd;background:rgba(255,255,255,.03);border:1px solid rgba(0,0,0,.6);border-radius:3px;padding:3px 0}
+.gd-hour b{display:block;color:#777;font-weight:400;font-size:9px}
+.gd-msgs{margin-top:4px;border-top:1px solid rgba(255,255,255,.05);padding-top:4px}
+.gd-msg{padding:2px 0}
+.gd-msg-subj{display:block;color:#e2e2e2;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gd-msg-meta{display:block;font-family:var(--font-m);font-size:9.5px;color:#777}
 .login-clock{text-align:center}
 .login-clock .time{font-family:var(--font-d);font-weight:600;font-size:clamp(44px,8vw,72px);letter-spacing:.02em;color:#f0f0f0;line-height:1;text-shadow:0 2px 12px rgba(0,0,0,.8);font-variant-numeric:tabular-nums}
 .login-clock .date{font-family:var(--font-m);font-size:11.5px;letter-spacing:.22em;text-transform:uppercase;color:#9d9d9d;margin-top:8px}
@@ -155,7 +186,7 @@ input[type=range].sys::-moz-range-thumb{width:13px;height:19px;background:#2c2c2
 .userchip.sel{box-shadow:inset 0 0 0 1px rgba(92,184,92,.6);color:#fff}
 .userchip .av2{width:34px;height:34px;border-radius:50%;background:radial-gradient(circle at 32% 28%,#454545,#1c1c1c);border:1px solid #000;display:flex;align-items:center;justify-content:center;font-family:var(--font-d);font-weight:700;font-size:14px}
 .userchip span{font-size:11.5px;font-weight:500}
-.login-bottom{position:absolute;left:0;right:0;bottom:0;height:46px;display:flex;align-items:center;gap:8px;padding:0 12px;background:linear-gradient(0deg,rgba(12,12,12,.94),rgba(20,20,20,.88));border-top:1px solid #000;z-index:60;flex-wrap:wrap}
+.login-bottom{position:relative;flex:none;height:46px;display:flex;align-items:center;gap:8px;padding:0 12px;background:linear-gradient(0deg,rgba(12,12,12,.94),rgba(20,20,20,.88));border-top:1px solid #000;z-index:60;flex-wrap:wrap}
 .login-bottom .sp{flex:1}
 .kbd{font-family:var(--font-m);font-size:10.5px;color:#8a8a8a;display:flex;gap:6px;align-items:center}
 /* ---------- DESKTOP ---------- */
@@ -250,8 +281,6 @@ textarea.notes{width:100%;min-height:210px;resize:vertical;line-height:1.6;font-
 .overlay .big{font-family:var(--font-d);letter-spacing:.24em;font-size:14px;text-transform:uppercase}
 #brightVeil{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;z-index:40}
 @media (max-width:760px){
-  .login-bottom{height:auto;min-height:46px;padding-top:7px;padding-bottom:7px;row-gap:6px}
-  .login-wrap{inset:34px 0 104px}
   #appMenus{display:none !important}
   .sysbar .top-right{margin-left:auto}
   #verTop{display:none}
@@ -264,12 +293,70 @@ textarea.notes{width:100%;min-height:210px;resize:vertical;line-height:1.6;font-
   .frow{grid-template-columns:1fr}.frow label{text-align:left}
   .files-grid{grid-template-columns:1fr;grid-template-rows:auto 1fr}
   .tree{display:flex;flex-wrap:wrap}.tree button{width:auto}
-  .login-wrap{justify-content:flex-start;padding-top:26px}
   .top-right .hidem{display:none}
   .srow{grid-template-columns:86px 1fr 52px}
 }
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;transition-duration:.01ms !important}}
 body.noanim *{animation-duration:.01ms !important;transition-duration:.01ms !important}
+
+/* --- Greeter Dashboard: responsive shedding ---
+ * As the viewport shrinks in width OR height, the dashboard
+ * first compacts, then hides panel groups in order
+ * (gd-s1 → gd-s4), leaving the core three (weather, system,
+ * email); below the last breakpoint the strips collapse too
+ * and only the login modal remains. No stage scrolls. */
+@media (max-width:1150px){ .gd-topdate{display:none} }
+/* Compact */
+@media (max-width:1340px),(max-height:830px){
+  .login-wrap{grid-template-columns:262px minmax(0,auto) 262px;gap:10px;padding:10px 12px}
+  .gd-panel{padding:7px 9px;font-size:11px}
+  .gd-minor{display:none}
+  .gd-big{font-size:18px}
+  .login-clock .time{font-size:clamp(40px,7vw,60px)}
+}
+/* Shed 1 — now playing, storage */
+@media (max-width:1200px),(max-height:760px){ .gd-s1{display:none} }
+/* Shed 2 — notifications, updates */
+@media (max-width:1100px),(max-height:700px){ .gd-s2{display:none} }
+/* Shed 3 — security, power */
+@media (max-width:1000px),(max-height:640px){ .gd-s3{display:none} }
+/* Shed 4 — network, calendar */
+@media (max-width:920px),(max-height:580px){
+  .gd-s4{display:none}
+  .login-wrap{grid-template-columns:238px minmax(0,auto) 238px}
+}
+/* Short screens: the centre compacts too — the clock block
+ * shrinks, then goes (the top strip still carries the time),
+ * the user chips go, and the login window tightens — so the
+ * modal always fits the content row and can never reach the
+ * bottom strip. */
+@media (max-height:700px){
+  .gd-center{gap:10px}
+  .login-clock .time{font-size:34px}
+  .login-clock .date{display:none}
+}
+@media (max-height:640px){
+  .login-clock{display:none}
+  .userrow{display:none}
+  .login-win .wbody{padding:6px 10px}
+  .login-win .frow{margin-bottom:4px}
+  .avatar-row{padding:0 0 2px}
+}
+/* Modal only — strips collapse, core panels hide. The height
+ * trigger (560) sits above the shortest height at which the
+ * compacted centre still fits between the strips (~550), so
+ * the strips are already gone before they could be reached. */
+@media (max-width:800px),(max-height:560px){
+  .gd-col{display:none}
+  #loginScreen .topbar{display:none}
+  #loginScreen .login-bottom{display:none}
+  .login-wrap{grid-template-columns:minmax(0,auto);padding:10px}
+  .gd-center{gap:10px}
+  .login-clock .time{font-size:38px}
+  .login-clock .sessline{display:none}
+  .login-win .wbody{padding:8px 10px}
+  .avatar-row{padding-bottom:4px}
+}
 
 /* --- React shell additions (desktop conversion) --- */
 #toast{position:fixed;right:14px;bottom:60px;z-index:800;background:linear-gradient(180deg,#2a2a2a,#161616);border:1px solid #000;box-shadow:6px 8px 18px rgba(0,0,0,.7);border-radius:5px;padding:10px 13px;font-family:var(--font-m);font-size:11.5px;color:#ddd;max-width:min(320px,90vw)}
