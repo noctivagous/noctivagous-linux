@@ -179,7 +179,7 @@ export default function Desktop({ onShutdown }) {
             onClick={() => { setSelIcon("navgraph"); toggleLayer("navgraph"); }}>
             <span className="dib"><Icon name="graph" /></span><span>NavGraph</span>
           </button>
-          {["terminal", "settings", "monitor", "notes"].map((id) => {
+          {["terminal", "browser", "settings", "monitor", "notes"].map((id) => {
             const ap = appById(id);
             return (
               <button key={id} data-icon={id} className={"dicon" + (selIcon === id ? " sel" : "")}

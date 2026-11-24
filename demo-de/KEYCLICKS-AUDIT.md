@@ -258,3 +258,23 @@ elements publish ports; cords carry live data between them.
   beside Show All/Hide All Ports and Clear All Cords) watches a
   port or cord: current value, the delivery stream, an inject
   box for inputs, focus/remove/clear-log actions.
+
+## The Browser window (2026-11-23)
+
+A Browser app (registry id `browser`) frames web pages inside a
+window. A framed page is a separate document: this engine's
+listeners never see its keys and `elementFromPoint` stops at the
+frame's edge, so key-clicks inside a page are served by a small
+page-side counterpart, the frame bridge (`proxy/bridge.mjs`) —
+the arrangement KeyPilot uses, a content script per frame. The
+bridge draws its own hover ring, clicks with F, labels with
+Alt+K, goes back with D, respects text entry, and reports the
+page's location to the window by postMessage; Esc inside the
+page hands control back to the window's chrome.
+
+Pages reach the frame two ways: directly (the default — the
+start page links only to sites verified to allow framing), or
+through the NCT proxy, which strips framing refusals and
+injects the bridge. The proxy, its lock, and its local/network
+modes are documented in BROWSER-PROXY.md. Patch ports: `url`
+out, `visit` in.

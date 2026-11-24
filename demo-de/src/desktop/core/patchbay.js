@@ -52,6 +52,10 @@ export const PORTS = {
     { id: "text", dir: "out", label: "Text (out)", type: "value" },
     { id: "text-in", dir: "in", label: "Text (in)", type: "value" },
   ],
+  browser: [
+    { id: "url", dir: "out", label: "Current URL", type: "value" },
+    { id: "visit", dir: "in", label: "Visit URL", type: "value" },
+  ],
   monitor: [
     { id: "cpu", dir: "out", label: "CPU %", type: "value" },
   ],

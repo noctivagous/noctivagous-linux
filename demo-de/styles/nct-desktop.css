@@ -365,3 +365,18 @@ body.noanim *{animation-duration:.01ms !important;transition-duration:.01ms !imp
 .wback-cords{flex:none;color:#888;font-size:10.5px}
 .wback-hint{margin-top:10px;color:#777;font-size:10.5px;letter-spacing:.03em}
 .ctxhead{padding:6px 9px 4px;font-family:var(--font-m);font-size:10px;letter-spacing:.06em;color:#8f9791;border-bottom:1px solid var(--hair);margin-bottom:4px}
+
+/* Browser app */
+.browser-app{display:flex;flex-direction:column;height:100%;min-height:0}
+.bbar{display:flex;gap:5px;align-items:center;padding:6px 8px;border-bottom:1px solid #000;background:var(--panel2,#1a1a1a)}
+.baddr{flex:1;min-width:0}
+.bproxy.on{color:#7be07b;border-color:#3f7a3f}
+.bnotice{display:flex;gap:8px;align-items:center;padding:6px 8px;background:#2a2118;border-bottom:1px solid #000;color:#e8c890;font-size:12px}
+.bnotice span{flex:1}
+.bview{flex:1;position:relative;min-height:0;background:#fff}
+.bview iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff}
+.bstart{position:absolute;inset:0;background:var(--panel,#141414);padding:18px;overflow:auto}
+.bstart-title{font:700 11px var(--font-tech,monospace);letter-spacing:.35em;color:#8a8a8a;margin-bottom:12px}
+.bstart-links{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.bstart-link{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:10px 12px;text-align:left}
+.bstart-host{font-size:11px;color:#8a8a8a}
