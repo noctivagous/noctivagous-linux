@@ -219,6 +219,7 @@ export default function SettingsApp() {
                         <div className="appset-title">Launch Column</div>
                         <SettingsKit
                           spec={[
+                            { key: "position", type: "segment", label: "Position", options: [{ value: "left", label: "Left" }, { value: "right", label: "Right" }, { value: "top", label: "Top" }, { value: "bottom", label: "Bottom" }], default: "left" },
                             { key: "utilitiesOpen", type: "checkbox", label: "Utilities group starts open", default: false },
                             { key: "layerBadge", type: "checkbox", label: "Show the diamond badge on desktop-layer app icons", default: true },
                           ]}

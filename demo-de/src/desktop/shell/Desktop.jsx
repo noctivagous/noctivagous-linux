@@ -43,6 +43,8 @@ export default function Desktop({ onShutdown }) {
   const [ctx, setCtx] = useState(null); // {x, y} | null
   const [selIcon, setSelIcon] = useState(null);
   const [openGroups, setOpenGroups] = useState(() => (settings.launchColumn && settings.launchColumn.utilitiesOpen ? { utilities: true } : {})); // launch-column groups currently opened up
+  const lcPos = (settings.launchColumn && settings.launchColumn.position) || "left"; // launcher position: left | right | top | bottom
+  const CHEV = { left: ["\u25B8", "\u25C2"], right: ["\u25C2", "\u25B8"], top: ["\u25BE", "\u25B4"], bottom: ["\u25B4", "\u25BE"] }; // group chevrons point away from the docked edge
   const lastIconClick = useRef({});
   const load = ui.load || { cpu: 34, mem: 52, net: 21 };
 
@@ -128,7 +130,7 @@ export default function Desktop({ onShutdown }) {
   };
 
   return (
-    <section className="screen on" id="desktopScreen">
+    <section className={"screen on lcpos-" + lcPos} id="desktopScreen">
       <div className={"wall" + (settings.backdrop.mode === "parametric" ? " para" : "")} id="deskWall" data-w={settings.wallpaper}>
         <div className="wall-mark">N</div>
         <div className="reg tl"></div><div className="reg tr"></div><div className="reg bl"></div><div className="reg br"></div>
@@ -261,17 +263,21 @@ export default function Desktop({ onShutdown }) {
               <button data-icon={g.id} className={"dicon group" + (openGroups[g.id] ? " sel" : "")}
                 onClick={() => { setSelIcon(g.id); setOpenGroups((o) => ({ ...o, [g.id]: !o[g.id] })); }}>
                 <span className="dib"><Icon name={g.icon} /></span><span>{g.name}</span>
-                <span className="dchev">{openGroups[g.id] ? "▾" : "▸"}</span>
+                <span className="dchev">{(CHEV[lcPos] || CHEV.left)[openGroups[g.id] ? 1 : 0]}</span>
               </button>
-              {openGroups[g.id] && g.members.map((id) => {
-                const ap = appById(id);
-                return (
-                  <button key={id} data-icon={id} data-configure={id} className={"dicon member" + (selIcon === id ? " sel" : "") + (windows.byId[id] ? " open" : "") + (windows.byId[id] && windows.byId[id].hidden ? " hidden" : "")}
-                    onClick={() => iconClick(id)}>
-                    <span className="dib"><Icon name={ap.icon} /></span><span>{ap.name}</span>
-                  </button>
-                );
-              })}
+              {openGroups[g.id] && (
+                <div className="dfly">
+                  {g.members.map((id) => {
+                    const ap = appById(id);
+                    return (
+                      <button key={id} data-icon={id} data-configure={id} className={"dicon member" + (selIcon === id ? " sel" : "") + (windows.byId[id] ? " open" : "") + (windows.byId[id] && windows.byId[id].hidden ? " hidden" : "")}
+                        onClick={() => iconClick(id)}>
+                        <span className="dib"><Icon name={ap.icon} /></span><span>{ap.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           ))}
         </div>
