@@ -1,3 +1,4 @@
+/* NCT-WL-COMPOSITOR — this chrome is the model's server-side decoration: the shell owns the frame and its operators for every window, whatever app is inside. See WAYLAND-MAP.md. */
 /* The window frame — the only one. Titlebar, drag, resize,
  * shade / vertical shade / min / max / close, and the app
  * component the registry names. Geometry and stacking live in

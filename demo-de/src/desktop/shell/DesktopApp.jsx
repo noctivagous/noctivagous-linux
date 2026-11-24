@@ -1,3 +1,4 @@
+/* NCT-WL-COMPOSITOR — the composition root of the compositor model: it hosts every window and layer and owns the bridges between them. See WAYLAND-MAP.md. */
 /* DesktopApp — the composition root.
  *
  * Creates nothing itself (the store is a module singleton), but it

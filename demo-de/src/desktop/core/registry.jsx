@@ -1,3 +1,4 @@
+/* NCT-WL-KIT — the app catalogue is the native app contract (component, size, settings spec, ports): what the shell may assume about an NCT app. Foreign apps satisfy none of it; the host must not care. See WAYLAND-MAP.md. */
 /* The app registry — the desktop's catalogue.
  *
  * The launcher, dock, desktop icons and window manager all read
@@ -19,6 +20,7 @@ import BrowserApp from "../apps/BrowserApp.jsx";
 import CalculatorApp, { SettingsSpec as CalculatorSpec } from "../apps/CalculatorApp.jsx";
 import TextTransformerApp, { SettingsSpec as TextTransformerSpec } from "../apps/TextTransformerApp.jsx";
 import NavGraphApp from "../apps/NavGraphApp.jsx";
+import ShowcaseApp from "../apps/ShowcaseApp.jsx";
 
 export const ICONS = {
   home: '<svg class="ic" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7M6 9.5V20h12V9.5"/></svg>',
@@ -36,6 +38,7 @@ export const ICONS = {
   calc: '<svg class="ic" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18"/><path d="M8 7h8M8 12h.1M12 12h.1M16 12h.1M8 16h.1M12 16h.1M16 16h.1"/></svg>',
   kase: '<svg class="ic" viewBox="0 0 24 24"><path d="M3 19 7 5l4 14M4.8 14h4.4"/><circle cx="16.8" cy="14.8" r="3.4"/><path d="M20.2 11.4v7.6"/></svg>',
   group: '<svg class="ic" viewBox="0 0 24 24"><rect x="3" y="3" width="12" height="12"/><path d="M9 21h12V9"/></svg>',
+  showcase: '<svg class="ic" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8"/><rect x="13" y="3" width="8" height="8"/><rect x="3" y="13" width="8" height="8"/><path d="M13 17h8M17 13v8"/></svg>',
 };
 
 export function Icon({ name }) {
@@ -57,6 +60,7 @@ export const APPS = [
   { id: "calculator", name: "Calculator", icon: "calc", hint: "UTIL", component: CalculatorApp, settingsSpec: CalculatorSpec, defaultW: 300, defaultH: 430 },
   { id: "texttransformer", name: "TextTransformer", icon: "kase", hint: "UTIL", component: TextTransformerApp, settingsSpec: TextTransformerSpec, defaultW: 560, defaultH: 470 },
   { id: "navgraph", name: "NavGraph", icon: "graph", hint: "LAYER", component: NavGraphApp, defaultW: 760, defaultH: 560 },
+  { id: "uishowcase", name: "UI Showcase", icon: "showcase", hint: "DEV", component: ShowcaseApp, defaultW: 1060, defaultH: 680 },
 ];
 
 /* Launch-column groups: a group is a launch item that opens up
@@ -64,6 +68,7 @@ export const APPS = [
  * every other respect — launcher, windows, patching). */
 export const GROUPS = [
   { id: "utilities", name: "Utilities", icon: "group", members: ["calculator", "texttransformer"] },
+  { id: "development", name: "Development", icon: "group", members: ["uishowcase"] },
 ];
 
 export function groupById(id) {

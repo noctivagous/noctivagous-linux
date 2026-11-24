@@ -1,3 +1,4 @@
+/* NCT-WL-BRIDGE — the in-page half of the foreign-surface bridge: addressing, text-mode and history cooperation inside content the shell does not own. See WAYLAND-MAP.md. */
 /* The key-click frame bridge — injected by the proxy into every
  * HTML page it serves. A framed page's keys and layout belong to
  * its own document, which the desktop's engine cannot reach; the

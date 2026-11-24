@@ -1,3 +1,4 @@
+/* NCT-WL-BRIDGE — the Browser hosts a foreign surface: a shell-owned frame around content the shell does not control; what needs the content's help goes through the bridge. See WAYLAND-MAP.md. */
 import React, { useEffect, useRef, useState } from "react";
 import { publish, onDeliver } from "../core/patchbay.js";
 import { onAppAction } from "../core/keymaps.js";

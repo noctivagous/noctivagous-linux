@@ -103,11 +103,35 @@ app knows which mode it is in. NavGraph defaults to layer mode;
 everything else defaults to window mode. **Either kind can be
 frozen.**
 
+## Launcher position and group flyouts
+
+The launch column's position is a setting
+(`settings.launchColumn.position`, set from Settings →
+Applications → Launch Column, or the `\` Configure key over
+the column): **left** (default), **right**, **top** or
+**bottom**. Left/right are vertical columns; top/bottom are
+horizontal rows (top under the sysbar, bottom above the
+dock). The About/Trash pair mirrors when the column docks
+right.
+
+A launch group opens as a **flyout away from the docked
+edge** — right of a left column, left of a right one, down
+from the top bar, up from the bottom one — never pushing the
+other launch items. The group's chevron points the way the
+flyout opens.
+
+Two standing layout rules nearby: a window's title is
+**centred in its titlebar** (the bar is a 1fr/auto/1fr grid,
+so the id and the window controls balance), and the
+key-click reference bar is **a single line** — and takes the
+same orange Text Mode cast as the sysbar, dock and login
+topbar.
+
 ## Launch groups
 
 The launch column has a second kind of item: a **Group**, which
-opens up to show its member apps in place (indented, with a
-chevron). The first group is **Utilities** (Calculator,
+opens a flyout of its member apps (see Launcher position and
+group flyouts above). The first group is **Utilities** (Calculator,
 TextTransformer). Members are ordinary apps — same menus, same
 modes, same settings.
 

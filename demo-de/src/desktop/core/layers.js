@@ -1,3 +1,4 @@
+/* NCT-WL-COMPOSITOR — desktop-layer apps model layer-shell surfaces; the layer host manages any surface by rectangle and state. See WAYLAND-MAP.md. */
 /* Desktop-layer app actions — the ui slice's layer field.
  *
  * A desktop-layer app renders on the desk area itself, under the

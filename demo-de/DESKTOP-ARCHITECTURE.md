@@ -7,6 +7,11 @@ system (more apps, a parametric backdrop, settings that reach across
 apps), it is built as a small layered architecture instead. This
 document is the map; the code follows it.
 
+How these layers correspond to the real system being modelled — Wayland
+below, a toolkit above, foreign apps hosted alongside native ones — is
+recorded in WAYLAND-MAP.md, and the code carries its markers
+(`NCT-WL-COMPOSITOR` / `NCT-WL-KIT` / `NCT-WL-BRIDGE`).
+
 ## Layers
 
 ```
