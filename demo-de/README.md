@@ -11,6 +11,20 @@ npm run dev     # one server routes every page below
 npm run build   # emits dist/react.html + dist/definition.html
 ```
 
+## Standing principles
+
+- **Platform targets.** The system is built to work on
+  **desktop, mobile, and tablet, and later VR**. Controls
+  carry hooks for device class, orientation, and breakpoints,
+  so a layout can adapt per device instead of being designed
+  for one screen and shrunk. The UI Showcase app (below) is
+  where those hooks are exercised and referenced.
+- **Mouse backwards-compatibility.** Key-clicks and drag-lock
+  are the native input layer, but the whole UI and controls
+  system remains fully usable with a regular mouse —
+  including contextual (right-click) menus. Nothing in the
+  system may require the key-click layer to be operable.
+
 ## Pages
 
 | URL | File | What it is |

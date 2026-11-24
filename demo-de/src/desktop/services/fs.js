@@ -112,6 +112,30 @@ export function fsTouch(dirAbsPath, name) {
   return null;
 }
 
+/* Write a file's text content, creating the file if needed
+ * (the GUI builder saves its mocks this way). Returns an
+ * error string, or null on success. */
+export function fsWrite(absPath, content) {
+  const path = normalizePath(absPath, HOME_PATH);
+  const { parentPath, name } = fsParent(path);
+  const bad = nameError(name);
+  if (bad) return bad;
+  const dir = fsNode(parentPath);
+  if (!dir || dir.kind !== "folder") return "not a directory: " + parentPath;
+  dir.children = dir.children || [];
+  const node = dir.children.find((c) => c.name === name);
+  const size = Math.max(1, Math.round(String(content).length / 102) / 10) + " KB";
+  if (node) {
+    if (node.kind !== "file") return "not a file: " + name;
+    node.content = String(content);
+    node.size = size;
+  } else {
+    dir.children.push({ name, kind: "file", type: "Text", size, content: String(content) });
+  }
+  changed();
+  return null;
+}
+
 export function fsRemove(absPath) {
   const path = normalizePath(absPath, HOME_PATH);
   if (path === "/" || path === HOME_PATH) return "refusing to remove " + path;
