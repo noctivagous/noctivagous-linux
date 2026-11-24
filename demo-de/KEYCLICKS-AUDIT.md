@@ -501,3 +501,38 @@ window and computes inside the layer; NavGraph's mode toggle is
 checked by default and migrates it layer → window (framed) →
 layer; freeze/unfreeze still work from the window menu; the
 HUD target width and hints offset are identical across targets.
+
+
+## Addendum — Freeze's key is 9; a bridge bug found; nctsh in Files (2026-11-23)
+
+- **Freeze moved to `9`** (the user's pick) when `\` became
+  Configure. `9` is RESERVED. The toggle resolves like
+  Configure's: window at cursor → frozen window geometrically
+  → the mounted layer app.
+- **A latent bridge bug, found by the `9` work:** the engine
+  dispatched `nct:freeze` on **document** while DesktopApp
+  listened on **window**, and a non-bubbling CustomEvent
+  dispatched on document never reaches a window listener — so
+  the freeze KEY silently never fired; the context menus
+  (which call the writer directly) masked it completely. All
+  other bridge pairs were audited in the same pass: winmove /
+  winlock / vshade are document↔document, everything else is
+  window↔window, freeze was the only mismatch. Fixed by
+  dispatching on window. Lesson recorded: a bridge is a pair;
+  verify both ends, and a green menu path proves nothing about
+  the key path.
+- **nctsh in the Files window.** A footer control opens the
+  shell strip under the footer; the strip and the GUI list
+  share one folder state (`cd` moves the list; tree clicks
+  move the prompt). `pw` opens a preview drawer right of the
+  list. The demo file system was rebuilt as a JSON-shaped
+  tree (services/fsData.js) behind a mutable live tree
+  (services/fs.js) shared by Files, the shell and NavGraph.
+
+Verified in Chromium (15 checks): `9` freezes/unfreezes a
+window and the NavGraph layer; the strip opens under the
+footer; `cd`/`mkdir` land in the list, the tree pane and the
+NavGraph layer; `pw` opens the drawer with the file's content
+at the list's right; `cat` prints; a bad `cd` errors in shell
+style; ArrowUp recalls history; the drawer's Close dismisses
+it; the HUD target width stays fixed.

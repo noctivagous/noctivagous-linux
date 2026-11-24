@@ -19,9 +19,9 @@ Examples in the current desktop:
   that replaces it re-expands it.
 - **Hide / show / quit an app** — G / A over its icon, the
   icon's right-click menu, or the dock task's menu.
-- **Freeze / unfreeze** — the element's context menu (below).
-  (The `\` key held this job briefly; it is the Configure key
-  now — see the Configure flow.)
+- **Freeze / unfreeze** — the `9` key over the element, or its
+  context menu (below). (`\` held this job for one round; it
+  is the Configure key now — see the Configure flow.)
 - **Configure anything** — the `\` key over it, or (for apps)
   **Settings…** in its launch icon's right-click menu.
 - **An app's window/layer mode** — its icon menu's
@@ -31,16 +31,19 @@ Examples in the current desktop:
 ## Freeze flow
 
 Freeze is a toggle on an element — a window, or a desktop-layer
-app. It is reached from the element's context menu (the window
-menu's **Freeze**; a layer app's desk and icon menus likewise):
+app. Press `9` with the cursor over the element, or use its
+context menu (the window menu's **Freeze**; a layer app's desk
+and icon menus likewise):
 
 1. **Freeze.** The element stays exactly where it is, takes on
    a frost cast, and accepts **no key or mouse events** —
    operators (E/R/T/H/G/A, F-clicks, drag-lock) skip it, its
    content (including iframes) is inert, and it cannot be
    dragged.
-2. **Unfreeze.** Right-click it and choose **Unfreeze** — for a
-   window this works over its titlebar, and over its body too
+2. **Unfreeze.** Press `9` again with the cursor over it (a
+   frozen window is found geometrically, since its body takes
+   no events), or right-click it and choose **Unfreeze** — for
+   a window this works over its titlebar, and over its body too
    (the body takes no events, so the desktop's right-click
    handler finds the frozen window geometrically and opens its
    menu). For a desktop-layer app, the desk right-click menu and
@@ -107,3 +110,19 @@ opens up to show its member apps in place (indented, with a
 chevron). The first group is **Utilities** (Calculator,
 TextTransformer). Members are ordinary apps — same menus, same
 modes, same settings.
+
+## The Files window's shell strip (nctsh)
+
+The Files footer carries a **>_ CLI** control that opens the
+**nctsh** strip underneath the footer, expanding the window's
+content frame. The strip and the folder list drive the same
+folder state — `cd` moves the list, clicking the tree moves
+the shell's prompt — a mixed UI, not two views. Commands:
+`pwd`, `ls`, `cd`, `mkdir`, `touch`, `rm`, `cat`, `help`,
+`clear`, plus the bridge commands: `pw [file]` opens the
+**preview drawer** to the right of the folder list (a file
+double-click does the same), and `open <name>` enters a folder
+or previews a file. The file system itself is one live tree,
+kept as data (a JSON-shaped tree) and shared by Files, the
+shell and NavGraph — a folder made with `mkdir` appears in
+all three.

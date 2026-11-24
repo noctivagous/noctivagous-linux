@@ -16,7 +16,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { hierarchy, cluster, tree } from "d3-hierarchy";
 import { linkRadial, linkHorizontal } from "d3-shape";
-import { fsTree } from "../services/fs.js";
+import { fsTree, fsSubscribe } from "../services/fs.js";
 import { closeLayer } from "../core/layers.js";
 import { toast } from "../core/bus.js";
 
@@ -44,7 +44,9 @@ export default function NavGraphLayer({ frozen, framed }) {
   // [ ] scale), sent over the nct:navgraph bridge when the cursor
   // is over this layer unobscured. Shared by both layouts.
   const [view, setView] = useState({ rot: 0, k: 1 });
-  const root = useMemo(() => hierarchy(fsTree()), []);
+  const [fsRev, setFsRev] = useState(0);
+  useEffect(() => fsSubscribe((r) => setFsRev(r)), []);
+  const root = useMemo(() => hierarchy(fsTree()), [fsRev]);
 
   useEffect(() => {
     const el = ref.current;

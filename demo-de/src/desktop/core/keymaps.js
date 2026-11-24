@@ -14,7 +14,7 @@
  *   them. F above all: F is the system left-click, inside apps
  *   and outside them, on the default layout and on every app
  *   layout. Also A (close), G (hide/show), O (ports), P (flip),
- *   E / R / T / H (window ops), 0 (style cycling), \ (configure),
+ *   E / R / T / H (window ops), 0 (style cycling), \ (configure), 9 (freeze),
  *   Tab, Space, Esc, Alt+K, Alt+L.
  *
  *   OVERRIDABLE — slots an app may bind for its own windows
@@ -31,7 +31,7 @@
  */
 
 export const RESERVED_KEYS = [
-  "f", "a", "g", "o", "p", "e", "r", "t", "h", "0", "\\",
+  "f", "a", "g", "o", "p", "e", "r", "t", "h", "0", "\\", "9",
   "tab", " ", "escape",
 ];
 

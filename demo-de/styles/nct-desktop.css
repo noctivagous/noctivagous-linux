@@ -483,3 +483,29 @@ body.kc-textmode #loginScreen .topbar{box-shadow:inset 0 0 0 999px rgba(255,122,
 .app-layer-body{flex:1;min-height:0;margin:10px 14px 58px;background:linear-gradient(180deg,rgba(24,24,24,.92),rgba(12,12,12,.92));border:1px solid #000;border-radius:8px;box-shadow:0 14px 34px rgba(0,0,0,.5);padding:12px;overflow:hidden}
 .app-layer.frozen .app-layer-body{pointer-events:none;filter:saturate(.45) brightness(1.07)}
 .ng-layer.framed{position:relative;inset:auto;width:100%;height:100%}
+
+/* Files: the nctsh strip under the footer, and the preview
+ * drawer pw opens to the right of the folder list. */
+.files-cli-toggle{font-family:var(--font-m)}
+.nctsh{flex:none;margin:12px -12px -12px;border-top:1px solid #000;background:linear-gradient(180deg,#0c0e0d,#090a09);padding:8px 12px 10px}
+.nctsh-log{max-height:104px;overflow-y:auto;font-family:var(--font-m);font-size:11px;line-height:1.5;color:#b9c4b9;margin-bottom:6px;white-space:pre-wrap;word-break:break-word}
+.nctsh-line.err{color:#ff9a8a}
+.nctsh-line.in{color:#e8e8d8}
+.nctsh-line.dim{color:#6d7a6d}
+.nctsh-row{display:flex;align-items:center;gap:8px}
+.nctsh-prompt{font-family:var(--font-m);font-size:11.5px;color:#8fd48f;white-space:nowrap}
+.nctsh-input{flex:1;background:rgba(255,255,255,.04);border:1px solid var(--hair);border-radius:4px;color:#f0f0e0;font-family:var(--font-m);font-size:12px;padding:5px 8px;outline:none;min-height:0}
+.nctsh-input:focus{border-color:rgba(92,184,92,.55)}
+.preview-drawer{flex:none;width:264px;border-left:1px solid #000;background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,0));padding:10px 12px;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+.preview-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.preview-name{font-family:var(--font-d);font-size:12.5px;font-weight:700;color:#eee;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.preview-meta{font-size:10px;color:#8a8a8a}
+.preview-body{font-family:var(--font-m);font-size:11px;line-height:1.55;color:#cfd4cf;white-space:pre-wrap;word-break:break-word;margin:0}
+.preview-none{color:#8a8a8a}
+.preview-image{flex:none;height:130px;border:1px solid var(--hair);border-radius:6px;background:linear-gradient(135deg,#233026,#10160f 55%,#1a2432);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#d8e2d8;font-family:var(--font-m);font-size:11px}
+.preview-image-sub{font-size:9.5px;color:#7d8a7d}
+
+/* With the preview drawer open, the files grid grows a
+ * third column for it — the drawer sits right of the list. */
+.files-grid:has(.preview-drawer){grid-template-columns:158px 1fr 264px}
+.files-grid .preview-drawer{width:auto}

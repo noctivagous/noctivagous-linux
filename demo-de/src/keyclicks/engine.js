@@ -59,7 +59,7 @@ export function createKeyClicks(hooks = {}) {
   root.id = "kcRoot";
   root.innerHTML = `
     <div id="kcReticle"></div>
-    <div id="kcHud"><span class="kc-mode">KEY-CLICK</span><span class="kc-target">target — —</span><span class="kc-hints"><span class="kc-kbd">F</span> click <span class="kc-kbd">E</span> collapse+drag <span class="kc-kbd">R</span> collapse <span class="kc-kbd">T</span> vertical <span class="kc-kbd">A</span> close <span class="kc-kbd">G</span> hide <span class="kc-kbd">H</span> resize <span class="kc-kbd">D</span> back <span class="kc-kbd">Tab</span> target <span class="kc-kbd">Space</span> drag-lock <span class="kc-kbd">Alt+L</span> labels <span class="kc-kbd">Alt+K</span> keys <span class="kc-kbd">\</span> configure</span><button id="kcHudCollapse" type="button" title="Collapse the status bar into the task bar (or hover it and press E)">▾</button></div>
+    <div id="kcHud"><span class="kc-mode">KEY-CLICK</span><span class="kc-target">target — —</span><span class="kc-hints"><span class="kc-kbd">F</span> click <span class="kc-kbd">E</span> collapse+drag <span class="kc-kbd">R</span> collapse <span class="kc-kbd">T</span> vertical <span class="kc-kbd">A</span> close <span class="kc-kbd">G</span> hide <span class="kc-kbd">H</span> resize <span class="kc-kbd">D</span> back <span class="kc-kbd">Tab</span> target <span class="kc-kbd">Space</span> drag-lock <span class="kc-kbd">Alt+L</span> labels <span class="kc-kbd">Alt+K</span> keys <span class="kc-kbd">\</span> configure <span class="kc-sep">·</span> <span class="kc-kbd">9</span> freeze</span><button id="kcHudCollapse" type="button" title="Collapse the status bar into the task bar (or hover it and press E)">▾</button></div>
     <button id="kcHudBtn" type="button" title="Key-click status — click to expand, right-click to collapse">KEY-CLICK</button>
     <button id="kcTab" type="button" aria-label="Toggle onscreen keyboard" title="Onscreen keyboard (Alt+K)">KEYBOARD</button>
     <div id="kcPanel" hidden></div>`;
@@ -524,7 +524,7 @@ export function createKeyClicks(hooks = {}) {
   }
   /* The frozen window at the cursor, found geometrically —
    * a frozen window's body takes no events, so hit-testing
-   * alone can miss it. The \ key uses this to unfreeze. */
+   * alone can miss it. The 9 key uses this to unfreeze. */
   /* The configure target at the cursor: the nearest
    * data-configure hook, else the window's app, else the
    * layer app, else a frozen window found geometrically. */
@@ -1092,6 +1092,29 @@ export function createKeyClicks(hooks = {}) {
           window.dispatchEvent(new CustomEvent("nct:widgetstyle", { detail: { id: w.getAttribute("data-widget") } }));
           setMode();
         }
+        return;
+      }
+      case "9": {
+        // Freeze toggle (its key since \\ became Configure):
+        // the window at the cursor — or a frozen one found
+        // geometrically, since its body takes no events — else
+        // the mounted desktop-layer app beneath.
+        e.preventDefault();
+        const w9 = winAtCursor();
+        if (w9) {
+          window.dispatchEvent(new CustomEvent("nct:freeze", { detail: { target: "window", id: w9.getAttribute("data-app") } }));
+        } else {
+          const fw9 = frozenWinAtCursor();
+          if (fw9) {
+            window.dispatchEvent(new CustomEvent("nct:freeze", { detail: { target: "window", id: fw9.getAttribute("data-app") } }));
+          } else {
+            const layerEl = document.querySelector("[data-layer-app]");
+            if (layerEl) {
+              window.dispatchEvent(new CustomEvent("nct:freeze", { detail: { target: "layer", id: layerEl.getAttribute("data-layer-app") } }));
+            }
+          }
+        }
+        setMode();
         return;
       }
       case "\\": {

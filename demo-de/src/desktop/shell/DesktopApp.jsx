@@ -92,7 +92,7 @@ export default function DesktopApp() {
       store.set("settings", { ...st, widgetStyles: ws });
     };
     window.addEventListener("nct:widgetstyle", onWidgetStyle);
-    // The \ key's freeze toggle (window or desktop-layer app).
+    // The 9 key's freeze toggle (window or desktop-layer app).
     const onFreeze = (e) => {
       const d = e.detail || {};
       if (d.target === "window" && d.id) toggleFrozen(d.id);
