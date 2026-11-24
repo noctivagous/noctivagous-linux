@@ -1,3 +1,4 @@
+/* NCT-WL-KIT — ports and cords are native inter-app dataflow; in the real system this is a custom protocol / IPC channel, not Wayland core. See WAYLAND-MAP.md. */
 /* The patchbay — "Wiring Up The Windows" (refs/
  * nctos-wiringupthewindows.txt) as a desktop service.
  *

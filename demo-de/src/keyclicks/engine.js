@@ -1,3 +1,4 @@
+/* NCT-WL-COMPOSITOR — the engine is the model's seat: pointer focus (window under the cursor) vs keyboard focus, and the operators are compositor input policy, so they apply to foreign windows too. See WAYLAND-MAP.md. */
 /* Key-clicks · engine — the mode state machine.
  *
  * Bimodal control: the cursor steers, the keyboard activates.

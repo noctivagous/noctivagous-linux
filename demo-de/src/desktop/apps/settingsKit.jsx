@@ -1,3 +1,4 @@
+/* NCT-WL-KIT — the stock settings kit models the toolkit's property controls: native apps declare specs, the kit renders them. See WAYLAND-MAP.md. */
 /* The stock settings kit.
  *
  * Apps declare their settings as a property list (a spec) and

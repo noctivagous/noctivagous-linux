@@ -1,3 +1,4 @@
+/* NCT-WL-COMPOSITOR — the shell furniture (sysbar, dock, launcher, widgets) models layer-shell surfaces; the launcher position setting is edge anchoring. See WAYLAND-MAP.md. */
 import { useEffect, useRef, useState } from "react";
 import { useSlice, store } from "../core/react.js";
 import { APPS, appById, Icon, GROUPS, groupById } from "../core/registry.jsx";

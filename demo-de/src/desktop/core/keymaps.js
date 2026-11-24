@@ -1,3 +1,4 @@
+/* NCT-WL-COMPOSITOR — the reserved operators are compositor input policy; the overridable slots are an opt-in vocabulary a foreign app simply never joins. See WAYLAND-MAP.md. */
 /* Keymap layering for key-clicks.
  *
  * Two contexts decide what a key press means:

@@ -1,3 +1,4 @@
+/* NCT-WL-KIT — the app catalogue is the native app contract (component, size, settings spec, ports): what the shell may assume about an NCT app. Foreign apps satisfy none of it; the host must not care. See WAYLAND-MAP.md. */
 /* The app registry — the desktop's catalogue.
  *
  * The launcher, dock, desktop icons and window manager all read

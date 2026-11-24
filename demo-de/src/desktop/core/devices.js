@@ -1,3 +1,4 @@
+/* NCT-WL-KIT — device classes, orientation and breakpoints are the toolkit's responsive layer: hooks native controls carry so layouts adapt per device. See WAYLAND-MAP.md. */
 /* Device hooks — the responsive foundation.
  *
  * The system targets desktop, mobile, tablet, and later VR,

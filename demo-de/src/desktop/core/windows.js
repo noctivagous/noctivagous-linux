@@ -1,3 +1,4 @@
+/* NCT-WL-COMPOSITOR — window records model xdg_toplevel state (geometry, stacking, min/max/shade/hide/freeze); these writers use surface-level facts only, never app internals. See WAYLAND-MAP.md. */
 /* Window manager actions — the windows slice's only writers.
  *
  * Window records: {x, y, w, h, z, min, max, shaded, vshaded, hidden, seq, prev}.
