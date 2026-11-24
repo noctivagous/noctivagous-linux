@@ -98,6 +98,19 @@ while the decision is open:
   sets, and in-app key-click addressing, which needs Godot-side cooperation
   exactly as the Browser's in-page addressing needs the bridge.
 
+The Godot lane — a pinned shared runtime, the NCT Godot Kit, and the
+bridge between compositor and kit apps — is specced in
+[GODOT-BRIDGE.md](GODOT-BRIDGE.md). There is no Godot-specific
+compositor; the lane is KIT plus BRIDGE over the unchanged
+COMPOSITOR layer.
+
+Godot is the first binding of the general pattern:
+[EXT-FWKS.md](EXT-FWKS.md) specs **NCT-LIB-EXT-FWKS**, the external lib
+support module — one framework-agnostic bridge core, style-token
+schema, and bundle rules, with a binding per external framework
+(Godot, Processing, openFrameworks, JUCE). Framework support lives
+in that module, never in per-framework compositor work.
+
 ## Current features, classified
 
 | Universal (COMPOSITOR) | Native-only (KIT) | Bridged (BRIDGE) |
