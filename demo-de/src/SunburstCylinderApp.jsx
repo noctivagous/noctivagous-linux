@@ -41,14 +41,16 @@ const PARAM_DEFS = [
   { id: "elevation", label: "Elevation", type: "number", min: -25, max: 50, step: 1, defaultValue: 0 },
   { id: "drumHeight", label: "Drum height", type: "number", min: 8, max: 48, step: 1, defaultValue: 26 },
   { id: "labelsOn", label: "Key labels", type: "boolean", defaultValue: true },
+  { id: "namesOn", label: "Name labels", type: "boolean", defaultValue: true },
   { id: "boundsOn", label: "Bounding box", type: "boolean", defaultValue: false },
   { id: "drift", label: "Camera drift", type: "boolean", defaultValue: true },
 ];
 
-// Key labels skip D and F — the operators are not addresses (the
-// same rule as the treemap page, so the lab's operation is one
-// operation everywhere).
-const LABEL_ALPHABET = "ABCEGHIJKLMNOPQRSTUVWXYZ";
+// Key labels skip the operator keys — D (back), F (click),
+// E/R (rotate the plate) and C/V (dolly steps) are operators, not
+// addresses (the same rule as the treemap page, so the lab's
+// operation is one operation everywhere).
+const LABEL_ALPHABET = "ABGHIJKLMNOPQSTUWXYZ";
 const keyLabel = (i) => {
   if (i < LABEL_ALPHABET.length) return LABEL_ALPHABET[i];
   const j = i - LABEL_ALPHABET.length;
@@ -93,6 +95,11 @@ const css = `
 .sc-info .path { color:#8fa3ab; font-size:10.5px; }
 .sc-info .k { color:#ffa726; }
 .sc-info .hint { color:#8fa3ab; font-size:10px; }
+.sc-tip { z-index:6; max-width:250px; white-space:normal; }
+.sc-name { position:absolute; left:0; top:0; pointer-events:none; font-family:Tahoma, sans-serif; font-size:10px;
+  letter-spacing:.6px; color:rgba(232,243,238,.9); text-shadow:0 1px 4px #000, 0 0 3px #000; will-change:transform,opacity; }
+.sc-capname { position:absolute; left:0; top:0; pointer-events:none; font-family:Consolas, monospace; font-size:12.5px;
+  letter-spacing:2px; color:#ffa726; text-shadow:0 1px 6px #000; will-change:transform,opacity; }
 .figcap { margin:8px 20px 0; font-size:11.5px; line-height:17px; color:#8fa3ab; }
 .figcap b { color:#cfd8dc; letter-spacing:1.5px; font-size:10.5px; }
 .print { margin:24px 20px 34px; border-top:3px double #45565e; padding-top:18px; color:#d7dee2; font-family:Georgia, 'Times New Roman', serif; }
@@ -124,6 +131,8 @@ export default function SunburstCylinderApp() {
   const [open, setOpen] = useState(null);
   const [hovered, setHovered] = useState(null);
   const [zoomReq, setZoomReq] = useState(null);
+  const [dollyReq, setDollyReq] = useState(null);
+  const [dollyScale, setDollyScale] = useState(1);
   const [labelsTick, setLabelsTick] = useState(0);
   const [buffer, setBuffer] = useState("");
   const bufferTimer = useRef(null);
@@ -137,6 +146,10 @@ export default function SunburstCylinderApp() {
   // armed it, so every exit path bumps the token as it clears.
   const bufferRef = useRef("");
   const bufferTokenRef = useRef(0);
+  const hoverRef = useRef(null);
+  const dollyNonce = useRef(0);
+  const valuesRef = useRef(values);
+  valuesRef.current = values;
   const targetRef = useRef(null);
   const openRef = useRef(null);
   const focusNodeRef = useRef(root);
@@ -233,17 +246,40 @@ export default function SunburstCylinderApp() {
       if (/^[a-zA-Z]$/.test(e.key)) {
         const letter = e.key.toUpperCase();
         // F is the click and D is the way back — always. Neither is
-        // ever a label letter (see LABEL_ALPHABET), so the two
-        // operators can be unconditional.
+        // ever a label letter (see LABEL_ALPHABET), so the operators
+        // can be unconditional. F clicks what the operator is
+        // indicating: the slice under the mouse cursor when the
+        // cursor is on the graph (the mouse's hover IS a target in
+        // key-click theory — F clicks at the cursor), else the
+        // letter-targeted slice.
         if (letter === "F") {
           leaveBuffer();
-          const t = targetRef.current;
+          const t = hoverRef.current ?? targetRef.current;
           if (t) clickNode(t);
           return;
         }
         if (letter === "D") {
           leaveBuffer();
           goBack();
+          return;
+        }
+        // E / R turn the plate (the rotation parameter, wrapped);
+        // C / V are dolly steps, in and out, toward the cursor.
+        if (letter === "E" || letter === "R") {
+          leaveBuffer();
+          e.preventDefault();
+          const cur = Number(valuesRef.current.rotation ?? 0);
+          let next = cur + (letter === "R" ? 6 : -6);
+          if (next > 180) next -= 360;
+          if (next < -180) next += 360;
+          setValue("rotation", next);
+          return;
+        }
+        if (letter === "C" || letter === "V") {
+          leaveBuffer();
+          e.preventDefault();
+          dollyNonce.current += 1;
+          setDollyReq({ factor: letter === "C" ? 1.18 : 1 / 1.18, n: dollyNonce.current });
           return;
         }
         // Otherwise the letter goes into the key buffer; a completed
@@ -332,7 +368,10 @@ export default function SunburstCylinderApp() {
         the drum's top face, read isometrically, and the zoom is the original's own
         mathematics. The operation is bimodal — a letter key <i>targets</i> a slice,{" "}
         <b>F</b> is the click: a branch descends; a leaf's portion slides out of the drum
-        and its information stands in space beside it. <b>D</b> goes back.
+        and its information stands in space beside it. <b>D</b> goes back. The camera is
+        operated the same way: the <b>wheel</b> and the <b>C</b>/<b>V</b> keys dolly
+        toward the cursor, <b>E</b> and <b>R</b> turn the plate, hovering a slice shows
+        its information at the cursor, and every slice carries its name on the drum.
       </p>
       <div className="sc-main">
         <div className="sc-stage">
@@ -345,8 +384,12 @@ export default function SunburstCylinderApp() {
             elevation={Number(values.elevation)}
             boundsOn={Boolean(values.boundsOn)}
             labelsOn={Boolean(values.labelsOn)}
+            namesOn={Boolean(values.namesOn)}
             drift={Boolean(values.drift)}
             zoomReq={zoomReq}
+            dollyReq={dollyReq}
+            focusNode={focusNode}
+            onDolly={setDollyScale}
             keyTargets={keyTargets}
             targetNode={target}
             openNode={open}
@@ -355,7 +398,7 @@ export default function SunburstCylinderApp() {
             onLeafClick={clickNode}
             onTarget={setTarget}
             onCentre={() => { if (focusNode !== root) requestZoom(centreNode); }}
-            onHover={setHovered}
+            onHover={(n) => { hoverRef.current = n; setHovered(n); }}
             onSettled={() => setLabelsTick((t) => t + 1)}
           />
         </div>
@@ -370,6 +413,7 @@ export default function SunburstCylinderApp() {
               <span className="k">INSIDE</span>{"  "}{pathOf(focusNode)}{"\n"}
               <span className="k">VALUE</span>{"   "}{fmt(focusNode.value)} ({((focusNode.value / total) * 100).toFixed(1)}% of flare){"\n"}
               <span className="k">HOLDS</span>{"   "}{focusNode.children.length} branches · depth {focusNode.depth}{"\n"}
+              <span className="k">DOLLY</span>{"   "}{Math.round(dollyScale * 100)}% — toward the cursor{"\n"}
               {open ? (
                 <>
                   <span className="k">OPEN</span>{"    "}{open.name} — pulled out of the drum{"\n"}
@@ -394,7 +438,9 @@ export default function SunburstCylinderApp() {
             <h3>KEY-CLICKS</h3>
             <p className="sc-keyline">
               buffer: <b>{buffer || "—"}</b>{" · "}letter keys <b>target</b> a slice{" · "}
-              <b>F</b> clicks the target{" · "}<b>D</b> goes back{" · "}<b>Esc</b> clears{" · "}
+              <b>F</b> clicks the target — or the slice under the cursor{" · "}<b>D</b> goes back{" · "}
+              <b>E</b>/<b>R</b> rotate the plate{" · "}<b>C</b>/<b>V</b> dolly in/out{" · "}
+              the <b>wheel</b> dollies toward the cursor{" · "}<b>Esc</b> clears{" · "}
               chips target; a wedge click is the click itself
             </p>
           </div>
@@ -454,8 +500,11 @@ export default function SunburstCylinderApp() {
               it — and <b>F</b> is the click, the same F that clicks the hovered element
               in the keypilot system: on a branch it descends, on a leaf it pulls the
               portion out (or puts it back). <b>D</b> goes back: the portion first, then
-              one level up the tree, as far as the root. The label alphabet skips D and
-              F themselves: operators are not addresses. The mouse mirrors the theory
+              one level up the tree, as far as the root. The label alphabet skips the
+              operator keys themselves — D and F, and with them E and R, which turn the
+              plate, and C and V, the dolly steps: operators are not addresses. The
+              camera obeys the same rule — the wheel dollies toward the cursor, so the
+              point under the hand stays under the hand. The mouse mirrors the theory
               rather than replacing it — chips target, wedge clicks click, the centre cap
               climbs — so the hand and the keys are doing the same two acts, never two
               different interfaces.

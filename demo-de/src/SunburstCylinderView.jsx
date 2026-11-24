@@ -24,6 +24,15 @@ import {
  * OUT of the drum — the wedge slides radially outward and its
  * information stands in 3D space beside it, on a card projected
  * at the pulled wedge.
+ *
+ * The camera dollies (the wheel, or the C/V step keys through
+ * `dollyReq`) TOWARD THE CURSOR: the world point under the cursor
+ * on the drum's top plane is held at the same screen position by
+ * moving the orbit focus, so the graph grows around the hand,
+ * not around its own centre. A hovered slice's information rides
+ * the cursor as a tooltip, and the slices carry their names on
+ * the drum's top plane (the focus node's name stands over the
+ * centre cap), so what each plane holds reads at a glance.
  */
 
 const RING = 54; // world units per depth band (as SunburstView)
@@ -89,8 +98,12 @@ export default function SunburstCylinderView({
   elevation,
   boundsOn,
   labelsOn,
+  namesOn,
   drift,
   zoomReq,
+  dollyReq,
+  focusNode,
+  onDolly,
   keyTargets,
   targetNode,
   openNode,
@@ -106,9 +119,19 @@ export default function SunburstCylinderView({
   const labelsRef = useRef(null);
   const stateRef = useRef({});
   stateRef.current = {
-    keyTargets, labelsOn, targetNode, openNode, openInfo, colourOf,
-    rotation, elevation, boundsOn, onLeafClick, onTarget,
+    keyTargets, labelsOn, namesOn, focusNode, targetNode, openNode, openInfo, colourOf,
+    rotation, elevation, boundsOn, onLeafClick, onTarget, onDolly,
   };
+
+  // Dolly state lives outside the scene effect so it survives the
+  // effect's re-runs (drum height, projection, drift changes):
+  // `s` is the scale (1 = home), fx/fz the orbit focus on the
+  // ground plane — the point the dolly holds under the cursor.
+  const dollyRef = useRef({ s: 1, fx: 0, fz: 0 });
+  const dollyApiRef = useRef(null);
+  useEffect(() => {
+    if (dollyReq && dollyApiRef.current) dollyApiRef.current(dollyReq.factor);
+  }, [dollyReq]);
 
   // Zoom requests: animate every node's current → target.
   const animRef = useRef(null);
@@ -257,6 +280,20 @@ export default function SunburstCylinderView({
     labelsEl.appendChild(infoEl);
     let infoKey = "";
 
+    // The hover tooltip (the hovered slice's information, riding
+    // the cursor), the centre cap's name, and the slices' name
+    // labels on the drum's top plane.
+    const tipEl = document.createElement("div");
+    tipEl.className = "sc-info sc-tip";
+    tipEl.style.display = "none";
+    labelsEl.appendChild(tipEl);
+    let tipKey = "";
+    const capEl = document.createElement("div");
+    capEl.className = "sc-capname";
+    labelsEl.appendChild(capEl);
+    let capKey = "";
+    const nameNodes = new Map();
+
     const hoverRef = { current: null };
     const rebuild = () => {
       const st = stateRef.current;
@@ -299,7 +336,10 @@ export default function SunburstCylinderView({
       const hits = raycaster.intersectObjects([centre, ...meshes.values()].filter((m) => m.visible), false);
       return hits[0]?.object ?? null;
     };
+    const lastPointer = { x: null, y: null };
     const onMove = (e) => {
+      lastPointer.x = e.clientX;
+      lastPointer.y = e.clientY;
       const hit = pick(e);
       const node = hit?.userData.node ?? null;
       if (node !== hoverRef.current) {
@@ -320,9 +360,64 @@ export default function SunburstCylinderView({
       else if (hit.userData.node.children.length) onZoomNode(hit.userData.node);
       else stateRef.current.onLeafClick(hit.userData.node);
     };
+    // Leaving the canvas clears the hover: the cursor is no
+    // longer indicating anything on the graph, so neither the
+    // tooltip nor an F keypress may act on the stale slice.
+    const onLeave = () => {
+      if (hoverRef.current) {
+        hoverRef.current = null;
+        onHover(null);
+      }
+      renderer.domElement.style.cursor = "default";
+    };
     renderer.domElement.addEventListener("pointermove", onMove);
     renderer.domElement.addEventListener("pointerdown", onDown);
     renderer.domElement.addEventListener("pointerup", onUp);
+    renderer.domElement.addEventListener("pointerleave", onLeave);
+
+    // DOLLY, toward the cursor: scale the view by `factor`,
+    // holding the point under the cursor at its screen position —
+    // the actual surface point the cursor is on (a wedge's top or
+    // wall), found by the same raycast that picks; off the graph,
+    // the drum's top plane stands in. The orbit focus slides so
+    // that (P − focus) shrinks by the scale change, for both
+    // cameras alike. Without a cursor (the C/V step keys before
+    // the mouse has visited), the last pointer stands in; with
+    // neither, the dolly is about the centre.
+    const topPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -drumHeight);
+    const planeHit = new THREE.Vector3();
+    const applyDolly = (factor, clientX, clientY) => {
+      const d = dollyRef.current;
+      const s2 = Math.max(0.45, Math.min(2.8, d.s * factor));
+      const rel = s2 / d.s;
+      if (rel === 1) return;
+      const px = clientX ?? lastPointer.x;
+      const py = clientY ?? lastPointer.y;
+      if (px != null && py != null) {
+        const camera = projection === "iso" ? ortho : persp;
+        const rect = renderer.domElement.getBoundingClientRect();
+        pointer.x = ((px - rect.left) / rect.width) * 2 - 1;
+        pointer.y = -((py - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera(pointer, camera);
+        const hits = raycaster.intersectObjects([centre, ...meshes.values()].filter((m) => m.visible), false);
+        const P = hits[0]?.point ?? (raycaster.ray.intersectPlane(topPlane, planeHit) ? planeHit : null);
+        if (P) {
+          d.fx = P.x - (P.x - d.fx) / rel;
+          d.fz = P.z - (P.z - d.fz) / rel;
+        }
+      }
+      d.s = s2;
+      stateRef.current.onDolly?.(s2);
+    };
+    dollyApiRef.current = (factor) => applyDolly(factor, null, null);
+    const onWheel = (e) => {
+      e.preventDefault();
+      lastPointer.x = e.clientX;
+      lastPointer.y = e.clientY;
+      const unit = e.deltaMode === 1 ? 16 : 1;
+      applyDolly(Math.exp(-e.deltaY * unit * 0.0016), e.clientX, e.clientY);
+    };
+    renderer.domElement.addEventListener("wheel", onWheel, { passive: false });
 
     // Key chips are DOM nodes, created once per labelled target set.
     // A chip click TARGETS its slice (the F key, or a wedge click,
@@ -406,34 +501,45 @@ export default function SunburstCylinderView({
       // Bounding box.
       boundsBox.visible = Boolean(st.boundsOn);
 
-      // Camera: ONE centre — the platter's centre — for orbit and
-      // look-at alike (the horizon monitor's centred orbit).
-      // Rotation and elevation are continuous offsets around each
-      // projection's home position; drift sways the azimuth.
+      // Camera: the orbit turns about the dolly focus — the
+      // platter's centre until a dolly toward the cursor slides
+      // it — for orbit and look-at alike. Rotation and elevation
+      // are continuous offsets around each projection's home
+      // position; drift sways the azimuth. Dolly scales the
+      // perspective camera's radius, and the ortho camera's
+      // frustum (the tick owns the ortho frustum: size + dolly).
       if (drift) sway += 0.0006;
       const swayA = Math.sin(sway) * 0.05;
       const rot = THREE.MathUtils.degToRad(st.rotation ?? 0) + swayA;
       const tilt = THREE.MathUtils.degToRad(st.elevation ?? 0);
       const lookY = drumHeight * 0.3;
+      const dNow = dollyRef.current;
       if (camera === persp) {
-        const radius = 532;
+        const radius = 532 / dNow.s;
         const elev = Math.max(0.08, Math.min(1.3, Math.atan2(165, 506) + tilt));
         camera.position.set(
-          Math.sin(rot) * Math.cos(elev) * radius,
+          dNow.fx + Math.sin(rot) * Math.cos(elev) * radius,
           Math.sin(elev) * radius,
-          Math.cos(rot) * Math.cos(elev) * radius,
+          dNow.fz + Math.cos(rot) * Math.cos(elev) * radius,
         );
-        camera.lookAt(0, lookY, 0);
+        camera.lookAt(dNow.fx, lookY, dNow.fz);
       } else {
+        const hh = orthoHalf / dNow.s;
+        const asp = (mount.clientWidth || width) / (mount.clientHeight || height);
+        ortho.left = -hh * asp;
+        ortho.right = hh * asp;
+        ortho.top = hh;
+        ortho.bottom = -hh;
+        ortho.updateProjectionMatrix();
         const radius = 1000;
         const elev = Math.max(0.08, Math.min(1.3, Math.atan2(574, 790) + tilt));
         const az = Math.PI / 4 + rot;
         camera.position.set(
-          Math.sin(az) * Math.cos(elev) * radius,
+          dNow.fx + Math.sin(az) * Math.cos(elev) * radius,
           Math.sin(elev) * radius,
-          Math.cos(az) * Math.cos(elev) * radius,
+          dNow.fz + Math.cos(az) * Math.cos(elev) * radius,
         );
-        camera.lookAt(0, lookY, 0);
+        camera.lookAt(dNow.fx, lookY, dNow.fz);
       }
 
       // Project chips to their slices' current centroids (a pulled
@@ -456,6 +562,60 @@ export default function SunburstCylinderView({
           el.style.opacity = show ? "1" : "0";
           el.style.pointerEvents = show ? "auto" : "none";
           el.classList.toggle("sel", t.node === st.targetNode || t.node === st.openNode);
+        }
+      }
+
+      // Name labels: each labelled slice's name ON the drum's top
+      // plane at its centroid (slices too narrow to read are
+      // skipped), and the focus node's name standing over the
+      // centre cap — what each plane holds, at a glance.
+      {
+        const wantedNames = new Map((st.namesOn ? st.keyTargets : []).map((t) => [t.node, t]));
+        for (const [node, el] of nameNodes) {
+          if (!wantedNames.has(node)) {
+            el.remove();
+            nameNodes.delete(node);
+          }
+        }
+        for (const [node] of wantedNames) {
+          if (!nameNodes.has(node)) {
+            const el = document.createElement("div");
+            el.className = "sc-name";
+            el.textContent = node.name;
+            labelsEl.appendChild(el);
+            nameNodes.set(node, el);
+          }
+        }
+        if (st.namesOn) {
+          for (const t of st.keyTargets) {
+            const el = nameNodes.get(t.node);
+            if (!el) continue;
+            const cur = t.node.current;
+            const show = labelVisible(cur) && cur.x1 - cur.x0 > 0.13;
+            const midA = (cur.x0 + cur.x1) / 2;
+            const midR = ((cur.y0 + cur.y1) / 2) * RING;
+            const pull = pulls.get(t.node) ?? 0;
+            const [x, z] = polar(midA, midR + PULL * pull);
+            v3.set(x, drumHeight + 0.6, z).project(camera);
+            const sx = (v3.x * 0.5 + 0.5) * mount.clientWidth;
+            const sy = (-v3.y * 0.5 + 0.5) * mount.clientHeight;
+            el.style.transform = `translate(-50%, -50%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
+            el.style.opacity = show ? "1" : "0";
+          }
+        }
+        const fn = st.focusNode;
+        if (fn && st.namesOn) {
+          if (fn.name !== capKey) {
+            capKey = fn.name;
+            capEl.textContent = fn.name;
+          }
+          v3.set(0, drumHeight + 8, 0).project(camera);
+          const sx = (v3.x * 0.5 + 0.5) * mount.clientWidth;
+          const sy = (-v3.y * 0.5 + 0.5) * mount.clientHeight;
+          capEl.style.transform = `translate(-50%, -100%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
+          capEl.style.opacity = "1";
+        } else {
+          capEl.style.opacity = "0";
         }
       }
 
@@ -493,6 +653,35 @@ export default function SunburstCylinderView({
         infoKey = "";
       }
 
+      // The hover tooltip: the hovered slice's information at the
+      // cursor, following it (clamped inside the stage).
+      const hov = hoverRef.current;
+      if (hov && lastPointer.x != null) {
+        const key = `${hov.name}|${hov.value}`;
+        if (key !== tipKey) {
+          tipKey = key;
+          const parts = [];
+          let n = hov;
+          while (n) {
+            parts.unshift(n.name);
+            n = n.parent;
+          }
+          tipEl.innerHTML =
+            `<div class="nm">${hov.name}</div>` +
+            `<div class="path">${parts.join(" / ")}</div>` +
+            `<div><span class="k">VALUE</span>  ${hov.value.toLocaleString("en-US")} · ${((hov.value / root.value) * 100).toFixed(2)}% of flare</div>` +
+            `<div class="hint">${hov.children.length ? "branch — F or click descends" : "leaf — F or click pulls its portion out"}</div>`;
+        }
+        const rect = mount.getBoundingClientRect();
+        const tx = Math.max(4, Math.min(lastPointer.x - rect.left + 16, mount.clientWidth - 200));
+        const ty = Math.max(4, Math.min(lastPointer.y - rect.top + 18, mount.clientHeight - 96));
+        tipEl.style.display = "";
+        tipEl.style.transform = `translate(${tx.toFixed(0)}px, ${ty.toFixed(0)}px)`;
+      } else {
+        tipEl.style.display = "none";
+        tipKey = "";
+      }
+
       // Project the compass letters (fixed to the platter).
       for (const c of compassEls) {
         v3.set(c.x, 0.5, c.z).project(camera);
@@ -511,9 +700,7 @@ export default function SunburstCylinderView({
       renderer.setSize(w, h);
       persp.aspect = w / h;
       persp.updateProjectionMatrix();
-      ortho.left = -orthoHalf * (w / h);
-      ortho.right = orthoHalf * (w / h);
-      ortho.updateProjectionMatrix();
+      // The ortho frustum is the tick's (it carries the dolly).
       lastParamKey = "";
     });
     ro.observe(mount);
@@ -524,6 +711,9 @@ export default function SunburstCylinderView({
       renderer.domElement.removeEventListener("pointermove", onMove);
       renderer.domElement.removeEventListener("pointerdown", onDown);
       renderer.domElement.removeEventListener("pointerup", onUp);
+      renderer.domElement.removeEventListener("pointerleave", onLeave);
+      renderer.domElement.removeEventListener("wheel", onWheel);
+      dollyApiRef.current = null;
       for (const mesh of meshes.values()) {
         mesh.geometry.dispose();
         mesh.material.dispose();
