@@ -19,23 +19,42 @@
  * details (mail subjects, calendar titles) down to counts;
  * "public" hides the personal panels outright.
  *
+ * Click-to-queue: a panel whose data entry carries an `app`
+ * field (greeterData.js) is clickable; clicking toggles the app
+ * in session.launchQueue, and the queue launches after login
+ * (shell/sessionActions.js drains it). Queued panels wear the
+ * gold gd-queued state and a QUEUED tag; the login window's
+ * status bar reads the queue back.
+ *
  * Responsive shedding is pure CSS (styles/nct-desktop.css):
  * panels carry their shed group as a class (gd-s1 … gd-s4,
  * gd-core) and media queries on width OR height compact, then
  * hide, group by group, until only the login modal remains.
  */
 
-import { useSlice } from "../core/react.js";
+import { useSlice, store } from "../core/react.js";
 import { GREETER_DATA as D } from "./greeterData.js";
+import { WeatherAnim, SunburstProcesses, VehicleMap, CamGrid, NetChart } from "./GreeterWidgets.jsx";
 
 const MASK = "• • • • • • • •";
 
-function Panel({ title, shed, personal, profile, children, testId }) {
+function Panel({ title, shed, personal, profile, children, testId, app, queued, onToggle }) {
   if (personal && profile === "public") return null;
-  const cls = "gd-panel " + (shed === "core" ? "gd-core" : "gd-s" + shed);
+  const cls = "gd-panel " + (shed === "core" ? "gd-core" : "gd-s" + shed)
+    + (app ? " gd-click" : "") + (queued ? " gd-queued" : "");
+  const handlers = app ? {
+    onClick: () => onToggle(app),
+    role: "button",
+    tabIndex: 0,
+    onKeyDown: (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(app); }
+    },
+  } : {};
   return (
-    <div className={cls} data-gd={testId}>
-      <div className="gd-ptitle"><span className="led"></span>{title}</div>
+    <div className={cls} data-gd={testId} data-app={app || undefined} {...handlers}>
+      <div className="gd-ptitle"><span className="led"></span>{title}
+        {app ? <span className="gd-qtag">{queued ? "QUEUED ✓" : "+ QUEUE"}</span> : null}
+      </div>
       {children}
     </div>
   );
@@ -55,10 +74,20 @@ function Bar({ pct }) {
 
 export default function GreeterDashboard({ profile, children }) {
   const ui = useSlice("ui");
+  const session = useSlice("session");
+  const queue = session.launchQueue || [];
+  const toggleQueue = (app) => {
+    store.set("session", {
+      launchQueue: queue.includes(app) ? queue.filter((a) => a !== app) : [...queue, app],
+    });
+  };
+  const qp = (data) => data.app
+    ? { app: data.app, queued: queue.includes(data.app), onToggle: toggleQueue }
+    : {};
   const masked = profile === "household";
   const w = D.weather, em = D.email, cal = D.calendar, nt = D.notifications,
     st = D.storage, sy = D.system, ne = D.network, po = D.power,
-    up = D.updates, se = D.security, np = D.nowPlaying;
+    up = D.updates, se = D.security, np = D.nowPlaying, ve = D.vehicle;
   const unread = em.accounts.reduce((a, x) => a + x.unread, 0);
 
   return (
@@ -67,19 +96,11 @@ export default function GreeterDashboard({ profile, children }) {
         <Panel title="Weather" shed={w.shed} testId="weather">
           <div className="gd-big">{w.temp}<span className="gd-cond"> {w.cond}</span></div>
           <Row k={w.place} v={w.range} />
-          <div className="gd-hourly gd-minor">
-            {w.hourly.map((h) => (
-              <span key={h.t} className="gd-hour"><b>{h.t}</b>{h.v}</span>
-            ))}
-          </div>
-          <div className="gd-minor">
-            {w.days.map((d) => <Row key={d.d} k={d.d} v={d.v} />)}
-          </div>
+          <WeatherAnim loop={w.loop} />
         </Panel>
 
         <Panel title={"Email · " + unread + " unread"} shed={em.shed} personal testId="email" profile={profile}>
           <div className="gd-big">{unread}<span className="gd-cond"> unread</span></div>
-          {em.accounts.map((a) => <Row key={a.name} k={a.name} v={a.unread + " unread"} />)}
           <div className="gd-msgs">
             {em.messages.map((m, i) => (
               <div className="gd-msg" key={i}>
@@ -105,7 +126,7 @@ export default function GreeterDashboard({ profile, children }) {
           ))}
         </Panel>
 
-        <Panel title="Storage" shed={st.shed} testId="storage">
+        <Panel title="Storage" shed={st.shed} testId="storage" {...qp(st)}>
           {st.mounts.map((m) => (
             <div className="gd-barrow" key={m.name}>
               <Row k={m.name} v={m.label} />
@@ -113,25 +134,26 @@ export default function GreeterDashboard({ profile, children }) {
             </div>
           ))}
         </Panel>
+
+        <Panel title="Vehicle" shed={ve.shed} testId="vehicle" {...qp(ve)}>
+          <VehicleMap />
+          <Row k={ve.name} v={ve.state} />
+          <Row k={ve.battery} v={"→ " + ve.dest} />
+        </Panel>
       </div>
 
       <div className="gd-center">{children}</div>
 
       <div className="gd-col gd-right">
-        <Panel title="System" shed={sy.shed} testId="system">
+        <Panel title="System" shed={sy.shed} testId="system" {...qp(sy)}>
           <Row k={sy.distro} v={sy.kernel} />
           <Row k={sy.uptime} v={sy.lastBoot} />
-          {sy.bars.map((b) => (
-            <div className="gd-barrow" key={b.name}>
-              <Row k={b.name} v={b.label} />
-              <Bar pct={b.pct} />
-            </div>
-          ))}
-          <Row k="GPU" v={sy.gpu} />
+          <SunburstProcesses procs={sy.procs} ramTotal={sy.ramTotal} />
         </Panel>
 
-        <Panel title="Network" shed={ne.shed} testId="network">
-          {ne.rows.map((r) => <Row key={r.k} k={r.k} v={r.v} />)}
+        <Panel title="Network" shed={ne.shed} testId="network" {...qp(ne)}>
+          {ne.rows.filter((r) => r.k !== "TRAFFIC").map((r) => <Row key={r.k} k={r.k} v={r.v} />)}
+          <NetChart />
         </Panel>
 
         <Panel title="Power" shed={po.shed} testId="power">
@@ -141,11 +163,12 @@ export default function GreeterDashboard({ profile, children }) {
         </Panel>
 
         <Panel title="Updates" shed={up.shed} testId="updates">
-          {up.rows.map((r) => <Row key={r.k} k={r.k} v={r.v} />)}
+          {up.rows.filter((r) => r.k !== "SECURITY").map((r) => <Row key={r.k} k={r.k} v={r.v} />)}
         </Panel>
 
-        <Panel title="Security" shed={se.shed} testId="security">
-          {se.rows.map((r) => <Row key={r.k} k={r.k} v={r.v} />)}
+        <Panel title="Security" shed={se.shed} testId="security" {...qp(se)}>
+          <CamGrid />
+          {se.rows.filter((r) => r.k === "FIREWALL").map((r) => <Row key={r.k} k={r.k} v={r.v} />)}
         </Panel>
 
         <Panel title="Now Playing" shed={np.shed} personal testId="nowplaying" profile={profile}>

@@ -21,6 +21,7 @@ const initialState = {
     sessionType: "Flat Space",
     screen: "login", // 'login' | 'desktop'
     lockMode: false,
+    launchQueue: [], // app ids queued from the greeter dashboard; drained by enterDesktop
   },
   settings: {
     volume: 62,
@@ -30,6 +31,7 @@ const initialState = {
     appSettings: {}, // app id -> that app's own settings (edited from its launch menu's Settings…)
     launchColumn: {}, // the launch column's own settings (its Configure page)
     backdrop: { ...BACKDROP_DEFAULTS },
+    greeter: { knot: "trefoil", knotSpeed: 1 }, // the greeter medallion: knot form + rotation rate
   },
   windows: {
     order: [], // app ids, in open order (taskbar order)

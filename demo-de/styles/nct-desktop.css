@@ -131,6 +131,21 @@ input[type=range].sys::-moz-range-thumb{width:13px;height:19px;background:#2c2c2
 .gd-msg{padding:2px 0}
 .gd-msg-subj{display:block;color:#e2e2e2;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .gd-msg-meta{display:block;font-family:var(--font-m);font-size:9.5px;color:#777}
+/* Animated instruments (GreeterWidgets.jsx) + click-to-queue */
+.gd-anim{display:block;width:100%;border-radius:4px;border:1px solid rgba(0,0,0,.65);background:#0a0f16}
+.gd-wxwrap{position:relative;margin-top:5px}
+.gd-wxstamp{position:absolute;left:6px;bottom:5px;font-family:var(--font-m);font-size:8.5px;letter-spacing:.04em;color:rgba(235,242,246,.92);text-shadow:0 1px 3px rgba(0,0,0,.85);white-space:nowrap}
+.gd-wxcredit{position:absolute;right:6px;bottom:5px;font-family:var(--font-m);font-size:8.5px;letter-spacing:.08em;color:rgba(235,242,246,.85);text-shadow:0 1px 3px rgba(0,0,0,.85)}
+.gd-net{border:none;background:transparent;height:40px}
+.gd-map{height:84px}
+.gd-legend{font-family:var(--font-m);font-size:9.5px;color:#8d8d8d;letter-spacing:.03em;padding-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gd-click{cursor:pointer}
+.gd-click:hover{border-color:rgba(216,185,106,.45)}
+.gd-click:focus-visible{outline:1px solid rgba(216,185,106,.7);outline-offset:1px}
+.gd-queued{border-color:rgba(216,185,106,.75);box-shadow:inset 0 1px 0 rgba(255,255,255,.05),inset 0 0 0 1px rgba(216,185,106,.35),4px 5px 14px rgba(0,0,0,.45)}
+.gd-queued .gd-ptitle .led{background:#d8b96a;box-shadow:0 0 6px rgba(216,185,106,.9)}
+.gd-qtag{margin-left:auto;font-size:8.5px;letter-spacing:.14em;color:#777}
+.gd-queued .gd-qtag{color:#d8b96a}
 .login-clock{text-align:center}
 .login-clock .time{font-family:var(--font-d);font-weight:600;font-size:clamp(44px,8vw,72px);letter-spacing:.02em;color:#f0f0f0;line-height:1;text-shadow:0 2px 12px rgba(0,0,0,.8);font-variant-numeric:tabular-nums}
 .login-clock .date{font-family:var(--font-m);font-size:11.5px;letter-spacing:.22em;text-transform:uppercase;color:#9d9d9d;margin-top:8px}
@@ -140,9 +155,9 @@ input[type=range].sys::-moz-range-thumb{width:13px;height:19px;background:#2c2c2
 .nwin.focused{box-shadow:12px 14px 34px rgba(0,0,0,.75),inset 0 1px 0 rgba(100,100,100,.9),0 0 0 1px rgba(255,255,255,.04)}
 .nwin.opening{animation:winIn .16s ease}
 @keyframes winIn{from{opacity:0;transform:scale(.985) translateY(4px)}to{opacity:1;transform:none}}
-.titlebar{background:var(--grad-title);color:var(--title);padding:0 8px 0 10px;height:30px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;border-bottom:2px solid #000;cursor:grab;user-select:none;touch-action:none;flex:none}
+.titlebar{background:var(--grad-title);color:var(--title);padding:0 8px 0 10px;height:30px;display:grid;grid-template-columns:1fr minmax(0,26em) 1fr;align-items:center;gap:8px;border-bottom:2px solid #000;cursor:grab;user-select:none;touch-action:none;flex:none}
 .titlebar:active{cursor:grabbing}
-.titlebar .tt{font-family:var(--font-d);font-weight:600;font-size:11.5px;letter-spacing:.18em;text-transform:uppercase;text-align:center;justify-self:center;max-width:52%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.titlebar .tt{font-family:var(--font-d);font-weight:600;font-size:11.5px;line-height:1.1;letter-spacing:.18em;text-transform:uppercase;text-align:center;justify-self:center;min-width:0;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nwin.focused .titlebar .tt{color:#a8a8a8}
 .titlebar .tid{font-family:var(--font-m);font-size:9.5px;color:#555;letter-spacing:.05em;justify-self:start}
 .wctl{display:flex;gap:4px;flex:none;justify-self:end}
@@ -160,7 +175,9 @@ input[type=range].sys::-moz-range-thumb{width:13px;height:19px;background:#2c2c2
 .login-win.shake{animation:shake .38s}
 @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-9px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(4px)}}
 .avatar-row{display:flex;flex-direction:column;align-items:center;gap:8px;padding:4px 0 10px}
-.avatar{width:72px;height:72px;border-radius:50%;background:radial-gradient(circle at 32% 28%,#4a4a4a,#222 60%,#141414);border:2px solid #000;box-shadow:0 0 0 2px rgba(92,184,92,.55),0 4px 10px rgba(0,0,0,.6),inset 0 1px 0 rgba(140,140,140,.6);display:flex;align-items:center;justify-content:center;font-family:var(--font-d);font-weight:700;font-size:27px;color:#e8e8e8}
+.avatar{position:relative;overflow:hidden;width:72px;height:72px;border-radius:50%;background:radial-gradient(circle at 32% 28%,#4a4a4a,#222 60%,#141414);border:2px solid #000;box-shadow:0 0 0 2px rgba(92,184,92,.55),0 4px 10px rgba(0,0,0,.6),inset 0 1px 0 rgba(140,140,140,.6)}
+.avatar-init{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--font-d);font-weight:700;font-size:27px;color:#e8e8e8}
+.knot-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .avatar.sm{width:52px;height:52px;font-size:20px}
 .avatar-row .who{font-family:var(--font-d);font-weight:600;letter-spacing:.14em;font-size:14px;color:#eee;text-transform:uppercase}
 .avatar-row .role{font-family:var(--font-m);font-size:10px;letter-spacing:.16em;color:#7d7d7d;text-transform:uppercase}
@@ -487,11 +504,20 @@ body.kc-textmode #loginScreen .topbar{box-shadow:inset 0 0 0 999px rgba(255,122,
 /* WindowTransformerRegion: a fixed square at the lower right
  * (it never changes size) and its stack — list mode, vertical,
  * stacking up from the square. */
-.wtr{position:absolute;right:10px;bottom:58px;width:104px;height:104px;border:1.5px dashed rgba(255,255,255,.35);border-radius:6px;background:rgba(255,255,255,.03);display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px;z-index:5}
+/* The WindowTransformer assembly: stack + square in one wrap.
+ * While the cursor is inside it, the whole assembly shrinks a
+ * step; a window restored from the stack expands back out. */
+.wtr-wrap{position:absolute;right:10px;bottom:58px;width:104px;z-index:5;display:flex;flex-direction:column;gap:8px;transition:transform .18s ease;transform-origin:100% 100%}
+.wtr-wrap:hover{transform:scale(.94)}
+.wtr{width:104px;height:104px;flex:none;border:1.5px dashed rgba(255,255,255,.35);border-radius:6px;background:rgba(255,255,255,.03);display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:6px 0}
 .wtr span{font-family:var(--font-m,monospace);font-size:9px;font-weight:700;letter-spacing:.3em;color:rgba(255,255,255,.45)}
-.wtr-stack{position:absolute;right:10px;bottom:170px;width:104px;display:flex;flex-direction:column-reverse;gap:4px;z-index:5}
-.wtr-item{display:flex;align-items:center;gap:6px;height:30px;min-height:0;padding:0 8px;background:linear-gradient(180deg,#2c2c2c,#1b1b1b);border:1px solid #000;border-radius:4px;color:#ddd;font-size:11px;box-shadow:0 1px 0 rgba(255,255,255,.06);cursor:pointer;text-align:left}
+.wtr-stack{width:104px;display:flex;flex-direction:column-reverse;gap:4px}
+.wtr-item{position:relative;display:flex;align-items:center;gap:6px;height:30px;padding:0 22px 0 8px;background:linear-gradient(180deg,#2c2c2c,#1b1b1b);border:1px solid #000;border-radius:4px;color:#ddd;font-size:11px;box-shadow:0 1px 0 rgba(255,255,255,.06);cursor:pointer;text-align:left}
 .wtr-item .ic{width:14px;height:14px;flex:none}
+.wtr-x{position:absolute;right:3px;top:50%;transform:translateY(-50%);width:17px;height:17px;min-height:0;padding:0;display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid rgba(255,255,255,.18);border-radius:3px;color:#bbb;font-size:10px;line-height:1;cursor:pointer}
+.wtr-x:hover{background:#a33327;color:#fff;border-color:#000}
+@keyframes wtr-expand{from{transform:scale(.55);opacity:.35}to{transform:scale(1);opacity:1}}
+.nwin.anim-expand{animation:wtr-expand .22s ease-out;transform-origin:100% 100%}
 
 /* Desktop-layer apps (NavGraph) carry a different icon style
  * from the launch stack's window apps: a teal family, a
@@ -541,9 +567,10 @@ body.kc-textmode #loginScreen .topbar{box-shadow:inset 0 0 0 999px rgba(255,122,
 .calc-key.eq{background:var(--grad-primary);color:#eaffea;font-weight:700}
 .calc-key.wide{grid-column:span 2}
 
-/* TextTransformer */
-.tt{display:flex;flex-direction:column;gap:8px;height:100%}
-.tt .tinput{flex:1;min-height:0;resize:none}
+/* TextTransformer (class .ttx — a bare .tt here once leaked into
+ * every window titlebar and the login topbar, which also use .tt) */
+.ttx{display:flex;flex-direction:column;gap:8px;height:100%}
+.ttx .tinput{flex:1;min-height:0;resize:none}
 .tt-fns{display:flex;flex-wrap:wrap;gap:6px}
 
 /* Settings app: the Applications tab (per-app pages + shell
@@ -693,16 +720,31 @@ body.kc-textmode #loginScreen .topbar{box-shadow:inset 0 0 0 999px rgba(255,122,
 .bld-hint{margin-top:12px;border-top:1px solid rgba(255,255,255,.07);padding-top:8px;font-size:11px;color:#777;line-height:1.5}
 
 /* Launcher positions (settings.launchColumn.position, set on
- * the desktop root as .lcpos-<pos>) and group flyouts: a group
- * opens AWAY from the edge the launcher is docked to — right
- * of a left column, left of a right one, down from a top bar,
- * up from a bottom one — never pushing the other icons. */
+ * the desktop root as .lcpos-<pos>) and group flyouts: the first
+ * flyout opens AWAY from the edge the launcher is docked to —
+ * right of a left column, left of a right one, down from a top
+ * bar, up from a bottom one — never pushing the other icons, and
+ * lists its items PERPENDICULAR to the launcher's axis (a row
+ * from a vertical launcher, a column from a horizontal one).
+ * Each deeper flyout alternates: a column drops below its item
+ * in a row (above it, when docked at the bottom), a row extends
+ * sideways from its item in a column. Desktop.jsx
+ * (renderFlyMembers) assigns the .row/.col classes by depth. */
 .dgroup{position:relative}
-.dfly{position:absolute;z-index:6;display:grid;grid-template-columns:84px;gap:6px;padding:6px;background:linear-gradient(180deg,#1e1e1e,#131313);border:1px solid #000;border-radius:8px;box-shadow:0 12px 28px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.06)}
-.lcpos-left .dfly{left:calc(100% + 10px);top:-6px}
-.lcpos-right .dfly{right:calc(100% + 10px);top:-6px}
-.lcpos-top .dfly{top:calc(100% + 10px);left:-6px;display:flex;flex-direction:row}
-.lcpos-bottom .dfly{bottom:calc(100% + 10px);left:-6px;display:flex;flex-direction:row}
+.dfly{position:absolute;z-index:6;gap:6px;padding:6px;background:linear-gradient(180deg,#1e1e1e,#131313);border:1px solid #000;border-radius:8px;box-shadow:0 12px 28px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.06)}
+.dfly.row{display:flex;flex-direction:row}
+.dfly.col{display:grid;grid-template-columns:84px}
+.dfly .dicon{width:84px;flex:none}
+.dfly .dicon.member{margin-left:0;border-left:none;border-radius:5px;padding-left:4px}
+.lcpos-left .icons > .dgroup > .dfly{left:calc(100% + 10px);top:-6px}
+.lcpos-right .icons > .dgroup > .dfly{right:calc(100% + 10px);top:-6px}
+.lcpos-top .icons > .dgroup > .dfly{top:calc(100% + 10px);left:-6px}
+.lcpos-bottom .icons > .dgroup > .dfly{bottom:calc(100% + 10px);left:-6px}
+.dfly.nest{z-index:7}
+.dfly.row > .dgroup.sub > .dfly.col{top:calc(100% + 6px);left:-6px}
+.lcpos-bottom .dfly.row > .dgroup.sub > .dfly.col{top:auto;bottom:calc(100% + 6px)}
+.dfly.col > .dgroup.sub > .dfly.row{left:calc(100% + 6px);top:-6px}
+.lcpos-right .dfly.col > .dgroup.sub > .dfly.row{left:auto;right:calc(100% + 6px)}
 .lcpos-right .icons{left:auto;right:12px}
 .lcpos-right .icons.right{left:12px;right:auto}
 .lcpos-top .icons{display:flex;flex-direction:row;flex-wrap:nowrap;grid-template-columns:none}

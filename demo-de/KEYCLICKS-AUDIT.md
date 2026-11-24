@@ -341,10 +341,12 @@ extended, divide the space around it into 8 sections; the
 section the cursor occupies decides what moves: E pulls the
 right edge to the cursor's x, W the left edge, S the bottom, N
 the top, and the four corners land the corner itself on the
-cursor point (both axes). Inside the window there is no section
-and H does nothing — the cursor is outside the target by
-definition, which is why the target is the focused window
-rather than the window at the cursor as with E/R/T.
+cursor point (both axes). Inside the window H runs in reverse
+(2026-11-24): the right and bottom edges inset to the cursor
+together, shrinking the window around its interior point — the
+south-east corner pulled in instead of pushed out. (The target
+is the focused window rather than the window at the cursor, as
+with E/R/T.)
 
 The engine computes the section and the candidate geometry
 from the rendered rect (converted through the offsetParent,

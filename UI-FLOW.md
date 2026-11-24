@@ -120,6 +120,20 @@ from the top bar, up from the bottom one — never pushing the
 other launch items. The group's chevron points the way the
 flyout opens.
 
+Flyouts unfold **perpendicular to the launcher's axis, then
+alternate at every depth**: from a left/right column the
+first flyout lists its items **in a row**; a group inside it
+opens **in a column** (dropping below its item in the row —
+above it, when the launcher is docked at the bottom); a
+group inside that opens in a row again, extending sideways
+from its item in the column, and so on for as many levels as
+the catalogue nests. From a top/bottom bar the first flyout
+is a **column** and the alternation proceeds from there. A
+group's members may be apps or other groups (registry
+`GROUPS`); a group that is a member of another group lives
+only inside its parent's flyout and is not also a top-level
+launch item.
+
 Two standing layout rules nearby: a window's title is
 **centred in its titlebar** (the bar is a 1fr/auto/1fr grid,
 so the id and the window controls balance), and the

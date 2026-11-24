@@ -18,6 +18,18 @@
 
 export const HOSTNAME = "NCT-WS1";
 
+/* Click-to-queue: a widget with an `app` field names the app it
+ * corresponds to. Clicking the widget on the greeter queues the
+ * app; the queue launches after login (sessionActions). Widgets
+ * without a corresponding app carry no field and do not queue. */
+export const LAUNCH_NAMES = {
+  monitor: "Monitor",
+  navgraph: "NavGraph",
+  home: "Home",
+  files: "Files",
+  settings: "Settings",
+};
+
 export const GREETER_DATA = {
   weather: {
     shed: "core", personal: false,
@@ -33,6 +45,15 @@ export const GREETER_DATA = {
       { d: "WED", v: "45° / 31° · Cloudy" },
       { d: "THU", v: "39° / 28° · Rain" },
     ],
+    /* The weather panel's satellite loop: real GOES-18 ABI
+     * GeoColor frames of the 2026-11-19 atmospheric river,
+     * sampled from CIRA's SLIDER API (slider.cira.colostate.edu)
+     * into a 4×4 sprite sheet (assets/cira-ar-loop.webp). Frames
+     * are 15 minutes apart, 17:01–20:46 UTC. */
+    loop: {
+      date: "2026-11-19", startMin: 17 * 60 + 1, stepMin: 15, frames: 16,
+      credit: "GOES-18 · ABI GeoColor · CIRA SLIDER",
+    },
   },
   email: {
     shed: "core", personal: true,
@@ -42,7 +63,6 @@ export const GREETER_DATA = {
     ],
     messages: [
       { from: "Kavi", subject: "Greeter Dashboard build verified", time: "08:41" },
-      { from: "GitHub", subject: "[noctivagous-linux] Push landed: 64cd66f", time: "07:26" },
       { from: "M—", subject: "Re: what the machine is for", time: "06:12" },
     ],
   },
@@ -59,19 +79,17 @@ export const GREETER_DATA = {
     items: [
       { text: "Backup completed · /home → /backup", time: "07:58" },
       { text: "Build finished · demo-de", time: "07:31" },
-      { text: "Reminder · water the plants", time: "07:00" },
     ],
   },
   storage: {
-    shed: 1, personal: false,
+    shed: 1, personal: false, app: "files",
     mounts: [
       { name: "/home", pct: 54, label: "412 / 763 GB" },
       { name: "/data", pct: 71, label: "1.4 / 2.0 TB" },
-      { name: "/backup", pct: 38, label: "291 / 763 GB" },
     ],
   },
   system: {
-    shed: "core", personal: false,
+    shed: "core", personal: false, app: "monitor",
     distro: "NOCTIVAGOUS OS 4.2",
     kernel: "Kernel 6.8-NCT",
     uptime: "Uptime 3d 04:12",
@@ -82,9 +100,36 @@ export const GREETER_DATA = {
       { name: "DISK /", pct: 61, label: "302 / 495 GB" },
     ],
     gpu: "GPU · RTX · driver 550.54",
+    /* The sunburst's tree: RAM by process group, MB. The widget
+     * animates the values around these bases. */
+    procs: [
+      { name: "System", children: [
+        { name: "kernel", mb: 812 }, { name: "compositor", mb: 640 },
+        { name: "systemd", mb: 210 }, { name: "greeter", mb: 145 },
+      ] },
+      { name: "Apps", children: [
+        { name: "browser", mb: 1890 }, { name: "editor", mb: 940 },
+        { name: "files", mb: 455 }, { name: "terminal", mb: 380 },
+      ] },
+      { name: "Services", children: [
+        { name: "pipewire", mb: 240 }, { name: "dbus", mb: 96 },
+        { name: "sshd", mb: 42 }, { name: "cron", mb: 18 },
+      ] },
+      { name: "Cache", children: [
+        { name: "page cache", mb: 1240 }, { name: "buffers", mb: 510 },
+      ] },
+    ],
+    ramTotal: 16384,
+  },
+  vehicle: {
+    shed: 2, personal: false, app: "navgraph",
+    name: "Model Y · NCT-1",
+    state: "En route · ETA 12 min",
+    battery: "Battery 78%",
+    dest: "Home",
   },
   network: {
-    shed: 4, personal: false,
+    shed: 4, personal: false, app: "settings",
     rows: [
       { k: "ETH0", v: "192.168.1.42 · 1 GbE" },
       { k: "STATE", v: "LINK · UP" },
@@ -107,7 +152,7 @@ export const GREETER_DATA = {
     ],
   },
   security: {
-    shed: 3, personal: false,
+    shed: 3, personal: false, app: "home",
     rows: [
       { k: "LAST LOGIN", v: "Today 07:58 · VT7" },
       { k: "FAILED", v: "2 since midnight" },

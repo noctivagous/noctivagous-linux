@@ -41,29 +41,37 @@ function structuralKey(bd) {
 }
 
 /* Project the sheet (x 0..200, y up, z 0..60) onto the canvas:
- * a shallow technical tilt — depth slides down-screen, height lifts. */
-function project(p, w, h) {
+ * a shallow technical tilt — depth slides down-screen, height lifts.
+ * The view is alive, subtly: its sway parallaxes panels by depth
+ * (drift), and each point breathes a little on its own phase
+ * (variation), so the field reads as a surface in 3D rather than
+ * flat scaled hexagons. Amplitudes are small on purpose. */
+function project(p, w, h, view) {
   // A top-down-leaning technical view: depth (z) does most of the
   // vertical spread so the field fills the screen, height (y) lifts.
   const s = Math.min(w / 205, h / 118);
+  const bob =
+    Math.sin(p.x * 0.055 + view.t * 0.5) * 1.3 * view.variation +
+    Math.cos(p.z * 0.07 - view.t * 0.37) * 0.9 * view.variation;
+  const depth = (p.z - 30) / 30; // -1 (far) .. 1 (near)
   return [
-    w / 2 + (p.x - 100) * s,
-    h * 0.55 + (p.z - 30) * s * 1.25 - p.y * s * 0.55,
+    w / 2 + (p.x - 100) * s + depth * view.swayX,
+    h * 0.55 + (p.z - 30) * s * 1.25 - (p.y + bob) * s * 0.55 + depth * view.swayY,
     p.z,
   ];
 }
 
-function ringPath(ctx, ring, w, h) {
+function ringPath(ctx, ring, w, h, view) {
   ctx.beginPath();
   ring.forEach((p, i) => {
-    const [x, y] = project(p, w, h);
+    const [x, y] = project(p, w, h, view);
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   });
   ctx.closePath();
 }
 
-function paint(ctx, sim, w, h, dim) {
+function paint(ctx, sim, w, h, dim, view) {
   const bg = ctx.createLinearGradient(0, 0, 0, h);
   bg.addColorStop(0, "#111410");
   bg.addColorStop(0.55, "#0a0c0a");
@@ -79,16 +87,23 @@ function paint(ctx, sim, w, h, dim) {
     // g = v-push, b = 0.5) remapped into the desktop's dark
     // green-gray register, lifted by the panel's response.
     const fade = 0.55 + 0.45 * (panel.center().z / 60); // far panels recede
-    const R = Math.round((26 + 72 * color.r) * dim * fade);
-    const G = Math.round((46 + 96 * color.g) * dim * fade);
-    const B = Math.round((32 + 52 * color.b) * dim * fade);
-    ringPath(ctx, rings[2], w, h);
+    // A slow sheen travels the field diagonally (period ~30 s):
+    // appearance variation in the light, not just the geometry.
+    const c = panel.center();
+    const sheen =
+      view.variation *
+      Math.pow(Math.max(0, Math.sin((c.x * 0.9 + c.z * 0.6) * 0.021 - view.t * 0.21)), 2) *
+      30;
+    const R = Math.round((26 + 72 * color.r) * dim * fade + sheen);
+    const G = Math.round((46 + 96 * color.g) * dim * fade + sheen * 0.95);
+    const B = Math.round((32 + 52 * color.b) * dim * fade + sheen * 0.8);
+    ringPath(ctx, rings[2], w, h, view);
     ctx.fillStyle = `rgb(${Math.round(R * 0.55)},${Math.round(G * 0.55)},${Math.round(B * 0.55)})`;
     ctx.fill();
-    ringPath(ctx, rings[1], w, h);
+    ringPath(ctx, rings[1], w, h, view);
     ctx.fillStyle = `rgb(${Math.round(R * 0.8)},${Math.round(G * 0.8)},${Math.round(B * 0.8)})`;
     ctx.fill();
-    ringPath(ctx, rings[0], w, h);
+    ringPath(ctx, rings[0], w, h, view);
     ctx.fillStyle = `rgb(${R},${G},${B})`;
     ctx.fill();
     ctx.strokeStyle = "rgba(0,0,0,0.35)";
@@ -108,6 +123,7 @@ export function runBackdrop(canvas, { getSettings, getGrade, subscribe }) {
   let raf = 0;
   let last = 0;
   let acc = 0;
+  let viewT = 0; // the view's own clock (seconds): drift, breathing, sheen
   let stopped = false;
 
   function resize() {
@@ -148,6 +164,7 @@ export function runBackdrop(canvas, { getSettings, getGrade, subscribe }) {
     if (bd.motion) {
       const dt = Math.min(50, t - last || 16);
       last = t;
+      viewT += dt / 1000;
       acc += (dt / 16.7) * 0.9 * bd.speed * grade.speed;
       // Live parameters apply between steps (the sim's own contract).
       sim.panelReachDist = bd.reach;
@@ -163,7 +180,16 @@ export function runBackdrop(canvas, { getSettings, getGrade, subscribe }) {
         acc -= 1;
       }
     }
-    paint(ctx, sim, w, h, grade.dim);
+    const drift = bd.drift != null ? bd.drift : 0.5;
+    const view = {
+      t: viewT,
+      variation: bd.variation != null ? bd.variation : 0.5,
+      // A full sway cycle takes ~47 s across, ~61 s vertically —
+      // a few px at full drift, scaled by the depth of each point.
+      swayX: Math.sin(viewT * (Math.PI * 2 / 47)) * 7 * drift,
+      swayY: Math.cos(viewT * (Math.PI * 2 / 61)) * 4 * drift,
+    };
+    paint(ctx, sim, w, h, grade.dim, view);
   }
   raf = requestAnimationFrame(frame);
 

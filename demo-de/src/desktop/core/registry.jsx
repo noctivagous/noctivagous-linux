@@ -64,8 +64,11 @@ export const APPS = [
 ];
 
 /* Launch-column groups: a group is a launch item that opens up
- * to show its member apps (the members stay ordinary apps in
- * every other respect — launcher, windows, patching). */
+ * to show its members (the members stay ordinary apps in every
+ * other respect — launcher, windows, patching). A member may
+ * also be another group's id: that group then nests inside this
+ * one's flyout (alternating direction at each depth, see
+ * Desktop.jsx) and is not shown as a top-level launch item. */
 export const GROUPS = [
   { id: "utilities", name: "Utilities", icon: "group", members: ["calculator", "texttransformer"] },
   { id: "development", name: "Development", icon: "group", members: ["uishowcase"] },

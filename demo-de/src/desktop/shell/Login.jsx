@@ -4,7 +4,8 @@ import { toast } from "../core/bus.js";
 import { enterDesktop, finishUnlock } from "./sessionActions.js";
 import { useNow, hm, hms, fullDate, MONS } from "./useNow.js";
 import GreeterDashboard from "../greeter/GreeterDashboard.jsx";
-import { HOSTNAME } from "../greeter/greeterData.js";
+import GreeterKnot from "../greeter/GreeterKnot.jsx";
+import { HOSTNAME, LAUNCH_NAMES } from "../greeter/greeterData.js";
 
 const PROFILES = [
   { id: "personal", label: "PERSONAL" },
@@ -73,10 +74,40 @@ export default function Login({ onPower, onRestart }) {
     const u = USERS[i];
     if (userRef.current) userRef.current.value = u.user;
     setErr("");
+    // The Guest chip is a door, not a form choice: it logs the
+    // guest session in directly. (Never in lock mode — a locked
+    // screen belongs to its own user.)
+    if (u.user === "guest" && !session.lockMode) {
+      startLogin("guest");
+      return;
+    }
     if (passRef.current) {
       if (u.user === "guest") passRef.current.value = "guest";
       passRef.current.focus();
     }
+  }
+
+  function startLogin(u) {
+    store.set("session", { user: u });
+    setErr("");
+    setStatus("AUTH · OK");
+    setBooting(true);
+    const lines = BOOT_LINES(u, session.sessionType);
+    setBootLines([]);
+    let i = 0;
+    const iv = setInterval(() => {
+      if (i < lines.length) {
+        const line = lines[i];
+        setBootLines((b) => [...b, line]);
+        i++;
+      } else {
+        clearInterval(iv);
+        setTimeout(() => {
+          setBooting(false);
+          enterDesktop();
+        }, 260);
+      }
+    }, 300);
   }
 
   function doLogin(e) {
@@ -101,26 +132,7 @@ export default function Login({ onPower, onRestart }) {
       shakeErr("Password is empty — enter any password to continue.");
       return;
     }
-    store.set("session", { user: u });
-    setErr("");
-    setStatus("AUTH · OK");
-    setBooting(true);
-    const lines = BOOT_LINES(u, session.sessionType);
-    setBootLines([]);
-    let i = 0;
-    const iv = setInterval(() => {
-      if (i < lines.length) {
-        const line = lines[i];
-        setBootLines((b) => [...b, line]);
-        i++;
-      } else {
-        clearInterval(iv);
-        setTimeout(() => {
-          setBooting(false);
-          enterDesktop();
-        }, 260);
-      }
-    }, 300);
+    startLogin(u);
   }
 
   const who = USERS[chip];
@@ -173,7 +185,10 @@ export default function Login({ onPower, onRestart }) {
           </div>
           <div className="wbody">
             <div className="avatar-row">
-              <div className="avatar">{who.init}</div>
+              <div className="avatar">
+                <span className="avatar-init">{who.init}</span>
+                <GreeterKnot form={(settings.greeter || {}).knot} speed={(settings.greeter || {}).knotSpeed} />
+              </div>
               <div className="who">{session.lockMode ? session.user : who.name}</div>
               <div className="role">{who.role}</div>
             </div>
@@ -249,10 +264,12 @@ export default function Login({ onPower, onRestart }) {
             <p className="hint">
               {session.lockMode
                 ? "Screen locked. Enter your password to unlock."
-                : "Any password works in this demo — try 'guest' via Guest user."}
+                : "Any password works in this demo — or take the Guest chip and walk straight in."}
             </p>
           </div>
-          <div className="wstatus"><span>{status}</span><span className="grow">GREETER 2.4 · X11</span></div>
+          <div className="wstatus"><span>{status}</span><span className="grow">{(session.launchQueue && session.launchQueue.length)
+            ? "QUEUED · " + session.launchQueue.map((id) => (LAUNCH_NAMES[id] || id).toUpperCase()).join(" + ") + " → LAUNCH AT LOGIN"
+            : "GREETER 2.4 · X11"}</span></div>
         </div>
 
         <div className="userrow" aria-label="Switch user" style={{ visibility: booting ? "hidden" : "visible" }}>

@@ -212,9 +212,16 @@ export function restoreFromStack(id, x, y) {
   store.replace("windows", {
     ...w,
     stack: (w.stack || []).filter((v) => v !== id),
-    byId: { ...w.byId, [id]: { ...rec, stacked: false, shaded: true, x, y } },
+    byId: { ...w.byId, [id]: { ...rec, stacked: false, shaded: true, x, y, anim: "expand" } },
   });
   focusWindow(id);
+}
+
+/* The restore expand animation clears its own flag when it
+ * ends, so the class never lingers on the window. */
+export function clearAnim(id) {
+  const rec = store.get().windows.byId[id];
+  if (rec && rec.anim) patch(id, { anim: null });
 }
 
 /* Freeze: the window stays exactly where it is and accepts no

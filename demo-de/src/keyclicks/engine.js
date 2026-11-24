@@ -486,9 +486,10 @@ export function createKeyClicks(hooks = {}) {
    * window's edges, extended, divide the space around it into
    * 8 sections; the section the cursor sits in decides which
    * edge — or corner — moves to the cursor. Inside the window
-   * there is no section and H does nothing. Geometry goes
-   * through the nct:winresize bridge; the store's writer owns
-   * clamps, shade and max. */
+   * H runs in reverse: the right and bottom edges inset to the
+   * cursor together, shrinking the window around its interior
+   * point. Geometry goes through the nct:winresize bridge; the
+   * store's writer owns clamps, shade and max. */
   function resizeToCursor() {
     const win = focusedWin();
     if (!win || win.classList.contains("vshade") || win.classList.contains("frozen")) return false;
@@ -503,7 +504,16 @@ export function createKeyClicks(hooks = {}) {
     const x1 = x0 + r.width, y1 = y0 + r.height;
     const col = cx < x0 ? "w" : cx > x1 ? "e" : "";
     const row = cy < y0 ? "n" : cy > y1 ? "s" : "";
-    if (!col && !row) return false;
+    if (!col && !row) {
+      // Interior: the reverse of the south-east section — the
+      // right and bottom edges move in to the cursor at once.
+      window.dispatchEvent(
+        new CustomEvent("nct:winresize", {
+          detail: { id, x: x0, y: y0, w: cx - x0, h: cy - y0, v: true },
+        }),
+      );
+      return true;
+    }
     let nx = x0, ny = y0, nw = r.width, nh = r.height;
     if (col === "e") nw = cx - x0;
     if (col === "w") { nw = x1 - cx; nx = x1 - nw; }
@@ -1057,6 +1067,17 @@ export function createKeyClicks(hooks = {}) {
           const cord = at && at.closest && at.closest("[data-cord]");
           if (cord) {
             window.dispatchEvent(new CustomEvent("nct:patch", { detail: { op: "removeCord", id: cord.getAttribute("data-cord") } }));
+            setMode();
+            return;
+          }
+        }
+        {
+          // Over a WindowTransformer stack item, A closes that
+          // window where it sits in the stack.
+          const atS = document.elementFromPoint(mouseX, mouseY);
+          const si = atS && atS.closest && atS.closest("[data-stack-item]");
+          if (si) {
+            window.dispatchEvent(new CustomEvent("nct:appctl", { detail: { op: "quit", app: si.getAttribute("data-stack-item") } }));
             setMode();
             return;
           }

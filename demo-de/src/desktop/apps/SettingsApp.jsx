@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useSlice, setSetting, setBackdrop } from "../core/react.js";
+import { useSlice, setSetting, setBackdrop, setGreeter } from "../core/react.js";
 import { toast } from "../core/bus.js";
 import { playTestTone } from "../services/soundService.js";
 import { BACKDROP_SURFACES, BACKDROP_DENSITIES } from "../services/surfaces.js";
@@ -9,6 +9,7 @@ import { WIDGET_STYLES } from "../shell/Desktop.jsx";
 import { appMode, setAppMode } from "../core/layers.js";
 import { store } from "../core/react.js";
 import { SettingsKit } from "./settingsKit.jsx";
+import { KNOT_FORMS } from "../../../ui-space/src/knots.js";
 
 function Slider({ label, min, max, step, value, onChange, format }) {
   return (
@@ -31,6 +32,7 @@ export default function SettingsApp() {
   const settings = useSlice("settings");
   const ui = useSlice("ui");
   const bd = settings.backdrop;
+  const greeter = settings.greeter || { knot: "trefoil", knotSpeed: 1 };
   const [tab, setTab] = useState(0);
   const [selPage, setSelPage] = useState("calculator");
 
@@ -38,7 +40,7 @@ export default function SettingsApp() {
   // when one arrives, show its page.
   useEffect(() => {
     if (ui.appSettingsTarget) {
-      setTab(3);
+      setTab(4);
       setSelPage(ui.appSettingsTarget);
     }
   }, [ui.appSettingsTarget]);
@@ -66,7 +68,7 @@ export default function SettingsApp() {
     <>
       <div className="tabs">
         <div className="tabstrip">
-          {["Appearance", "Controls", "Sound", "Applications"].map((n, i) => (
+          {["Appearance", "Desktop", "Controls", "Sound", "Applications"].map((n, i) => (
             <button key={n} className={tab === i ? "sel" : ""} data-tab={i} onClick={() => setTab(i)}>{n}</button>
           ))}
         </div>
@@ -76,6 +78,26 @@ export default function SettingsApp() {
             <Slider label="Brightness" min={30} max={100} value={settings.brightness}
               onChange={(v) => setSetting("brightness", v)} />
 
+            <div className="cap" style={{ margin: "12px 0 7px" }}>Wallpaper · classic</div>
+            <div className="swatches">
+              {[0, 1, 2].map((w) => (
+                <button key={w} className={"swatch" + (settings.wallpaper === w ? " sel" : "")} data-wp={w}
+                  style={{ background: ["linear-gradient(150deg,#2b2b2b,#0a0a0a)", "linear-gradient(150deg,#26303a,#090b0d)", "linear-gradient(150deg,#33291f,#17141d)"][w] }}
+                  aria-label={"Wallpaper " + (w + 1)} onClick={() => setWall(w)}></button>
+              ))}
+            </div>
+            <div className="hairline"></div>
+            <label className="chk"><input type="checkbox" defaultChecked /> Enable notifications</label>
+            <label className="chk"><input type="checkbox" /> Auto-start session apps</label>
+            <label className="chk">
+              <input type="checkbox" defaultChecked
+                onChange={(e) => { document.body.classList.toggle("noanim", !e.target.checked); toast("Animations " + (e.target.checked ? "on" : "off")); }} /> Animations
+            </label>
+          </div>
+        )}
+
+        {tab === 1 && (
+          <div className="tabpane sel" data-pane="1">
             <div className="cap" style={{ margin: "12px 0 7px" }}>Backdrop · parametric (iGeo panelization)</div>
             <div className="srow">
               <label>Mode</label>
@@ -114,6 +136,10 @@ export default function SettingsApp() {
               onChange={(v) => setBackdrop({ reach: v })} format={(v) => String(v)} />
             <Slider label="Panel memory" min={0.8} max={1} step={0.01} value={bd.memory}
               onChange={(v) => setBackdrop({ memory: v })} format={(v) => v.toFixed(2)} />
+            <Slider label="Viewpoint drift" min={0} max={1} step={0.05} value={bd.drift != null ? bd.drift : 0.5}
+              onChange={(v) => setBackdrop({ drift: v })} format={(v) => Math.round(v * 100) + "%"} />
+            <Slider label="Appearance variation" min={0} max={1} step={0.05} value={bd.variation != null ? bd.variation : 0.5}
+              onChange={(v) => setBackdrop({ variation: v })} format={(v) => Math.round(v * 100) + "%"} />
             <label className="chk">
               <input type="checkbox" checked={bd.motion} onChange={(e) => setBackdrop({ motion: e.target.checked })} /> Backdrop motion
             </label>
@@ -121,26 +147,24 @@ export default function SettingsApp() {
               <input type="checkbox" checked={bd.cursorField} onChange={(e) => setBackdrop({ cursorField: e.target.checked })} /> Cursor field (attractor follows the pointer)
             </label>
 
-            <div className="cap" style={{ margin: "12px 0 7px" }}>Wallpaper · classic</div>
-            <div className="swatches">
-              {[0, 1, 2].map((w) => (
-                <button key={w} className={"swatch" + (settings.wallpaper === w ? " sel" : "")} data-wp={w}
-                  style={{ background: ["linear-gradient(150deg,#2b2b2b,#0a0a0a)", "linear-gradient(150deg,#26303a,#090b0d)", "linear-gradient(150deg,#33291f,#17141d)"][w] }}
-                  aria-label={"Wallpaper " + (w + 1)} onClick={() => setWall(w)}></button>
-              ))}
+            <div className="cap" style={{ margin: "12px 0 7px" }}>Greeter · profile medallion</div>
+            <div className="srow">
+              <label>Knot</label>
+              <div className="selwrap" style={{ flex: 1 }}>
+                <select className="tinput" value={greeter.knot} onChange={(e) => setGreeter({ knot: e.target.value })}>
+                  {Object.values(KNOT_FORMS).map((f) => (
+                    <option key={f.id} value={f.id}>{f.name}</option>
+                  ))}
+                </select>
+              </div>
             </div>
-            <div className="hairline"></div>
-            <label className="chk"><input type="checkbox" defaultChecked /> Enable notifications</label>
-            <label className="chk"><input type="checkbox" /> Auto-start session apps</label>
-            <label className="chk">
-              <input type="checkbox" defaultChecked
-                onChange={(e) => { document.body.classList.toggle("noanim", !e.target.checked); toast("Animations " + (e.target.checked ? "on" : "off")); }} /> Animations
-            </label>
+            <Slider label="Knot rotation" min={0} max={2} step={0.25} value={greeter.knotSpeed}
+              onChange={(v) => setGreeter({ knotSpeed: v })} format={(v) => v.toFixed(2) + "\u00d7"} />
           </div>
         )}
 
-        {tab === 1 && (
-          <div className="tabpane sel" data-pane="1">
+        {tab === 2 && (
+          <div className="tabpane sel" data-pane="2">
             <Slider label="Volume" min={0} max={100} value={settings.volume} onChange={(v) => setSetting("volume", v)} />
             <Slider label="Brightness" min={30} max={100} value={settings.brightness} onChange={(v) => setSetting("brightness", v)} />
             <Slider label="Pointer speed" min={0} max={100} value={ptr} onChange={setPtr} />
@@ -163,8 +187,8 @@ export default function SettingsApp() {
           </div>
         )}
 
-        {tab === 2 && (
-          <div className="tabpane sel" data-pane="2">
+        {tab === 3 && (
+          <div className="tabpane sel" data-pane="3">
             <Slider label="Volume" min={0} max={100} value={settings.volume} onChange={(v) => setSetting("volume", v)} />
             <div className="cap" style={{ margin: "10px 0 6px" }}>Output level</div>
             <div className="meter"><i style={{ width: settings.volume + "%" }}></i></div>
@@ -174,8 +198,8 @@ export default function SettingsApp() {
             </div>
           </div>
         )}
-        {tab === 3 && (
-          <div className="tabpane sel" data-pane="3">
+        {tab === 4 && (
+          <div className="tabpane sel" data-pane="4">
             <div className="appset">
               <div className="appset-list">
                 {APPS.map((ap) => (

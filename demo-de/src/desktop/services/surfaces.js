@@ -52,4 +52,6 @@ export const BACKDROP_DEFAULTS = {
   memory: 0.95, // PanelizationSimulation dirDecay
   motion: true,
   cursorField: true,
+  drift: 0.5, // viewpoint drift: the projection slowly sways, so panels parallax by depth
+  variation: 0.5, // appearance variation: surface breathing + a slow light sheen across the field
 };

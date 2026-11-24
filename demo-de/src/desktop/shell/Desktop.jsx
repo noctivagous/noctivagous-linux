@@ -46,6 +46,55 @@ export default function Desktop({ onShutdown }) {
   const [openGroups, setOpenGroups] = useState(() => (settings.launchColumn && settings.launchColumn.utilitiesOpen ? { utilities: true } : {})); // launch-column groups currently opened up
   const lcPos = (settings.launchColumn && settings.launchColumn.position) || "left"; // launcher position: left | right | top | bottom
   const CHEV = { left: ["\u25B8", "\u25C2"], right: ["\u25C2", "\u25B8"], top: ["\u25BE", "\u25B4"], bottom: ["\u25B4", "\u25BE"] }; // group chevrons point away from the docked edge
+  /* Launch-group flyouts unfold PERPENDICULAR to the launcher's
+   * axis and alternate at every depth: from a left/right (vertical)
+   * launcher the first flyout lists its items in a row, the next
+   * in a column, and so on; from a top/bottom (horizontal) launcher
+   * the first is a column, the next a row. Members may be apps or
+   * further groups (registry GROUPS), resolved per member. */
+  const lcVertical = lcPos === "left" || lcPos === "right";
+  // A group that is a member of another group lives only inside
+  // its parent's flyout; it is not also a top-level launch item.
+  const nestedGroupIds = new Set(GROUPS.flatMap((g) => g.members.filter((m) => groupById(m))));
+  const flyIsRow = (depth) => (depth % 2 === 1) === lcVertical;
+  // Chevron pair [closed, open] for a group item at `depth`, whose
+  // own flyout opens at depth + 1: a row extends away from the
+  // launcher's edge (left for a right-docked launcher, right
+  // otherwise); a column drops below its item, or rises above it
+  // when the launcher is docked at the bottom.
+  function flyChevron(depth) {
+    if (flyIsRow(depth + 1)) return lcPos === "right" ? ["◂", "▸"] : ["▸", "◂"];
+    return lcPos === "bottom" ? ["▴", "▾"] : ["▾", "▴"];
+  }
+  function renderFlyMembers(group, depth) {    return group.members.map((id) => {
+      const sub = groupById(id);
+      if (sub) {
+        const open = !!openGroups[sub.id];
+        const ch = flyChevron(depth);
+        return (
+          <div key={sub.id} className="dgroup sub">
+            <button data-icon={sub.id} className={"dicon member group" + (open ? " sel" : "")}
+              onClick={() => { setSelIcon(sub.id); setOpenGroups((o) => ({ ...o, [sub.id]: !o[sub.id] })); }}>
+              <span className="dib"><Icon name={sub.icon} /></span><span>{sub.name}</span>
+              <span className="dchev">{ch[open ? 1 : 0]}</span>
+            </button>
+            {open && (
+              <div className={"dfly nest " + (flyIsRow(depth + 1) ? "row" : "col")}>
+                {renderFlyMembers(sub, depth + 1)}
+              </div>
+            )}
+          </div>
+        );
+      }
+      const ap = appById(id);
+      return (
+        <button key={id} data-icon={id} data-configure={id} className={"dicon member" + (selIcon === id ? " sel" : "") + (windows.byId[id] ? " open" : "") + (windows.byId[id] && windows.byId[id].hidden ? " hidden" : "")}
+          onClick={() => iconClick(id)}>
+          <span className="dib"><Icon name={ap.icon} /></span><span>{ap.name}</span>
+        </button>
+      );
+    });
+  }
   const lastIconClick = useRef({});
   const load = ui.load || { cpu: 34, mem: 52, net: 21 };
 
@@ -259,7 +308,7 @@ export default function Desktop({ onShutdown }) {
               </button>
             );
           })}
-          {GROUPS.map((g) => (
+          {GROUPS.filter((g) => !nestedGroupIds.has(g.id)).map((g) => (
             <div key={g.id} className="dgroup">
               <button data-icon={g.id} className={"dicon group" + (openGroups[g.id] ? " sel" : "")}
                 onClick={() => { setSelIcon(g.id); setOpenGroups((o) => ({ ...o, [g.id]: !o[g.id] })); }}>
@@ -267,16 +316,8 @@ export default function Desktop({ onShutdown }) {
                 <span className="dchev">{(CHEV[lcPos] || CHEV.left)[openGroups[g.id] ? 1 : 0]}</span>
               </button>
               {openGroups[g.id] && (
-                <div className="dfly">
-                  {g.members.map((id) => {
-                    const ap = appById(id);
-                    return (
-                      <button key={id} data-icon={id} data-configure={id} className={"dicon member" + (selIcon === id ? " sel" : "") + (windows.byId[id] ? " open" : "") + (windows.byId[id] && windows.byId[id].hidden ? " hidden" : "")}
-                        onClick={() => iconClick(id)}>
-                        <span className="dib"><Icon name={ap.icon} /></span><span>{ap.name}</span>
-                      </button>
-                    );
-                  })}
+                <div className={"dfly " + (flyIsRow(1) ? "row" : "col")}>
+                  {renderFlyMembers(g, 1)}
                 </div>
               )}
             </div>
@@ -295,19 +336,26 @@ export default function Desktop({ onShutdown }) {
         </div>
         {/* WindowTransformerRegion — List mode, vertical,
             stacking up: collapsed titlebars dropped into the
-            square become items of this stack. */}
-        <div className="wtr-stack">
-          {(windows.stack || []).map((id) => {
-            const ap = appById(id);
-            if (!ap) return null;
-            return (
-              <button key={id} className="wtr-item" data-stack-item={id} onClick={restoreStacked(id)}>
-                <Icon name={ap.icon} /><span>{ap.name}</span>
-              </button>
-            );
-          })}
+            square become items of this stack. The wrap shrinks
+            while the cursor is over it; a stack item restores
+            its window on click and closes it on its × (or the
+            A key) without leaving the stack. */}
+        <div className="wtr-wrap">
+          <div className="wtr-stack">
+            {(windows.stack || []).map((id) => {
+              const ap = appById(id);
+              if (!ap) return null;
+              return (
+                <div key={id} className="wtr-item" data-stack-item={id} role="button" onClick={restoreStacked(id)}>
+                  <Icon name={ap.icon} /><span>{ap.name}</span>
+                  <button className="wtr-x" aria-label={"Close " + ap.name}
+                    onClick={(e) => { e.stopPropagation(); closeWindow(id); }}>✕</button>
+                </div>
+              );
+            })}
+          </div>
+          <div className="wtr"><span>WINDOW</span><span>STACK</span></div>
         </div>
-        <div className="wtr"><span>STACK</span></div>
         <div className="widgets">
           <div className={"widget ws-" + widgetStyle("clock")} data-widget="clock" data-configure="widget:clock" data-patch-owner="clock">
             <div className="cap" style={{ marginBottom: 6 }}>Local time · <span style={{ color: "#5c5c5c" }}>W-01</span></div>

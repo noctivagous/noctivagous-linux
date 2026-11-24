@@ -24,6 +24,7 @@ import {
   toggleShade,
   moveWindow,
   resizeWindow,
+  clearAnim,
 } from "../core/windows.js";
 import { pad3 } from "../apps/shared.jsx";
 
@@ -137,6 +138,7 @@ export default function Window({ id, rec, focused, locked }) {
     (locked ? " kc-dragging" : "") +
     (rec.vshaded ? " vshade" : "") +
     (rec.frozen ? " frozen" : "") +
+    (rec.anim === "expand" ? " anim-expand" : "") +
     (closing ? " closing" : "");
 
   if (rec.vshaded) {
@@ -153,7 +155,8 @@ export default function Window({ id, rec, focused, locked }) {
 
   return (
     <div className={className} data-app={id} style={style} {...frozenGuard}
-      onMouseDown={() => focusWindow(id)}>
+      onMouseDown={() => focusWindow(id)}
+      onAnimationEnd={(e) => { if (e.animationName === "wtr-expand") clearAnim(id); }}>
       <div className="titlebar" onMouseDown={onTitleMouseDown}
         onDoubleClick={(e) => { if (!e.target.closest(".wbtn")) toggleMax(id); }}>
         <span className="tid">WIN · {pad3(rec.seq)}</span>

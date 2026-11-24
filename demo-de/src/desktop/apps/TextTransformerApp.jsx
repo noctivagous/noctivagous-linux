@@ -77,7 +77,7 @@ export default function TextTransformerApp() {
   }
 
   return (
-    <div className="tt">
+    <div className="ttx">
       <div className="toolbar">
         <span className="mono" style={{ fontSize: 11, color: "#888" }}>Input</span>
         <span className="sp"></span>

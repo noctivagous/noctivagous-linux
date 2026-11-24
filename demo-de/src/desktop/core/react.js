@@ -27,4 +27,9 @@ export function setBackdrop(patch) {
   store.set("settings", { backdrop: { ...cur, ...patch } });
 }
 
+export function setGreeter(patch) {
+  const cur = store.get().settings.greeter || {};
+  store.set("settings", { greeter: { ...cur, ...patch } });
+}
+
 export { store };
