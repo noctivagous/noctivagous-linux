@@ -13,13 +13,14 @@
 import { useEffect, useState } from "react";
 import { store, useSlice } from "../core/react.js";
 import { bus } from "../core/bus.js";
-import { openWindow, focusWindow, moveWindow, setVShade, setFlipped, toggleHidden, closeWindow, resizeTo, transformWindow, toggleFrozen } from "../core/windows.js";
+import { openWindow, focusWindow, moveWindow, setVShade, setFlipped, toggleHidden, closeWindow, resizeTo, transformWindow, toggleFrozen, minimizeWindow } from "../core/windows.js";
 import { toggleLayerFrozen } from "../core/layers.js";
 import { attachPatchbay } from "../core/patchbay.js";
 import { lockScreen, logOut } from "./sessionActions.js";
 import { startKeyClicks } from "../../keyclicks/index.js";
 import Login from "./Login.jsx";
-import Desktop, { WIDGET_STYLES } from "./Desktop.jsx";
+import Desktop from "./Desktop.jsx";
+import { WIDGET_STYLES } from "../widgets/widgets.jsx";
 import BackdropView from "./BackdropView.jsx";
 
 export default function DesktopApp() {
@@ -93,11 +94,20 @@ export default function DesktopApp() {
       store.set("settings", { ...st, widgetStyles: ws });
     };
     window.addEventListener("nct:widgetstyle", onWidgetStyle);
-    // The 9 key's freeze toggle (window or desktop-layer app).
+    // The 9 key's freeze toggle (window, desktop widget or
+    // desktop-layer app). Widgets are frozen by default: their
+    // settings entry records the state outright (absent = frozen).
     const onFreeze = (e) => {
       const d = e.detail || {};
       if (d.target === "window" && d.id) toggleFrozen(d.id);
       else if (d.target === "layer" && d.id) toggleLayerFrozen(d.id);
+      else if (d.target === "widget" && d.id) {
+        const st = store.get().settings;
+        const wf = { ...(st.widgetFrozen || {}) };
+        const frozen = wf[d.id] !== false;
+        wf[d.id] = !frozen;
+        store.set("settings", { ...st, widgetFrozen: wf });
+      }
     };
     window.addEventListener("nct:freeze", onFreeze);
     // The Configure key (\): open the Settings app on the
@@ -139,6 +149,7 @@ export default function DesktopApp() {
       if (!app) return;
       if (op === "toggleHide") toggleHidden(app);
       else if (op === "quit") closeWindow(app);
+      else if (op === "minimize") minimizeWindow(app);
     };
     window.addEventListener("nct:appctl", onAppCtl);
     const onWinResize = (e) => {

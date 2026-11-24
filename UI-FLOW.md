@@ -64,8 +64,8 @@ carries a configure hook, it opens the Settings app on that
 thing's page:
 
 - over a **launch item** → that app's page;
-- over the **launch column** itself (not an icon) → the Launch
-  Column page;
+- over the **launch bar** itself (not an icon) → the Launch
+  Bar page;
 - over a **desktop widget** (clock, system load) → the widget's
   page;
 - over a **window** or a **layer app** → its app's page.
@@ -105,14 +105,37 @@ frozen.**
 
 ## Launcher position and group flyouts
 
-The launch column's position is a setting
-(`settings.launchColumn.position`, set from Settings →
-Applications → Launch Column, or the `\` Configure key over
-the column): **left** (default), **right**, **top** or
-**bottom**. Left/right are vertical columns; top/bottom are
-horizontal rows (top under the sysbar, bottom above the
-dock). The About/Trash pair mirrors when the column docks
-right.
+The launch bar's position is a setting
+(`settings.launchColumn.position` — the storage key predates
+the rename — set from Settings → Applications → Launch Bar,
+or the `\` Configure key over the bar). The Position control
+is a **2D matrix of stationary slots** laid out as a little
+map of the screen's edges: the Top, Left, Right and Bottom
+slots sit where the bar would go, and clicking one moves the
+bar there. **Top** is the default; **left**/**right** are
+vertical columns, **top**/**bottom** horizontal rows (top
+under the sysbar, bottom above the dock). The About/Trash
+pair mirrors when the bar docks right.
+
+When the bar moves to an edge where a desktop widget's home
+position would overlap it, the widget **relocates** instead
+of being covered: the clock / system-load widgets drop below
+the top bar's band, and the Window Stack moves to the
+bottom-left when the bar takes the right edge (up the right
+side, under the widgets, when the bar takes the bottom). The
+shell measures each piece's home rect against the bar's
+whenever the position changes and displaces only what would
+actually collide.
+
+**Minimized windows live on the bar.** The **S** key
+minimizes the window under the cursor, and the window
+becomes a list item attached to its app's bar button —
+directly underneath the button when the bar is at the top
+(above it at the bottom), as a horizontal item; to the side
+of the button when the bar is on a side, where the item
+stands vertical instead of horizontal. Clicking the item —
+or pressing **F** over it, F being the click — restores the
+window.
 
 A launch group opens as a **flyout away from the docked
 edge** — right of a left column, left of a right one, down
@@ -143,7 +166,7 @@ topbar.
 
 ## Launch groups
 
-The launch column has a second kind of item: a **Group**, which
+The launch bar has a second kind of item: a **Group**, which
 opens a flyout of its member apps (see Launcher position and
 group flyouts above). The first group is **Utilities** (Calculator,
 TextTransformer). Members are ordinary apps — same menus, same
@@ -164,3 +187,33 @@ or previews a file. The file system itself is one live tree,
 kept as data (a JSON-shaped tree) and shared by Files, the
 shell and NavGraph — a folder made with `mkdir` appears in
 all three.
+
+**More than one launch bar.** The desktop's right-click menu
+has **Add Launch Bar**: a new bar appears at the first free
+edge (bottom, then left, right, top) as an empty dashed
+container — a bar is a container first. Right-clicking any
+bar (its background, not an icon) opens the bar's own menu:
+**Configure Launch Bar…** (its Settings page: the Position
+matrix plus a checkbox per app — checked apps appear on the
+bar in catalogue order), **Drag Mode**, and, for added bars,
+**Remove Launch Bar**. In drag mode the bar wears a green
+dashed outline; pressing on it and letting go near an edge
+moves it there — the bar follows the nearest edge live while
+dragged, and the press's click is swallowed so dragging from
+a button never opens its app. The primary bar drags the same
+way (its Settings page remains the other route). Bars that
+share an edge stack inward in bands, minimized-window items
+anchor by their own bar's edge, and furniture relocation
+measures every bar, not just the primary.
+
+**Desktop widgets: right-click, frozen by default.** The
+Clock and System Load widgets answer a right-click with their
+own menu: **Unfreeze/Freeze**, **Hide Widget**, and
+**Configure…** (their Settings page). Widgets are **frozen**
+by default — the desktop's freeze, as windows and layers wear
+it: desaturated under a pale cast with a FROZEN tag, the
+inside inert — and are unfrozen from that menu or by pressing
+**9** over the widget (the freeze key-click; the key-click
+bar's rows over a widget say so). A hidden widget leaves the
+desktop and returns from the desktop menu's **Show … Widget**
+entries — or by being placed again from the Widgets app.

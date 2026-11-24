@@ -34,7 +34,7 @@
 
 import { useSlice, store } from "../core/react.js";
 import { GREETER_DATA as D } from "./greeterData.js";
-import { WeatherAnim, SunburstProcesses, VehicleMap, CamGrid, NetChart } from "./GreeterWidgets.jsx";
+import { WeatherAnim, SunburstProcesses, VehicleMap, CamGrid, NetChart } from "../widgets/greeterWidgets.jsx";
 
 const MASK = "• • • • • • • •";
 

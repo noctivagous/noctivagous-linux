@@ -1,0 +1,78 @@
+/* NCT-WL-KIT — the Widget System: ONE module owns every widget
+ * the shell renders, on the desktop and on the greeter alike.
+ *
+ *   widgets.jsx        the registry (WIDGETS), the shared style
+ *                      sets, and the DESKTOP surface's widgets
+ *                      (Clock, System Load) as components.
+ *   greeterWidgets.jsx the GREETER surface's widgets (weather,
+ *                      processes, vehicle, cameras, network).
+ *
+ * A widget entry names its surface; each surface renders its
+ * own widgets with its own data. Desktop widgets are placed by
+ * settings.desktopWidgets (an ordered list of ids; absent =
+ * the default pair) and are frozen by default — the shell
+ * (Desktop.jsx) owns placement, freezing and the right-click
+ * menu; this module owns what a widget IS. The Widgets app is
+ * the gallery these cards are dragged from.
+ */
+
+import { hm, fullDate, pad } from "../shell/useNow.js";
+import { WeatherAnim, SunburstProcesses, VehicleMap, CamGrid, NetChart } from "./greeterWidgets.jsx";
+
+/* The desktop widgets' built-in style sets. The 0 key cycles
+ * the set of the widget under the cursor; the shell stores the
+ * selected index per widget (settings.widgetStyles). */
+export const WIDGET_STYLES = ["panel", "glass", "recessed"];
+
+/* The desktop Clock: local time + date. `portsNode` is the
+ * shell's PortDots element when the patch bay has this widget's
+ * ports open; `preview` renders the bare widget for the Widgets
+ * app's cards, without the desktop's data hooks. */
+export function ClockWidget({ now, hour24, styleName, frozen, portsNode, preview }) {
+  return (
+    <div className={"widget ws-" + (styleName || "panel") + (frozen ? " frozen" : "")}
+      {...(preview ? {} : { "data-widget": "clock", "data-configure": "widget:clock", "data-patch-owner": "clock" })}>
+      <div className="cap" style={{ marginBottom: 6 }}>Local time · <span style={{ color: "#5c5c5c" }}>W-01</span></div>
+      <div className="wtime">{(() => {
+        if (hour24 !== false) return hm(now);
+        let h = now.getHours() % 12;
+        if (h === 0) h = 12;
+        return <>{pad(h) + ":" + pad(now.getMinutes())}<span className="wampm">{now.getHours() < 12 ? "AM" : "PM"}</span></>;
+      })()}</div>
+      <div className="wdate">{fullDate(now)}</div>
+      {portsNode}
+    </div>
+  );
+}
+
+/* The desktop System Load: CPU / MEM / NET meters fed by the
+ * shell's simulated load (ui.load). */
+export function SysLoadWidget({ load, styleName, frozen, portsNode, preview }) {
+  const l = load || { cpu: 0, mem: 0, net: 0 };
+  return (
+    <div className={"widget ws-" + (styleName || "panel") + (frozen ? " frozen" : "")}
+      {...(preview ? {} : { "data-widget": "sysload", "data-configure": "widget:sysload", "data-patch-owner": "sysload" })}>
+      <div className="cap" style={{ marginBottom: 7 }}>System load · <span style={{ color: "#5c5c5c" }}>W-02</span></div>
+      {portsNode}
+      <div className="wmrow"><span>CPU</span><div className="meter"><i style={{ width: l.cpu + "%" }}></i></div><b>{l.cpu}%</b></div>
+      <div className="wmrow"><span>MEM</span><div className="meter blue"><i style={{ width: l.mem + "%" }}></i></div><b>{l.mem}%</b></div>
+      <div className="wmrow"><span>NET</span><div className="meter amber"><i style={{ width: l.net + "%" }}></i></div><b>{l.net}%</b></div>
+    </div>
+  );
+}
+
+/* The registry: every widget the system knows, and the surface
+ * it belongs to. Desktop entries are placeable (the Widgets
+ * app's cards, settings.desktopWidgets); greeter entries are
+ * the sign-in dashboard's panels. */
+export const WIDGETS = [
+  { id: "clock", name: "Clock", surface: "desktop", component: ClockWidget },
+  { id: "sysload", name: "System Load", surface: "desktop", component: SysLoadWidget },
+  { id: "weather", name: "Weather", surface: "greeter", component: WeatherAnim },
+  { id: "processes", name: "Processes", surface: "greeter", component: SunburstProcesses },
+  { id: "vehicle", name: "Vehicle", surface: "greeter", component: VehicleMap },
+  { id: "cameras", name: "Cameras", surface: "greeter", component: CamGrid },
+  { id: "network", name: "Network", surface: "greeter", component: NetChart },
+];
+export const widgetById = (id) => WIDGETS.find((w) => w.id === id);
+export const DEFAULT_DESKTOP_WIDGETS = ["clock", "sysload"];
