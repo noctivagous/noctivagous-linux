@@ -1,0 +1,16 @@
+# Vagrantfile — the NCT test VM. See ../VM-RIG.md (living file).
+# Host: Windows + VirtualBox 7.x.  Usage:  vagrant up | vagrant ssh | vagrant snapshot save <name>
+Vagrant.configure("2") do |config|
+  config.vm.box = "debian/trixie64"
+  config.vm.hostname = "nct-test"
+  # Vagrant forwards guest 22 to host 2222 by default for ssh.
+  config.vm.provider "virtualbox" do |vb|
+    vb.name = "nct-test"
+    vb.memory = 4096
+    vb.cpus = 2
+    vb.customize ["modifyvm", :id, "--graphicscontroller", "vmsvga"]
+    vb.customize ["modifyvm", :id, "--accelerate3d", "on"]
+    vb.gui = false # headless; open the VirtualBox GUI yourself when you want eyes on the console
+  end
+  config.vm.provision "shell", path: "provision.sh"
+end

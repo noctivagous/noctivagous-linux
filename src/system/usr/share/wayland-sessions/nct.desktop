@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Noctivagous
+Comment=Noctivagous session (foundation)
+Exec=/usr/lib/nct/core/session/nct-session
+Type=Application
+DesktopNames=NCT

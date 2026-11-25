@@ -1,0 +1,31 @@
+#!/bin/sh
+# nct-resolve-cmd <key> — print the command line for a launch-list key.
+# All fallbacks and overrides live here and nowhere else.
+# Overrides: NCT_CMD_<KEY> (uppercased) in the environment wins.
+set -eu
+key=${1:?usage: nct-resolve-cmd <key>}
+upper=$(printf '%s' "$key" | tr 'a-z-' 'A-Z_')
+eval "override=\${NCT_CMD_$upper:-}"
+if [ -n "$override" ]; then printf '%s\n' "$override"; exit 0; fi
+# src root: two levels up from core/session/, unless NCT_SRC is set
+case $0 in */*) _self=$0 ;; *) _self=$(command -v "$0") ;; esac
+src=${NCT_SRC:-$(cd "$(dirname "$_self")/../.." && pwd)}
+case "$key" in
+  firefox)
+    if command -v firefox-esr >/dev/null 2>&1; then echo "firefox-esr";
+    elif command -v firefox >/dev/null 2>&1; then echo "firefox";
+    else echo "MISSING:firefox (install firefox-esr)"; exit 3; fi ;;
+  qt)
+    if command -v qterminal >/dev/null 2>&1; then echo "qterminal";
+    else echo "MISSING:qterminal (install qterminal)"; exit 3; fi ;;
+  terminal)
+    if command -v foot >/dev/null 2>&1; then echo "foot";
+    else echo "MISSING:foot"; exit 3; fi ;;
+  hello)
+    echo "$src/core/session/nct-godot-run $src/godot/apps/nct-hello" ;;
+  shell)
+    echo "$src/core/session/nct-godot-run $src/godot/shell" ;;
+  greeter)
+    echo "$src/core/session/nct-godot-run $src/godot/greeter" ;;
+  *) echo "MISSING:unknown key $key" >&2; exit 3 ;;
+esac

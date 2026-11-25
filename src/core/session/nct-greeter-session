@@ -1,0 +1,35 @@
+#!/bin/sh
+# nct-greeter-session — the greeter session greetd starts: the auth bridge,
+# then a single-app compositor running the Godot greeter fullscreen.
+# NCT_GREETER_COMPOSITOR=cage (VM default) or sway (nested tests).
+set -eu
+# $0 may be a bare name when we are found through PATH (the shell's
+# buttons call nct-launch that way): resolve it before dirname.
+case $0 in */*) _self=$0 ;; *) _self=$(command -v "$0") ;; esac
+here=$(cd "$(dirname "$_self")" && pwd)
+src=${NCT_SRC:-$(cd "$here/../.." && pwd)}
+export NCT_SRC="$src" PATH="$here:$PATH"
+state=${NCT_STATE_DIR:-/tmp/nct-greeter-state}; mkdir -p "$state"; export NCT_STATE_DIR="$state"
+# What START starts: under greetd, the full user session (greetd runs it
+# as the authenticated user); otherwise (tests) the session-apps stage,
+# because a compositor is already running there.
+if [ -n "${GREETD_SOCK:-}" ]; then
+  export NCT_SESSION_CMD=${NCT_SESSION_CMD:-"$src/core/session/nct-session"}
+else
+  export NCT_SESSION_CMD=${NCT_SESSION_CMD:-"$src/core/session/nct-session-apps"}
+fi
+# The bridge: fixture backend unless GREETD_SOCK is present (then greetd).
+python3 "$src/services/bridge/nct-greetd-bridge.py" >> "$state/bridge.log" 2>&1 &
+bridge_pid=$!
+trap 'kill $bridge_pid 2>/dev/null || true' EXIT
+greeter_cmd=$("$here/nct-resolve-cmd" greeter)
+comp=${NCT_GREETER_COMPOSITOR:-cage}
+case "$comp" in
+  sway)
+    cfg=${NCT_SWAY_GREETER_CONFIG:-$state/sway-greeter.conf}
+    printf 'output * resolution 1280x800\ndefault_border none\nexec %s --fullscreen\n' "$greeter_cmd" > "$cfg"
+    sway -c "$cfg" ;;
+  cage|*)
+    # cage is a single-app Wayland compositor: cage -- <command>
+    exec cage -- sh -c "$greeter_cmd --fullscreen" ;;
+esac

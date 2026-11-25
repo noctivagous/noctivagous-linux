@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<!-- labwc configuration — foundation stand-in compositor.
+     Deliberately near-stock: the NCT compositor's policy (placement,
+     key-click operators, shade/freeze/hide) is compositor work that
+     lands in the real compositor, not in this file. -->
+<labwc_config>
+  <core>
+    <decoration>server</decoration>
+    <gap>0</gap>
+  </core>
+  <theme>
+    <name>Clearlooks</name>
+  </theme>
+  <keyboard>
+    <default />
+  </keyboard>
+  <mouse>
+    <default />
+  </mouse>
+</labwc_config>

@@ -1,0 +1,19 @@
+PASS t0 sh-parse nct-godot-run
+PASS t0 sh-parse nct-greeter-session
+PASS t0 sh-parse nct-launch
+PASS t0 sh-parse nct-resolve-cmd
+PASS t0 sh-parse nct-session
+PASS t0 sh-parse nct-session-apps
+PASS t0 bridge parses
+PASS t0 godot import godot/greeter
+PASS t0 godot import godot/shell
+PASS t0 godot import godot/apps/nct-hello
+PASS t0 shell self-test
+PASS t0 bridge fixture auth (PING/wrong/right)
+FAIL t1 shell window — not in tree
+FAIL t1 qt window — not in tree
+FAIL t1 hello window — not in tree
+FAIL t1 firefox window — not in tree
+FAIL t1 greeter auto-login — see greeter-auto.log
+FAIL t1 screenshot — grim failed
+== run-chain: 12 passed, 6 failed ==

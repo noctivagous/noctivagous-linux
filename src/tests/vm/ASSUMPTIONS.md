@@ -1,0 +1,23 @@
+# ASSUMPTIONS — the register of guesses in this foundation
+
+Every guess made while building ahead of verification is listed here,
+with the check that proves or kills it. Muse Code on the rig works
+this list: run the check, then set the status — CONFIRMED (with the
+evidence), or KILLED (with what was true instead, and the fix commit).
+Never delete an entry; a killed assumption is a finding worth keeping.
+
+| # | Assumption | Made in | Settled by | Status |
+|---|---|---|---|---|
+| A1 | labwc (wlroots, near-stock config) hosts Godot, Firefox and Qt windows acceptably as the stand-in compositor | core/compositor/, ARCHITECTURE.md | run-all 01 + 05 | OPEN |
+| A2 | On Debian 13 (trixie — base changed 2026-11-25, see A11): the greetd package + our config.toml + a system `greeter` user + `systemctl enable greetd` yields greetd running our greeter session at boot | vm/provision.sh, system/etc/greetd/ | run-all 02 + 03 | PARTIALLY CONFIRMED 2026-11-25: a QEMU boot of the assembled image reached graphical.target, greetd started and opened the greeter PAM session (guest journal, agent-build-log/11). Whether the greeter session *stays up* is A13, not this entry |
+| A3 | The bridge's greetd IPC is right: 4-byte LE length-prefixed JSON; create_session → auth_message(secret) → post_auth_message_response → success; start_session with cmd list | services/bridge/nct-greetd-bridge.py | run-all 04 | OPEN |
+| A4 | Godot's missing layer-shell does not block the foundation: the shell as an ordinary labwc window is enough for this run (layer-shell is later kit/extension work) | godot/shell/, GODOT-SYSTEM §8 | run-all 05 | OPEN |
+| A5 | sway can stand in for labwc in automated nested tests (both wlroots; swaymsg gives assertable window trees) | tools/run-chain.sh, tests | run-all 01 | OPEN locally — tier-1 run in Muse used sway throughout and the chain held (2026-11-25) |
+| A6 | Vagrant's /vagrant synced folder is a reliable delivery path on the Windows host; provision copies from it into /usr/lib/nct | vm/ | run-all 00 | OPEN |
+| A7 | VirtualBox VMSVGA + 3D acceleration gives Godot a working render context; failing that, lavapipe (mesa-vulkan-drivers) or --rendering-driver opengl3 is enough for the chain | vm/Vagrantfile, VM-RIG.md | run-all 07 | OPEN (locally: opengl3/llvmpipe confirmed, Vulkan absent without an ICD) |
+| A8 | firefox-esr opens a window under labwc on first run without a D-Bus session bus fight | core/session/launch-list.tsv | run-all 05 | OPEN |
+| A9 | The greeter session's state dir must not assume a writable $HOME for the greeter user (bridge + logs default to /tmp/nct-greeter-state there) | core/session/nct-greeter-session | run-all 03 | OPEN |
+| A10 | greetd starts the user session via the bridge's start_session cmd (nct-session) and the session's labwc autostart then runs nct-session-apps as the user | services/bridge, core/session | run-all 04 + 05 | OPEN |
+| A11 | Debian 13 (trixie) works as the distro base wherever bookworm was assumed: bookworm has NO labwc package (verified 2026-11-25: 0 matches in bookworm's 63,440-package index; every other package-list entry exists there), so the base moved to trixie. Downstream effects — greetd 0.10.3 behaviour, package names/versions, Qt6 qterminal — are unverified | distro/debian/package-list.txt, tools/build-rootfs.sh, vm/Vagrantfile (debian/trixie64) | rootfs build + run-all on the rig | OPEN (rootfs assembly DONE in Muse 2026-11-25: base+test built, 463 packages, agent-build-log/09; downstream behaviour still for the rig) |
+| A12 | Real pointer input reaches Godot 4.3 windows: in Muse's nested-sway tests, wlrctl-synthesized pointer events never reached Godot (keyboard did; foot/QTerminal took both). Whether that is a wlrctl/headless artefact or a Godot Wayland pointer issue is unknown — the rig's real (virtualized) pointer settles it | godot/greeter, godot/shell | manual check on the rig: click the greeter's Login button and the shell's buttons with the VirtualBox pointer | OPEN |
+| A13 | The greeter session command stays up under a real seat: in the S2.5 QEMU graphical boot (bochs-drm, seatd/logind), greetd opened the greeter session and nct-greeter-session exited within ~1 s, looping greetd to its start limit (guest journal evidence, agent-build-log/11). Suspects in order: cage failing to acquire a seat/DRM backend on bochs-drm; the Godot greeter dying at start under cage. The greeter's stderr never reached the journal, so the boot kept no finer evidence | core/session/nct-greeter-session, system/etc/greetd/ | run-all 03 + 09 on the rig (VMSVGA + a readable console) | OPEN |

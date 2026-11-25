@@ -1,0 +1,11 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly.
+config_version=5
+
+[application]
+config/name="NCT Hello"
+run/main_scene="res://main.tscn"
+
+[display]
+window/size/viewport_width=520
+window/size/viewport_height=320

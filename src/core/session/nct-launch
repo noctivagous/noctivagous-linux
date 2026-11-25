@@ -1,0 +1,23 @@
+#!/bin/sh
+# nct-launch <id> — start one launch-list entry, detached, logged.
+set -eu
+id=${1:?usage: nct-launch <id>}
+# $0 may be a bare name when we are found through PATH (the shell's
+# buttons call nct-launch that way): resolve it before dirname.
+case $0 in */*) _self=$0 ;; *) _self=$(command -v "$0") ;; esac
+here=$(cd "$(dirname "$_self")" && pwd)
+src=${NCT_SRC:-$(cd "$here/../.." && pwd)}
+list=${NCT_LAUNCH_LIST:-$src/core/session/launch-list.tsv}
+state=${NCT_STATE_DIR:-$HOME/.local/state/nct}; mkdir -p "$state"
+key=$(awk -F'\t' -v id="$id" '$1==id {print $3}' "$list")
+[ -n "$key" ] || { echo "nct-launch: no such id: $id" >&2; exit 2; }
+if ! cmd=$("$here/nct-resolve-cmd" "$key"); then
+  # A missing program must be diagnosable from the log, not silent:
+  # callers include Godot buttons whose create_process swallows stderr.
+  echo "$(date -Is) launch $id FAILED: cannot resolve key $key" >> "$state/launch.log"
+  echo "nct-launch: cannot resolve key $key for id $id" >&2
+  exit 3
+fi
+echo "$(date -Is) launch $id -> $cmd" >> "$state/launch.log"
+PATH="$here:$PATH" NCT_SRC="$src" nohup sh -c "$cmd" >> "$state/$id.log" 2>&1 &
+echo "launched $id ($cmd)"

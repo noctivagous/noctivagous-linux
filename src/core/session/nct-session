@@ -1,0 +1,22 @@
+#!/bin/sh
+# nct-session — the user session: compositor + nct-session-apps.
+# Compositor: NCT_COMPOSITOR=labwc (default, the stand-in) or sway (tests).
+set -eu
+# $0 may be a bare name when we are found through PATH (the shell's
+# buttons call nct-launch that way): resolve it before dirname.
+case $0 in */*) _self=$0 ;; *) _self=$(command -v "$0") ;; esac
+here=$(cd "$(dirname "$_self")" && pwd)
+src=${NCT_SRC:-$(cd "$here/../.." && pwd)}
+export NCT_SRC="$src" PATH="$here:$PATH"
+state=${NCT_STATE_DIR:-$HOME/.local/state/nct}; mkdir -p "$state"
+comp=${NCT_COMPOSITOR:-labwc}
+echo "$(date -Is) session start compositor=$comp" >> "$state/session.log"
+case "$comp" in
+  sway)
+    cfg=${NCT_SWAY_CONFIG:-$state/sway-session.conf}
+    printf 'output * resolution 1280x800\ndefault_border none\nexec %s/core/session/nct-session-apps\n' "$src" > "$cfg"
+    exec sway -c "$cfg" ;;
+  labwc|*)
+    cfgdir=${NCT_LABWC_CONFIG:-$src/core/compositor/labwc}
+    LABWC_CONFIG_DIR="$cfgdir" exec labwc ;;
+esac

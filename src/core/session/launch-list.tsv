@@ -1,0 +1,8 @@
+# id	title	resolve-key	autostart
+# The ONE list of programs the session can start (CONVENTIONS.md §10).
+# Add a program by adding a line. Resolve-keys live in nct-resolve-cmd.
+shell	NCT Shell	shell	1
+firefox	Firefox	firefox	0
+qt	QTerminal (Qt)	qt	0
+hello	NCT Hello	hello	0
+terminal	Terminal (foot)	terminal	0

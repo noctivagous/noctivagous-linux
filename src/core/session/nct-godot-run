@@ -1,0 +1,22 @@
+#!/bin/sh
+# nct-godot-run <project-dir> [args...] — run a Godot project on the pinned runtime.
+set -eu
+proj=${1:?usage: nct-godot-run <project-dir>}; shift || true
+godot=${NCT_GODOT:-}
+if [ -z "$godot" ]; then
+  for c in /usr/lib/nct/godot/godot "$(command -v godot || true)" "$HOME/workspace/.nct-tools/godot"; do
+    if [ -n "$c" ] && [ -x "$c" ]; then godot=$c; break; fi
+  done
+fi
+[ -n "$godot" ] || { echo "nct-godot-run: no godot runtime found (see godot/runtime/PIN.md)" >&2; exit 3; }
+driver=${NCT_RENDER_DRIVER:-}
+ddriver=${NCT_DISPLAY_DRIVER:-}
+if [ -n "$ddriver" ] && [ -n "$driver" ]; then
+  exec "$godot" --path "$proj" --display-driver "$ddriver" --rendering-driver "$driver" "$@"
+elif [ -n "$ddriver" ]; then
+  exec "$godot" --path "$proj" --display-driver "$ddriver" "$@"
+elif [ -n "$driver" ]; then
+  exec "$godot" --path "$proj" --rendering-driver "$driver" "$@"
+else
+  exec "$godot" --path "$proj" "$@"
+fi

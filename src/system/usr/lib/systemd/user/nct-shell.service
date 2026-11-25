@@ -1,0 +1,14 @@
+# Reference unit: in the foundation the shell is started by the
+# compositor's autostart (nct-session-apps). This unit is the shape the
+# session takes when supervision moves to systemd user services
+# (demo-de/GODOT-SYSTEM.md §4.5) — recorded, not yet enabled.
+[Unit]
+Description=NCT Shell (Godot)
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/lib/nct/core/session/nct-launch shell
+Restart=on-failure
+
+[Install]
+WantedBy=graphical-session.target

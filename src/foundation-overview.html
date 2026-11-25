@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Noctivagous Linux — Foundation</title>
+<style>
+  :root{
+    --bg:#101014; --panel:#1a1a20; --panel2:#22222b; --line:#34343f;
+    --text:#e8e6df; --muted:#a09c92; --accent:#c9a86a; --accent2:#7fb0c9;
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.55}
+  main{max-width:960px;margin:0 auto;padding:48px 24px 80px}
+  h1{font-size:30px;font-weight:650;letter-spacing:.01em;margin:0 0 6px}
+  h2{font-size:19px;font-weight:650;margin:44px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+  h3{font-size:15px;margin:22px 0 8px;color:var(--accent)}
+  p{margin:8px 0;color:var(--text)}
+  .sub{color:var(--muted);margin:0 0 8px}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:14px}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);font-weight:600}
+  td{background:var(--panel)}
+  code{font-family:var(--mono);font-size:.92em;color:var(--accent2)}
+  pre{font-family:var(--mono);font-size:13px;line-height:1.5;background:var(--panel);
+      border:1px solid var(--line);border-radius:6px;padding:16px 18px;overflow-x:auto;color:var(--text)}
+  .chain{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch;margin:14px 0}
+  .step{background:var(--panel2);border:1px solid var(--line);border-radius:6px;
+        padding:10px 12px;font-size:13.5px;flex:1 1 120px}
+  .step b{display:block;color:var(--accent);font-size:12px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
+  .arrow{align-self:center;color:var(--muted);font-size:18px;flex:0 0 auto}
+  .rule{border-left:3px solid var(--accent);background:var(--panel);padding:10px 14px;margin:14px 0;font-size:14.5px}
+  ul{margin:8px 0;padding-left:22px} li{margin:4px 0}
+  .small{font-size:13px;color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+  <h1>Noctivagous Linux — Foundation</h1>
+  <p class="sub">The source tree of the real system: what is built first, how it is
+  organised, and the chain it has to prove before anything else is added.</p>
+
+  <h2>The chain</h2>
+  <p>The foundation exists to make one sequence work, end to end, with a basic
+  setup. Everything else in the desktop is built on top of this sequence once
+  it holds.</p>
+  <div class="chain">
+    <div class="step"><b>1 · Boot</b>greetd starts the greeter session</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>2 · Greeter</b>The Godot greeter runs fullscreen</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>3 · Login</b>Credentials checked through the auth bridge</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>4 · Session</b>The compositor starts; the shell comes up</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>5 · Launch</b>Pre-set programs open from inside the session</div>
+  </div>
+  <p>The programs in step 5 are set up in advance, in one list
+  (<code>core/session/launch-list.tsv</code>), and cover the three kinds of
+  citizen the desktop has to host from the first day:</p>
+  <ul>
+    <li><b>A foreign browser</b> — Firefox.</li>
+    <li><b>A foreign toolkit app</b> — a Qt program (QTerminal in the foundation setup).</li>
+    <li><b>One of our own apps</b> — a Godot application on the pinned runtime (<code>nct-hello</code> in the foundation setup).</li>
+  </ul>
+
+  <h2>Three different kinds of work</h2>
+  <p>The system is three kinds of work with three different build-and-test
+  loops. They are kept in separate parts of the tree so they never blur
+  into each other.</p>
+  <table>
+    <tr><th style="width:18%">Kind</th><th style="width:22%">Where it lives</th><th>What it is</th><th style="width:24%">How it is tested</th></tr>
+    <tr>
+      <td><b>Core</b></td><td><code>src/core/</code></td>
+      <td>A wlroots-class compositor (a stand-in compositor in the foundation), seat and session glue, the session scripts.</td>
+      <td>On real DRM and seat hardware — in the virtual machine.</td>
+    </tr>
+    <tr>
+      <td><b>Godot system layer</b></td><td><code>src/godot/</code></td>
+      <td>The greeter, the shell, the kit and the apps: GDScript and scenes on one pinned engine runtime, with native extensions where the system needs reach beyond the engine.</td>
+      <td>Headless and in a nested Wayland session — most of it never needs the virtual machine.</td>
+    </tr>
+    <tr>
+      <td><b>Distro plumbing</b></td><td><code>src/distro/</code>, <code>src/system/</code></td>
+      <td>The Debian base: package lists, and an overlay that mirrors the installed filesystem path for path.</td>
+      <td>By booting the installed image in the virtual machine.</td>
+    </tr>
+  </table>
+  <p>Foreign programs are not a fourth kind of work in the tree. A foreign
+  app is a surface the compositor hosts; its own source never lives here.
+  Only its bundle and registration — if it takes them — are recorded, under
+  the external-frameworks rules (<code>src/ext-fwks/</code>).</p>
+
+  <div class="rule"><b>The hosting rule.</b> A compositor feature may depend only on
+  surface-level facts — geometry, state, focus, stacking — never on the
+  native kit contract. That is what lets the same desktop host Firefox, a Qt
+  app, and a Godot app without knowing anything about what is inside them.</div>
+
+  <h2>The tree</h2>
+  <pre>noctivagous-linux/
+  demo-de/                    the model — the desktop as designed and prototyped
+  refs/                       reference material
+
+  src/                        the real system's source
+    ARCHITECTURE.md           layers, the chain, the test tiers
+    CONVENTIONS.md            the rules everything shipped here follows
+    VM-RIG.md                 the Windows / VirtualBox test rig (living file)
+    foundation-overview.html  this page
+
+    core/                     NCT-LIB-EXT-CORE — the foundation layer
+      compositor/             the compositor (stand-in: labwc) and its config
+      session/                greeter session, session start, the launch list,
+                              the one launcher every program starts through
+    godot/
+      runtime/                the pinned engine: version, hash, recipe — no binary in git
+      extensions/             GDExtension native modules (D-Bus, layer-shell, PipeWire)
+      kit/                    the NCT Godot Kit: controls and the style tokens
+      greeter/                the greeter, a Godot project
+      shell/                  the shell, a Godot project
+      apps/                   our own apps, one Godot project each
+    ext-fwks/                 NCT-LIB-EXT-FWKS — hosted frameworks:
+                              one bridge core, a binding per framework
+                              (Godot, Processing, openFrameworks, JUCE)
+    ext-core-utils/           NCT-LIB-EXT-CORE-UTILS — leaf utilities
+    services/                 session services that are not Godot:
+                              the greeter auth bridge first
+    keyclicks/                the key-click input policy, native port
+
+    system/                   the installed-filesystem overlay — every path
+                              here is the path on the installed machine
+      usr/share/wayland-sessions/   the session entry
+      usr/lib/systemd/user/         the session's user units
+      etc/greetd/                   the display-manager configuration
+    distro/debian/            package lists and image configuration
+    tools/                    the development harness (chain runner first)
+    tests/                    headless/ · vm/ — the test bed, with the
+                              register of assumptions each check settles
+    vm/                       Vagrantfile, provisioning, the host-side test driver</pre>
+
+  <h2>How the pieces of the chain fit</h2>
+  <h3>Greeter and login</h3>
+  <p>greetd starts a single-app session: a small compositor (cage) running the
+  Godot greeter fullscreen. Godot has no Unix-socket API, so the greeter
+  cannot speak greetd's protocol directly. A small bridge service does:
+  greetd's IPC on one side, a one-line local protocol on the other, which
+  the greeter uses to offer credentials and, on success, to start the
+  session. In tests without greetd, the same bridge checks a fixture
+  account, so the greeter and the protocol are exercised identically.</p>
+  <h3>Session and shell</h3>
+  <p>The session script starts the compositor; the compositor's autostart
+  starts the shell and then every launch-list entry marked for autostart.
+  The shell is a separate Godot process from the greeter and from every app,
+  so a shell failure is a restart, not a lost session.</p>
+  <h3>Launching</h3>
+  <p>The shell's buttons and the autostart use the same launcher script and
+  the same list. A program is added to the desktop by adding a line to the
+  list — its name, its command, whether it autostarts — not by editing the
+  shell.</p>
+
+  <h2>Test tiers</h2>
+  <table>
+    <tr><th style="width:18%">Tier</th><th style="width:26%">Where</th><th>What it establishes</th></tr>
+    <tr><td><b>0 — Headless</b></td><td>Any machine</td>
+        <td>Projects import and validate, scripts parse, the bridge answers, the launcher resolves every list entry.</td></tr>
+    <tr><td><b>1 — Nested</b></td><td>Any machine with wlroots</td>
+        <td>The whole chain inside a headless compositor: greeter, login, session apps, all three citizens open — checked against the window tree and screenshots.</td></tr>
+    <tr><td><b>2 — VM</b></td><td>The Windows box, VirtualBox</td>
+        <td>Boot, greetd, the seat, and the chain on virtual GPU hardware. The test bed in <code>tests/vm/</code> runs the checks and leaves logs and screenshots for whatever fails.</td></tr>
+  </table>
+
+  <h2>The test rig</h2>
+  <p>Development happens in Muse; the tier-2 proof happens on a spare
+  Windows machine. VirtualBox is defined by one text file (a Vagrantfile),
+  provisioned by one script, and controlled from the terminal —
+  <code>VBoxManage</code> for the machine, SSH (forwarded to the host's
+  port 2222) for everything inside it. Muse Code on that machine pulls
+  the repository, brings the VM up, runs the test bed, and works from its
+  results. The guest is disposable; the repository is the record. Details
+  and the running log live in <code>VM-RIG.md</code>.</p>
+
+  <p class="small">Foundation run, 2026-11-25. The desktop environment itself
+  is still being designed in demo-de; this tree is the ground it will stand
+  on, built chain-first.</p>
+</main>
+</body>
+</html>

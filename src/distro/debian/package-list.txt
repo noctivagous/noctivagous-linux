@@ -1,0 +1,18 @@
+# The foundation package set — one list for the VM provision and the
+# future image build (distro/README.md). Debian 13 (trixie) names —
+# bookworm has no labwc package, which is why the base is trixie.
+greetd
+cage
+labwc
+sway
+xwayland
+foot
+qterminal
+firefox-esr
+grim
+wtype
+mesa-vulkan-drivers
+python3
+git
+openssh-server
+sudo

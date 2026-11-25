@@ -1,0 +1,9 @@
+rootfs variant: base
+built: 2026-11-25T04:29:46-06:00
+size: 1.6G (1612104377 bytes)
+files: 34275
+packages: 463
+kernel: /var/nct-build/rootfs-base/boot/vmlinuz-6.12.117+deb13-amd64
+godot: 4.3.stable.official.77dcf97d8
+greetd enabled: /var/nct-build/rootfs-base/etc/systemd/system/display-manager.service
+test user present: 0

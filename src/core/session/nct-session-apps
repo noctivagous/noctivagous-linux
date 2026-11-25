@@ -1,0 +1,20 @@
+#!/bin/sh
+# nct-session-apps — run inside a live compositor: start the shell, then
+# every launch-list entry marked autostart. Called by the compositor's
+# autostart (real session) and directly by the nested test bed.
+set -eu
+# $0 may be a bare name when we are found through PATH (the shell's
+# buttons call nct-launch that way): resolve it before dirname.
+case $0 in */*) _self=$0 ;; *) _self=$(command -v "$0") ;; esac
+here=$(cd "$(dirname "$_self")" && pwd)
+src=${NCT_SRC:-$(cd "$here/../.." && pwd)}
+list=${NCT_LAUNCH_LIST:-$src/core/session/launch-list.tsv}
+state=${NCT_STATE_DIR:-$HOME/.local/state/nct}; mkdir -p "$state"
+export PATH="$here:$PATH" NCT_SRC="$src"
+echo "$(date -Is) session-apps start" >> "$state/session.log"
+awk -F'\t' '$4==1 {print $1}' "$list" | while read -r id; do
+  [ -n "$id" ] && nct-launch "$id" || true
+done
+# Test/preset extras: NCT_EXTRA_AUTOSTART="firefox qt hello"
+for id in ${NCT_EXTRA_AUTOSTART:-}; do nct-launch "$id" || true; done
+echo "$(date -Is) session-apps done" >> "$state/session.log"
