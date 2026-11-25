@@ -5,7 +5,7 @@ Example Configuration
 	F - corresponding to index finger, equivalent to left mouse click.  
 	We call it the Activate event because it activates buttons,
 	checkboxes, text field focus, etc.  (On left-handed layout it is assigned to J).
-	
+		
 	A - designated as Close, will close any element.
 	Hover over a window and press A and it closes.
 	In a vector-drawing program we made it Finish, for finishing
@@ -13,6 +13,8 @@ Example Configuration
 
 	Spacebar - instant grab and drag of what is under the cursor, placing
 	the element into a drag-lock (also known as sticky drag).
+	The drag-lock is interruptible by Esc or any key press.
+		
 		
 	We often assign these consistently but the other keys
 	can change from one context or app to the next.  That said,
@@ -77,6 +79,20 @@ Example Configuration
 	Shift + a step key will step at a higher amount  (e.g. 45 deg rotation instead of 15 deg)
 	Alt + a step key will step at a lower amount (e.g. 5 deg rotation instead of 15 deg)
 		
+
+	
+	Notes on Variations Based on Context:
+		The F key has been assigned to what is done most frequently in the context:
+			In OS and app UI interaction, this is assigned to Activate, clicking buttons
+			and controls, selecting objects.
+			In the vector-drawing app Floating Marker, it was assigned to making
+			line segments, the most common drawing activity and then clicking
+			controls and selecting object was assigned to Tab.
 		
+			The Tab key in Floating Marker is the equivalent of Shift+Click.
+		
+		In OS and app UI interaction, F usually selects objects but not Shift+Click.
+		In the vector-drawing app Floating Marker, it was assigned to 
+		the Tab key.
 	
  
