@@ -1,7 +1,23 @@
 #!/bin/sh
-# nct-godot-run <project-dir> [args...] — run a Godot project on the pinned runtime.
+# nct-godot-run <project-dir|.pck> [args...] — run a Godot project on
+# the pinned runtime. Two forms, one runtime (launch model 2,
+# GODOT-SYSTEM.md §12):
+#   <project-dir>  dev form: the loose project, via --path
+#   <file>.pck     shipped form: the exported pack, via --main-pack
+# Either way it is the same single engine binary, started as its own
+# process per app.
 set -eu
-proj=${1:?usage: nct-godot-run <project-dir>}; shift || true
+proj=${1:?usage: nct-godot-run <project-dir|.pck>}; shift || true
+case "$proj" in *.pck) pack=1 ;; *) pack=0 ;; esac
+case $0 in */*) _self=$0 ;; *) _self=$(command -v "$0") ;; esac
+here=$(cd "$(dirname "$_self")" && pwd)
+# A packed app has no filesystem res:// to derive paths from (the
+# shell's launch-list fallback globalizes res://, which is inside the
+# pack). The launch list always lives beside this script, in every
+# layout — name it explicitly when the caller has not.
+if [ -z "${NCT_LAUNCH_LIST:-}" ] && [ -f "$here/launch-list.tsv" ]; then
+  NCT_LAUNCH_LIST="$here/launch-list.tsv"; export NCT_LAUNCH_LIST
+fi
 godot=${NCT_GODOT:-}
 if [ -z "$godot" ]; then
   for c in /usr/lib/nct/godot/godot "$(command -v godot || true)" "$HOME/workspace/.nct-tools/godot"; do
@@ -15,14 +31,15 @@ run_godot() {
   # change per attempt (ladder_apply exports them first).
   driver=${NCT_RENDER_DRIVER:-}
   ddriver=${NCT_DISPLAY_DRIVER:-}
+  if [ "$pack" = 1 ]; then target="--main-pack"; else target="--path"; fi
   if [ -n "$ddriver" ] && [ -n "$driver" ]; then
-    "$godot" --path "$proj" --display-driver "$ddriver" --rendering-driver "$driver" "$@"
+    "$godot" "$target" "$proj" --display-driver "$ddriver" --rendering-driver "$driver" "$@"
   elif [ -n "$ddriver" ]; then
-    "$godot" --path "$proj" --display-driver "$ddriver" "$@"
+    "$godot" "$target" "$proj" --display-driver "$ddriver" "$@"
   elif [ -n "$driver" ]; then
-    "$godot" --path "$proj" --rendering-driver "$driver" "$@"
+    "$godot" "$target" "$proj" --rendering-driver "$driver" "$@"
   else
-    "$godot" --path "$proj" "$@"
+    "$godot" "$target" "$proj" "$@"
   fi
 }
 
@@ -38,8 +55,6 @@ fi
 # (A14): native Vulkan first, opengl3 / X11-software when an attempt
 # dies fast. Rung 3 differs from rung 2 only in the compositor's
 # WLR_RENDERER, which a client does not consume — hence LADDER_MAX=2.
-case $0 in */*) _self=$0 ;; *) _self=$(command -v "$0") ;; esac
-here=$(cd "$(dirname "$_self")" && pwd)
 LADDER_MAX=2
 . "$here/nct-render-ladder.sh"
 state=${NCT_STATE_DIR:-$HOME/.local/state/nct}; mkdir -p "$state"

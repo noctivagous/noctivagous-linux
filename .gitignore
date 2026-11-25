@@ -42,3 +42,6 @@ coverage/
 
 # Vagrant machine state (created wherever vagrant runs; never commit)
 .vagrant/
+
+# Godot .pck packs are build artefacts (tools/build-pcks.sh)
+*.pck

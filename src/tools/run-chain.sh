@@ -38,6 +38,16 @@ if [ -n "$GODOT" ]; then
   done
   out=$("$GODOT" --headless --path "$SRC/godot/shell" -- --self-test 2>&1)
   echo "$out" | grep -q "SHELL_SELFTEST_OK" && ok "t0 shell self-test" || bad "t0 shell self-test" "$out"
+  # Launch model 2: the same projects as .pck packs on the shared
+  # runtime (the shipped form). Build to the results dir, then run
+  # the shell pack through nct-godot-run's --main-pack path.
+  if NCT_GODOT="$GODOT" bash "$SRC/tools/build-pcks.sh" "$RES/pcks" > "$RES/pcks.log" 2>&1; then
+    ok "t0 pck build (greeter, shell, nct-hello)"
+    out=$(NCT_DISPLAY_DRIVER=headless NCT_RENDER_DRIVER=opengl3 "$SRC/core/session/nct-godot-run" "$RES/pcks/shell.pck" -- --self-test 2>&1)
+    echo "$out" | grep -q "SHELL_SELFTEST_OK entries=5" && ok "t0 shell self-test via .pck" || bad "t0 shell self-test via .pck" "$out"
+  else
+    bad "t0 pck build (greeter, shell, nct-hello)" "see pcks.log"
+  fi
 else
   bad "t0 godot present" "no godot runtime found (godot/runtime/PIN.md)"
 fi

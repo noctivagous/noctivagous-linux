@@ -16,6 +16,17 @@ VERSION=${NCT_VERSION:-0.1.0}
 WORK=$(mktemp -d "${NCT_BUILD_DIR:-/var/nct-build}/deb-build.XXXXXX" 2>/dev/null || mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
+# The pinned Godot binary, fetched once: it is both the packing tool
+# (below) and the nct-godot-runtime package's payload (further down).
+URL=$(grep -o 'https://[^ ]*Godot[^ ]*\.zip' "$SRC/godot/runtime/PIN.md" | head -1)
+SHA=$(grep -oE '[0-9a-f]{64}' "$SRC/godot/runtime/PIN.md" | head -1)
+CACHE="${NCT_CACHE:-$HOME/.cache/nct-build}"; mkdir -p "$CACHE"
+if [ ! -f "$CACHE/godot.zip" ]; then curl -sL -o "$CACHE/godot.zip" "$URL"; fi
+echo "$SHA  $CACHE/godot.zip" | sha256sum -c -
+mkdir -p "$WORK/godot-bin"
+(cd "$WORK/godot-bin" && unzip -o -q "$CACHE/godot.zip")
+PACK_GODOT=$(echo "$WORK"/godot-bin/Godot_v*-stable_linux.x86_64)
+
 # ---------- nct-foundation ----------
 PKG="$WORK/nct-foundation"
 mkdir -p "$PKG/DEBIAN" "$PKG/usr/lib/nct"
@@ -25,6 +36,16 @@ done
 # strip build/test residue from the shipped tree
 find "$PKG/usr/lib/nct" -name '.godot' -type d -prune -exec rm -rf {} + 2>/dev/null || true
 rm -rf "$PKG/usr/lib/nct/tests/results-local" "$PKG/usr/lib/nct/tests/vm/results"
+# Launch model 2 (§12): the installed system ships Godot apps as
+# .pck packs against the shared runtime, not as loose project dirs.
+# Export the packs from the source projects, then swap them in.
+NCT_GODOT="$PACK_GODOT" bash "$SRC/tools/build-pcks.sh" "$WORK/pcks" > "$WORK/pcks.log" 2>&1 \
+  || { cat "$WORK/pcks.log" >&2; echo "build-deb: build-pcks failed" >&2; exit 1; }
+rm -rf "$PKG/usr/lib/nct/godot/greeter" "$PKG/usr/lib/nct/godot/shell" \
+       "$PKG/usr/lib/nct/godot/apps/nct-hello"
+cp "$WORK/pcks/greeter.pck" "$PKG/usr/lib/nct/godot/greeter.pck"
+cp "$WORK/pcks/shell.pck" "$PKG/usr/lib/nct/godot/shell.pck"
+cp "$WORK/pcks/apps/nct-hello.pck" "$PKG/usr/lib/nct/godot/apps/nct-hello.pck"
 # the system overlay, at its real paths
 cp -r "$SRC/system/etc" "$PKG/"
 mkdir -p "$PKG/usr/share" "$PKG/usr/lib/systemd"
@@ -66,15 +87,11 @@ chmod 755 "$PKG" "$PKG/DEBIAN"
 dpkg-deb --build --root-owner-group "$PKG" "$OUT/nct-foundation_${VERSION}_all.deb"
 
 # ---------- nct-godot-runtime ----------
-URL=$(grep -o 'https://[^ ]*Godot[^ ]*\.zip' "$SRC/godot/runtime/PIN.md" | head -1)
-SHA=$(grep -oE '[0-9a-f]{64}' "$SRC/godot/runtime/PIN.md" | head -1)
-CACHE="${NCT_CACHE:-$HOME/.cache/nct-build}"; mkdir -p "$CACHE"
-if [ ! -f "$CACHE/godot.zip" ]; then curl -sL -o "$CACHE/godot.zip" "$URL"; fi
-echo "$SHA  $CACHE/godot.zip" | sha256sum -c -
+# (URL/SHA/CACHE and the verified zip are set up at the top of this
+# script; the binary was already extracted to $WORK/godot-bin.)
 PKG2="$WORK/nct-godot-runtime"
 mkdir -p "$PKG2/DEBIAN" "$PKG2/usr/lib/nct/godot"
-cd "$WORK" && unzip -o -q "$CACHE/godot.zip"
-install -m755 "$WORK"/Godot_v*-stable_linux.x86_64 "$PKG2/usr/lib/nct/godot/godot"
+install -m755 "$PACK_GODOT" "$PKG2/usr/lib/nct/godot/godot"
 cp "$SRC/godot/runtime/PIN.md" "$PKG2/usr/lib/nct/godot/PIN.md"
 # Same mode normalization as the foundation package (see above).
 find "$PKG2" -type d -exec chmod 755 {} +
@@ -87,7 +104,7 @@ Architecture: amd64
 Maintainer: Noctivagous <nct@localhost>
 Description: Noctivagous — the pinned Godot runtime
  One shared engine binary for every NCT Godot process (greeter, shell,
- apps), pinned in PIN.md. Apps ship as projects/.pck against it.
+ apps), pinned in PIN.md. Apps ship as .pck packs against it.
 EOF
 chmod 755 "$PKG2" "$PKG2/DEBIAN"
 dpkg-deb --build --root-owner-group "$PKG2" "$OUT/nct-godot-runtime_${VERSION}_amd64.deb"

@@ -5,7 +5,15 @@ config_version=5
 [application]
 config/name="NCT Shell"
 run/main_scene="res://main.tscn"
+; No engine splash: no boot image, and the boot background is the
+; kit panel surface (#232329 in godot/kit/tokens.json), so an engine
+; start is one solid colour straight into the bar.
+boot_splash/bg_color=Color(0.137255, 0.137255, 0.160784, 1)
+boot_splash/show_image=false
 
 [display]
 window/size/viewport_width=1280
 window/size/viewport_height=56
+
+[rendering]
+environment/defaults/default_clear_color=Color(0.137255, 0.137255, 0.160784, 1)

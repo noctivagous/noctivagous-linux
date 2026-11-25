@@ -5,7 +5,15 @@ config_version=5
 [application]
 config/name="NCT Hello"
 run/main_scene="res://main.tscn"
+; No engine splash: no boot image, and the boot background is the
+; app's own first-painted colour (main.gd's ColorRect), so an engine
+; start is one solid colour straight into the scene.
+boot_splash/bg_color=Color(0.1, 0.1, 0.12, 1)
+boot_splash/show_image=false
 
 [display]
 window/size/viewport_width=520
 window/size/viewport_height=320
+
+[rendering]
+environment/defaults/default_clear_color=Color(0.1, 0.1, 0.12, 1)

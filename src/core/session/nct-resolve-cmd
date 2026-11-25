@@ -22,10 +22,18 @@ case "$key" in
     if command -v foot >/dev/null 2>&1; then echo "foot";
     else echo "MISSING:foot"; exit 3; fi ;;
   hello)
-    echo "$src/core/session/nct-godot-run $src/godot/apps/nct-hello" ;;
+    # Shipped form wins: the .pck beside the project (launch model 2).
+    # The loose project dir is the dev fallback when no pack is built.
+    if [ -f "$src/godot/apps/nct-hello.pck" ]; then
+      echo "$src/core/session/nct-godot-run $src/godot/apps/nct-hello.pck"
+    else echo "$src/core/session/nct-godot-run $src/godot/apps/nct-hello"; fi ;;
   shell)
-    echo "$src/core/session/nct-godot-run $src/godot/shell" ;;
+    if [ -f "$src/godot/shell.pck" ]; then
+      echo "$src/core/session/nct-godot-run $src/godot/shell.pck"
+    else echo "$src/core/session/nct-godot-run $src/godot/shell"; fi ;;
   greeter)
-    echo "$src/core/session/nct-godot-run $src/godot/greeter" ;;
+    if [ -f "$src/godot/greeter.pck" ]; then
+      echo "$src/core/session/nct-godot-run $src/godot/greeter.pck"
+    else echo "$src/core/session/nct-godot-run $src/godot/greeter"; fi ;;
   *) echo "MISSING:unknown key $key" >&2; exit 3 ;;
 esac
