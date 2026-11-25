@@ -9,8 +9,17 @@ checks expose — in the repo, never only in the guest.
 ```powershell
 cd <clone>\src\vm
 vagrant up            # first run provisions; watch for provision errors
-vagrant ssh -c "sudo /vagrant/src/tests/vm/run-all.sh"
+vagrant ssh -c "sudo bash /vagrant/src/tests/vm/run-all.sh"
 ```
+
+Note on file modes: src/ reached GitHub by snapshot push, which does
+not carry executable bits — scripts check out as 644. Everything the
+*installed system* executes gets its mode back from the debs
+(build-deb.sh chmods nct-* and *.sh to 755), so greetd's command and
+the session scripts are fine once provisioned. Only tree-direct
+scripts are affected; run them via `bash <path>` as above (or
+`chmod +x` them in your clone — a mode-only commit from a real git
+client would settle it for good).
 
 Or `bash vm-test.sh` from Git Bash in src/vm (also grabs a host-side
 console screenshot). Results land in the guest's /tmp/nct-results/ and,
