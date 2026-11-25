@@ -1,1 +1,3 @@
 .vagrant/
+# QEMU rig inputs/working files (built images are build outputs, ~2 GB)
+qemu-image/

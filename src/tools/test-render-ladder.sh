@@ -22,9 +22,17 @@ exit 3
 EOF
 cat > "$work/flaky.sh" <<'EOF'
 #!/bin/sh
-# fails fast on the first invocation, then stays up and exits 7
+# fails fast on the first invocation, then stays up and exits clean
 c=$(cat "$COUNTFILE" 2>/dev/null || echo 0); c=$((c+1)); echo "$c" > "$COUNTFILE"
 [ "$c" -lt 2 ] && exit 3
+sleep 3; exit 0
+EOF
+cat > "$work/slowfail.sh" <<'EOF'
+#!/bin/sh
+# rung 0 (no driver env): stays up past the window, THEN dies nonzero —
+# the rig's labwc case (A14 as proven): still a failure, keep stepping.
+# rung >= 1 (driver env set): exits clean at once.
+[ -n "${NCT_RENDER_DRIVER:-}" ] && exit 0
 sleep 3; exit 7
 EOF
 cat > "$work/rungcheck.sh" <<'EOF'
@@ -62,10 +70,17 @@ run_case allfail "$work/fail.sh" >/dev/null 2>&1; code=$?
 grep -q 'attempt rung=0' "$work/allfail/state/test.log" && grep -q 'attempt rung=3' "$work/allfail/state/test.log"; check "all-fail order spans 0..3" $?
 [ ! -f "$work/allfail/home/.local/state/nct/render-rung" ]; check "all-fail remembers nothing" $?
 
-# 2. fail fast on rung 0, stay up (then exit 7) on rung 1 -> success at 1
+# 2. fail fast on rung 0, stay up then exit clean on rung 1 -> success at 1
 run_case flaky "$work/flaky.sh" >/dev/null 2>&1; code=$?
-[ "$code" -eq 7 ]; check "flaky returns the staying-up exit code" $?
+[ "$code" -eq 0 ]; check "flaky returns the clean exit code" $?
 [ "$(cat "$work/flaky/home/.local/state/nct/render-rung")" = "1" ]; check "flaky remembers rung 1" $?
+
+# 2b. nonzero exit PAST the window still steps down (rig-proven A14:
+# labwc died 17 s in with the fast failures' signature)
+run_case slowfail "$work/slowfail.sh" >/dev/null 2>&1; code=$?
+[ "$code" -eq 0 ]; check "slowfail steps down and succeeds" $?
+grep -q 'failed after window' "$work/slowfail/state/test.log"; check "slowfail logs the after-window failure" $?
+[ "$(cat "$work/slowfail/home/.local/state/nct/render-rung")" = "1" ]; check "slowfail remembers rung 1" $?
 
 # 3. remembered rung 2 tried first, wraps to 0 which succeeds
 _casedir="$work/wrap"; mkdir -p "$_casedir/home/.local/state/nct" "$_casedir/state"

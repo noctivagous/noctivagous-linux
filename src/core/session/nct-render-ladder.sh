@@ -18,11 +18,13 @@
 #   3  full software rung 2 + compositor on WLR_RENDERER=pixman
 #      (= the A13 greeter configuration, now the bottom rung)
 #
-# An attempt SUCCEEDS when the command exits 0, or is still running
-# when the window (NCT_LADDER_WINDOW, default 10 s) passes, or — for
-# the greeter — the bridge's login-started marker appears (a login
-# succeeded; whatever exit follows is greetd's session transition,
-# not a rendering failure). ASSUMPTION A14 covers this heuristic.
+# An attempt SUCCEEDS when the command exits 0, or — for the greeter —
+# the bridge's login-started marker appears (a login succeeded;
+# whatever exit follows is greetd's session transition, not a
+# rendering failure). A nonzero exit is a failure whenever it happens:
+# the window (NCT_LADDER_WINDOW, default 10 s) only separates "failed
+# fast" from "failed after window" in the log — on the rig, labwc died
+# 17 s in with the same signature as the 2 s deaths (A14 as proven).
 #
 # Explicit configuration always wins over the ladder:
 #   NCT_RENDER_DRIVER / NCT_DISPLAY_DRIVER / WLR_RENDERER already set

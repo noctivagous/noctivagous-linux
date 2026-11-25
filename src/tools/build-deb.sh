@@ -30,8 +30,20 @@ cp -r "$SRC/system/etc" "$PKG/"
 mkdir -p "$PKG/usr/share" "$PKG/usr/lib/systemd"
 cp -r "$SRC/system/usr/share/wayland-sessions" "$PKG/usr/share/"
 cp -r "$SRC/system/usr/lib/systemd/user" "$PKG/usr/lib/systemd/"
+# Normalize ALL modes in the staging tree. cp -r inherits the build
+# tree's modes, and a checkout can carry restrictive ones: this
+# sandbox's worktrees are mode 2770 dirs / 0660 files, and the .deb
+# built from them shipped a /usr/lib/nct the greeter user could not
+# even traverse — greetd's session command failed to exec, the
+# greeter exited within ~1 s, and greetd start-limited (found by the
+# QEMU image boot smoke, 2026-11-25; the VirtualBox rig never saw it
+# because its checkout had ordinary modes). A package must not depend
+# on the build tree's umask: dirs 755, files 644, executables back
+# to 755.
+find "$PKG" -type d -exec chmod 755 {} +
+find "$PKG" -type f -exec chmod 644 {} +
 find "$PKG/usr/lib/nct" -name 'nct-*' -type f -exec chmod 755 {} +
-find "$PKG/usr/lib/nct/tools" "$PKG/usr/lib/nct/tests" -name '*.sh' -exec chmod 755 {} +
+find "$PKG/usr/lib/nct/tools" "$PKG/usr/lib/nct/tests" -name '*.sh' -type f -exec chmod 755 {} +
 # The control's "Replaces: greetd" is load-bearing: Debian's greetd
 # package ships its own /etc/greetd/config.toml and this package ships
 # ours at the same path; without Replaces, dpkg refuses the overwrite
@@ -64,6 +76,10 @@ mkdir -p "$PKG2/DEBIAN" "$PKG2/usr/lib/nct/godot"
 cd "$WORK" && unzip -o -q "$CACHE/godot.zip"
 install -m755 "$WORK"/Godot_v*-stable_linux.x86_64 "$PKG2/usr/lib/nct/godot/godot"
 cp "$SRC/godot/runtime/PIN.md" "$PKG2/usr/lib/nct/godot/PIN.md"
+# Same mode normalization as the foundation package (see above).
+find "$PKG2" -type d -exec chmod 755 {} +
+find "$PKG2" -type f -exec chmod 644 {} +
+chmod 755 "$PKG2/usr/lib/nct/godot/godot"
 cat > "$PKG2/DEBIAN/control" <<EOF
 Package: nct-godot-runtime
 Version: $VERSION
