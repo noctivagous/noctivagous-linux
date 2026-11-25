@@ -134,9 +134,13 @@ differs; only who performs the setup steps.
 ### Route A — VirtualBox
 
 Guest specification (both A1 and A2): \*\*4 GB RAM, 2 CPUs, 20 GB or
-more of disk, VMSVGA graphics with 3D acceleration.\*\* The host
-needs an x86-64 machine with hardware virtualization (VT-x/AMD-V)
-and roughly 25 GB free. This system is amd64 and VirtualBox
+more of virtual disk, VMSVGA graphics with 3D acceleration.\*\* The
+disk figure is a ceiling, not a footprint: VirtualBox disks are
+dynamically allocated, and the installed system is ≈1.6 GB (the
+built disk image is ≈2.1 GB), so the machine occupies ~2 GB on the
+host — the rest is headroom for building packages and snapshots in
+the guest. The host needs an x86-64 machine with hardware
+virtualization (VT-x/AMD-V) and roughly 25 GB free. This system is amd64 and VirtualBox
 virtualizes rather than emulates, so \*\*Apple Silicon Macs cannot
 run this route\*\* — on one of those, use Route B under QEMU. The
 guest needs internet access while provisioning (apt, and the
@@ -156,7 +160,8 @@ host-side console screenshot.
 **A2 · With the VirtualBox app alone:**
 
 1. Create a new machine: type Debian (64-bit), 4 GB RAM, 2 CPUs,
-   a virtual hard disk of 20 GB or more. In Settings → Display,
+   a virtual hard disk of 20 GB or more (dynamically allocated —
+   the system itself is ≈1.6 GB). In Settings → Display,
    set the graphics controller to **VMSVGA** and enable \*\*3D
    acceleration\*\*. Under Network, the default NAT is fine; for
    SSH from the host, add a port forwarding rule (host 2222 →
