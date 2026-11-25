@@ -18,5 +18,12 @@ case "$comp" in
     exec sway -c "$cfg" ;;
   labwc|*)
     cfgdir=${NCT_LABWC_CONFIG:-$src/core/compositor/labwc}
-    LABWC_CONFIG_DIR="$cfgdir" exec labwc ;;
+    # The whole session renders under the fallback ladder (A14): the
+    # rung environment is exported here, so labwc and everything it
+    # autostarts (shell, apps via nct-godot-run) inherit it. Native
+    # first; the software rung only when an attempt dies fast.
+    . "$here/nct-render-ladder.sh"
+    code=0
+    ladder_run "$state" session.log env LABWC_CONFIG_DIR="$cfgdir" labwc || code=$?
+    exit "$code" ;;
 esac

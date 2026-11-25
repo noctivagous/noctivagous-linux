@@ -84,6 +84,24 @@ class Greetd:
 
 USE_GREETD = bool(os.environ.get("GREETD_SOCK"))
 
+def mark_started():
+    """Drop the login-started marker in the greeter state dir.
+
+    The greeter session's render ladder (nct-render-ladder.sh) treats
+    this marker as proof the current attempt works: after a successful
+    START, whatever exit follows is greetd's session transition, not
+    a rendering failure, so the ladder must not step down.
+    """
+    state = os.environ.get("NCT_STATE_DIR")
+    if not state:
+        return
+    try:
+        os.makedirs(state, exist_ok=True)
+        with open(os.path.join(state, "login-started"), "w") as f:
+            f.write("started\n")
+    except OSError:
+        pass
+
 class Handler(socketserver.StreamRequestHandler):
     greetd = None
     def handle(self):
@@ -111,6 +129,8 @@ class Handler(socketserver.StreamRequestHandler):
             elif verb == "START":
                 if USE_GREETD and self.greetd is not None:
                     ok, why = self.greetd.start()
+                    if ok:
+                        mark_started()
                     self._reply("STARTED" if ok else f"FAIL {why}")
                 elif USE_GREETD:
                     self._reply("FAIL no successful AUTH first")
@@ -118,6 +138,7 @@ class Handler(socketserver.StreamRequestHandler):
                     subprocess.Popen(SESSION_CMD.split(),
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                      start_new_session=True)
+                    mark_started()
                     print(f"nct-greetd-bridge: START -> spawned session cmd: {SESSION_CMD}",
                           file=sys.stderr, flush=True)
                     self._reply("STARTED")

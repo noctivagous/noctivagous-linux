@@ -41,6 +41,12 @@ line per check), a log per failing check, screenshots.
 ## The fix loop
 
 1. Read summary.txt. For each FAIL, read its log before touching anything.
+   Rendering evidence lives with the sessions: the greeter's
+   /tmp/nct-greeter-state/cage.log and the user's
+   ~/.local/state/nct/session.log carry one `ladder: attempt` line per
+   rendering configuration tried (ASSUMPTION A14), and the rung that
+   stayed up is remembered in ~/.local/state/nct/render-rung (the
+   greeter's copy is under /var/lib/nct-greeter).
 2. Form the cause: provision gap, config shape, protocol detail, or a
    wrong assumption. Check ASSUMPTIONS.md — the failing check names the
    assumption it settles.

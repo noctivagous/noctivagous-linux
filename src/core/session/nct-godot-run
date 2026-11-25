@@ -9,14 +9,40 @@ if [ -z "$godot" ]; then
   done
 fi
 [ -n "$godot" ] || { echo "nct-godot-run: no godot runtime found (see godot/runtime/PIN.md)" >&2; exit 3; }
-driver=${NCT_RENDER_DRIVER:-}
-ddriver=${NCT_DISPLAY_DRIVER:-}
-if [ -n "$ddriver" ] && [ -n "$driver" ]; then
-  exec "$godot" --path "$proj" --display-driver "$ddriver" --rendering-driver "$driver" "$@"
-elif [ -n "$ddriver" ]; then
-  exec "$godot" --path "$proj" --display-driver "$ddriver" "$@"
-elif [ -n "$driver" ]; then
-  exec "$godot" --path "$proj" --rendering-driver "$driver" "$@"
-else
-  exec "$godot" --path "$proj" "$@"
+
+run_godot() {
+  # Reads the driver variables at call time: under the ladder they
+  # change per attempt (ladder_apply exports them first).
+  driver=${NCT_RENDER_DRIVER:-}
+  ddriver=${NCT_DISPLAY_DRIVER:-}
+  if [ -n "$ddriver" ] && [ -n "$driver" ]; then
+    "$godot" --path "$proj" --display-driver "$ddriver" --rendering-driver "$driver" "$@"
+  elif [ -n "$ddriver" ]; then
+    "$godot" --path "$proj" --display-driver "$ddriver" "$@"
+  elif [ -n "$driver" ]; then
+    "$godot" --path "$proj" --rendering-driver "$driver" "$@"
+  else
+    "$godot" --path "$proj" "$@"
+  fi
+}
+
+# Explicit driver configuration (an operator's choice, or the session
+# ladder's rung exported by nct-session / nct-greeter-session) wins:
+# run exactly that, once.
+if [ -n "${NCT_RENDER_DRIVER:-}" ] || [ -n "${NCT_DISPLAY_DRIVER:-}" ]; then
+  run_godot "$@"
+  exit $?
 fi
+
+# Otherwise the driver choice itself goes through the fallback ladder
+# (A14): native Vulkan first, opengl3 / X11-software when an attempt
+# dies fast. Rung 3 differs from rung 2 only in the compositor's
+# WLR_RENDERER, which a client does not consume — hence LADDER_MAX=2.
+case $0 in */*) _self=$0 ;; *) _self=$(command -v "$0") ;; esac
+here=$(cd "$(dirname "$_self")" && pwd)
+LADDER_MAX=2
+. "$here/nct-render-ladder.sh"
+state=${NCT_STATE_DIR:-$HOME/.local/state/nct}; mkdir -p "$state"
+code=0
+ladder_run "$state" godot-run.log run_godot "$@" || code=$?
+exit "$code"
