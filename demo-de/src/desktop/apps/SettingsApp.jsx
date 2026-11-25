@@ -10,6 +10,7 @@ import { appMode, setAppMode } from "../core/layers.js";
 import { store } from "../core/react.js";
 import { SettingsKit } from "./settingsKit.jsx";
 import { KNOT_FORMS } from "../../../ui-space/src/knots.js";
+import PlatformPicker from "./PlatformPicker.jsx";
 
 function Slider({ label, min, max, step, value, onChange, format }) {
   return (
@@ -40,7 +41,7 @@ export default function SettingsApp() {
   // when one arrives, show its page.
   useEffect(() => {
     if (ui.appSettingsTarget) {
-      setTab(4);
+      setTab(5);
       setSelPage(ui.appSettingsTarget);
     }
   }, [ui.appSettingsTarget]);
@@ -68,7 +69,7 @@ export default function SettingsApp() {
     <>
       <div className="tabs">
         <div className="tabstrip">
-          {["Appearance", "Desktop", "Controls", "Sound", "Applications"].map((n, i) => (
+          {["Appearance", "Desktop", "Environment", "Controls", "Sound", "Applications"].map((n, i) => (
             <button key={n} className={tab === i ? "sel" : ""} data-tab={i} onClick={() => setTab(i)}>{n}</button>
           ))}
         </div>
@@ -165,6 +166,21 @@ export default function SettingsApp() {
 
         {tab === 2 && (
           <div className="tabpane sel" data-pane="2">
+            <div className="cap" style={{ margin: "12px 0 7px" }}>Environment · Platform Configuration</div>
+            <div style={{ fontSize: 12, color: "#bdbdbd", marginBottom: 8 }}>
+              Where are you coming from? The environment adapts its keys and layout to the
+              platform you already know. This is also a step in the Setup Wizard.
+            </div>
+            <PlatformPicker settings={settings} />
+            <div className="cap" style={{ marginTop: 10 }}>
+              Foundation: keyboard shortcuts are not wired to the platform profile yet —
+              the profile, its modifier and its layout are what they will consult.
+            </div>
+          </div>
+        )}
+
+        {tab === 3 && (
+          <div className="tabpane sel" data-pane="3">
             <Slider label="Volume" min={0} max={100} value={settings.volume} onChange={(v) => setSetting("volume", v)} />
             <Slider label="Brightness" min={30} max={100} value={settings.brightness} onChange={(v) => setSetting("brightness", v)} />
             <Slider label="Pointer speed" min={0} max={100} value={ptr} onChange={setPtr} />
@@ -187,8 +203,8 @@ export default function SettingsApp() {
           </div>
         )}
 
-        {tab === 3 && (
-          <div className="tabpane sel" data-pane="3">
+        {tab === 4 && (
+          <div className="tabpane sel" data-pane="4">
             <Slider label="Volume" min={0} max={100} value={settings.volume} onChange={(v) => setSetting("volume", v)} />
             <div className="cap" style={{ margin: "10px 0 6px" }}>Output level</div>
             <div className="meter"><i style={{ width: settings.volume + "%" }}></i></div>
@@ -198,8 +214,8 @@ export default function SettingsApp() {
             </div>
           </div>
         )}
-        {tab === 4 && (
-          <div className="tabpane sel" data-pane="4">
+        {tab === 5 && (
+          <div className="tabpane sel" data-pane="5">
             <div className="appset">
               <div className="appset-list">
                 {APPS.map((ap) => (

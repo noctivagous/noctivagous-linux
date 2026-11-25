@@ -111,26 +111,41 @@ input[type=range].sys::-moz-range-thumb{width:13px;height:19px;background:#2c2c2
 .seg.gd-prof{flex:none}
 .seg.gd-prof button{min-height:22px;padding:2px 8px;font-size:9.5px}
 .seg.gd-prof button.sel{padding-top:0;border-top-width:2px}
-/* Greeter Dashboard widget panels */
+/* Greeter Dashboard widget panels.
+ * GRAY GRADATIONS (user, 2026-11-25): the greeter widgets sit on a
+ * ladder of grays LIGHTER than the greeter modal — the login
+ * window (—grad-window #353535→#222222 shell, —grad-content
+ * #202020→#080808 body) stays the darkest surface on the screen,
+ * and every panel steps up from it. The step is carried by the
+ * panel's shed class: gd-core (never shed) is the lightest, then
+ * gd-s4 … gd-s1 in shedding order, so the panels that survive
+ * longest also read lightest. All steps stay inside the gray
+ * family — no hue — and combine with the panels' existing
+ * furniture (LED title, queued gold state) unchanged. */
 .gd-col{display:flex;flex-direction:column;gap:10px;min-height:0;overflow:hidden}
-.gd-panel{background:linear-gradient(180deg,rgba(26,26,26,.93),rgba(13,13,13,.93));border:1px solid #000;border-radius:5px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05),4px 5px 14px rgba(0,0,0,.45);padding:9px 11px;font-size:11.5px;color:#cfcfcf}
-.gd-ptitle{font-family:var(--font-m);font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:#8d8d8d;display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.gd-panel{background:linear-gradient(180deg,rgba(58,58,58,.94),rgba(42,42,42,.94));border:1px solid #000;border-radius:5px;box-shadow:inset 0 1px 0 rgba(255,255,255,.10),4px 5px 14px rgba(0,0,0,.45);padding:9px 11px;font-size:11.5px;color:#e4e4e4}
+.gd-panel.gd-s1{background:linear-gradient(180deg,rgba(62,62,62,.94),rgba(45,45,45,.94))}
+.gd-panel.gd-s2{background:linear-gradient(180deg,rgba(68,68,68,.94),rgba(50,50,50,.94))}
+.gd-panel.gd-s3{background:linear-gradient(180deg,rgba(74,74,74,.94),rgba(55,55,55,.94))}
+.gd-panel.gd-s4{background:linear-gradient(180deg,rgba(80,80,80,.94),rgba(60,60,60,.94))}
+.gd-panel.gd-core{background:linear-gradient(180deg,rgba(88,88,88,.95),rgba(66,66,66,.95))}
+.gd-ptitle{font-family:var(--font-m);font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:#c2c2c2;display:flex;align-items:center;gap:6px;margin-bottom:6px}
 .gd-ptitle .led{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 6px rgba(92,184,92,.8);flex:none}
 .gd-big{font-family:var(--font-d);font-weight:600;font-size:21px;color:#f0f0f0;line-height:1.1;font-variant-numeric:tabular-nums}
-.gd-cond{font-family:var(--font-m);font-weight:400;font-size:10px;letter-spacing:.06em;color:#9d9d9d}
+.gd-cond{font-family:var(--font-m);font-weight:400;font-size:10px;letter-spacing:.06em;color:#c9c9c9}
 .gd-row{display:flex;justify-content:space-between;gap:10px;padding:1.5px 0;font-size:11px}
-.gd-k{font-family:var(--font-m);font-size:10px;letter-spacing:.05em;color:#8d8d8d;white-space:nowrap}
+.gd-k{font-family:var(--font-m);font-size:10px;letter-spacing:.05em;color:#bcbcbc;white-space:nowrap}
 .gd-v{color:#ddd;text-align:right;font-variant-numeric:tabular-nums}
 .gd-bar{height:7px;background:var(--grad-track);border:1px solid #000;border-radius:2px;box-shadow:inset 0 1px 3px rgba(0,0,0,.7);overflow:hidden;margin:3px 0 5px}
 .gd-bar>i{display:block;height:100%;background:linear-gradient(90deg,#2a6b2a,#5cb85c)}
 .gd-barrow{padding:1px 0}
 .gd-hourly{display:flex;gap:6px;margin:5px 0 3px}
-.gd-hour{flex:1;text-align:center;font-family:var(--font-m);font-size:10px;color:#bdbdbd;background:rgba(255,255,255,.03);border:1px solid rgba(0,0,0,.6);border-radius:3px;padding:3px 0}
-.gd-hour b{display:block;color:#777;font-weight:400;font-size:9px}
-.gd-msgs{margin-top:4px;border-top:1px solid rgba(255,255,255,.05);padding-top:4px}
+.gd-hour{flex:1;text-align:center;font-family:var(--font-m);font-size:10px;color:#e0e0e0;background:rgba(255,255,255,.07);border:1px solid rgba(0,0,0,.6);border-radius:3px;padding:3px 0}
+.gd-hour b{display:block;color:#b5b5b5;font-weight:400;font-size:9px}
+.gd-msgs{margin-top:4px;border-top:1px solid rgba(255,255,255,.14);padding-top:4px}
 .gd-msg{padding:2px 0}
 .gd-msg-subj{display:block;color:#e2e2e2;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.gd-msg-meta{display:block;font-family:var(--font-m);font-size:9.5px;color:#777}
+.gd-msg-meta{display:block;font-family:var(--font-m);font-size:9.5px;color:#b0b0b0}
 /* Animated instruments (GreeterWidgets.jsx) + click-to-queue */
 .gd-anim{display:block;width:100%;border-radius:4px;border:1px solid rgba(0,0,0,.65);background:#0a0f16}
 .gd-wxwrap{position:relative;margin-top:5px}
@@ -138,13 +153,29 @@ input[type=range].sys::-moz-range-thumb{width:13px;height:19px;background:#2c2c2
 .gd-wxcredit{position:absolute;right:6px;bottom:5px;font-family:var(--font-m);font-size:8.5px;letter-spacing:.08em;color:rgba(235,242,246,.85);text-shadow:0 1px 3px rgba(0,0,0,.85)}
 .gd-net{border:none;background:transparent;height:40px}
 .gd-map{height:84px}
-.gd-legend{font-family:var(--font-m);font-size:9.5px;color:#8d8d8d;letter-spacing:.03em;padding-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gd-legend{font-family:var(--font-m);font-size:9.5px;color:#bcbcbc;letter-spacing:.03em;padding-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Setup Wizard (shell/SetupWizard.jsx) — foundation only, not
+ * mounted yet; these styles wait with the component for the
+ * first-launch showing. */
+.setup-wizard{position:absolute;inset:0;z-index:900;display:flex;align-items:center;justify-content:center;background:rgba(5,5,5,.6)}
+.setup-wizard-card{width:480px;max-width:calc(100vw - 32px);background:var(--grad-window);border:2px solid #000;border-radius:6px;box-shadow:12px 14px 34px rgba(0,0,0,.75);padding:18px 20px}
+/* Now Playing transport (user, 2026-11-25): the playback widget
+ * carries its own play controls — prev / play-pause / next. */
+.gd-transport{display:flex;gap:6px;align-items:center;margin-top:2px}
+.gd-tbtn{width:30px;height:26px;min-height:26px;padding:0;display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(255,255,255,.13),rgba(255,255,255,.04));border:1px solid #000;border-radius:3px;box-shadow:inset 0 1px 0 rgba(255,255,255,.14);color:#e8e8e8;font-size:11px;cursor:pointer}
+.gd-tbtn:hover{background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.08));color:#fff}
+.gd-tbtn.main{width:36px;font-size:12px}
+/* Email unread buckets (user, 2026-11-25): day / week / month. */
+.gd-buckets{display:flex;gap:6px;margin-top:5px}
+.gd-bucket{flex:1;text-align:center;background:rgba(255,255,255,.07);border:1px solid rgba(0,0,0,.6);border-radius:3px;padding:3px 0 4px}
+.gd-bucket b{display:block;font-family:var(--font-d);font-weight:600;font-size:15px;color:#f2f2f2;line-height:1.15;font-variant-numeric:tabular-nums}
+.gd-bucket span{font-family:var(--font-m);font-size:8.5px;letter-spacing:.14em;color:#c4c4c4;text-transform:uppercase}
 .gd-click{cursor:pointer}
 .gd-click:hover{border-color:rgba(216,185,106,.45)}
 .gd-click:focus-visible{outline:1px solid rgba(216,185,106,.7);outline-offset:1px}
 .gd-queued{border-color:rgba(216,185,106,.75);box-shadow:inset 0 1px 0 rgba(255,255,255,.05),inset 0 0 0 1px rgba(216,185,106,.35),4px 5px 14px rgba(0,0,0,.45)}
 .gd-queued .gd-ptitle .led{background:#d8b96a;box-shadow:0 0 6px rgba(216,185,106,.9)}
-.gd-qtag{margin-left:auto;font-size:8.5px;letter-spacing:.14em;color:#777}
+.gd-qtag{margin-left:auto;font-size:8.5px;letter-spacing:.14em;color:#b5b5b5}
 .gd-queued .gd-qtag{color:#d8b96a}
 .login-clock{text-align:center}
 .login-clock .time{font-family:var(--font-d);font-weight:600;font-size:clamp(44px,8vw,72px);letter-spacing:.02em;color:#f0f0f0;line-height:1;text-shadow:0 2px 12px rgba(0,0,0,.8);font-variant-numeric:tabular-nums}
@@ -176,8 +207,12 @@ input[type=range].sys::-moz-range-thumb{width:13px;height:19px;background:#2c2c2
 @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-9px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(4px)}}
 .avatar-row{display:flex;flex-direction:column;align-items:center;gap:8px;padding:4px 0 10px}
 .avatar{position:relative;overflow:hidden;width:72px;height:72px;border-radius:50%;background:radial-gradient(circle at 32% 28%,#4a4a4a,#222 60%,#141414);border:2px solid #000;box-shadow:0 0 0 2px rgba(92,184,92,.55),0 4px 10px rgba(0,0,0,.6),inset 0 1px 0 rgba(140,140,140,.6)}
-.avatar-init{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--font-d);font-weight:700;font-size:27px;color:#e8e8e8}
-.knot-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+/* Medallion layering (user, 2026-11-25): the user's initial stays
+ * BEHIND the rotating knot — visible through the knot's gaps and
+ * as the fallback when the canvas is not running. The z-order is
+ * stated explicitly here so a later edit cannot silently flip it. */
+.avatar-init{position:absolute;inset:0;z-index:0;display:flex;align-items:center;justify-content:center;font-family:var(--font-d);font-weight:700;font-size:27px;color:#e8e8e8}
+.knot-canvas{position:absolute;inset:0;z-index:1;width:100%;height:100%;display:block}
 .avatar.sm{width:52px;height:52px;font-size:20px}
 .avatar-row .who{font-family:var(--font-d);font-weight:600;letter-spacing:.14em;font-size:14px;color:#eee;text-transform:uppercase}
 .avatar-row .role{font-family:var(--font-m);font-size:10px;letter-spacing:.16em;color:#7d7d7d;text-transform:uppercase}
@@ -207,17 +242,79 @@ input[type=range].sys::-moz-range-thumb{width:13px;height:19px;background:#2c2c2
 .login-bottom .sp{flex:1}
 .kbd{font-family:var(--font-m);font-size:10.5px;color:#8a8a8a;display:flex;gap:6px;align-items:center}
 /* ---------- DESKTOP ---------- */
+/* LAYER SCALE — the stacking bands for system objects on the
+ * desktop screen, lowest to highest. Every shell element that
+ * paints over the desktop belongs to exactly one band; when a
+ * new system object is added, put it in its band here first.
+ *
+ *    0   wallpaper / backdrop canvas (40: brightness veil)
+ *   10+  windows — inline z inside #winLayer, grows with focus
+ *  200   (retired: the dock used to sit here — see 500)
+ *  240   desktop widgets (.widgets)
+ *  250   FURNITURE BAND — launch bars (.icons, .xbar), Window
+ *        Stack (.wtr-wrap): above any plausible window z
+ *  300   MENU BAND — the system menu bar (#desktopScreen
+ *        .sysbar) together with its .dropdown panels (z 300
+ *        inside the bar), and the launcher panel (320)
+ *  400   patch layer (.patch-layer, patch cords)
+ *  500   CONTEXT-MENU BAND — #ctxMenu (z 500, position:fixed).
+ *        It is rendered INSIDE the dock, so the dock itself
+ *        carries this band's z (see .dock below): a fixed
+ *        element still paints inside its ancestor's stacking
+ *        context, so the menu's own 500 meant nothing while
+ *        the dock sat at 200.
+ *  800   toast · 900 shutdown overlay
+ * 9990+  transient topmost: key-click HUD (keyclicks.css),
+ *        widget drag ghost (9999)
+ *
+ * THE RULE the bands depend on: z-index only competes INSIDE
+ * one stacking context. A positioned element with a z-index —
+ * and the sysbar and dock both add backdrop-filter on top —
+ * forms a context that CAPS its whole subtree at its own z.
+ * So an element whose children must reach a band must itself
+ * sit in that band: a dropdown's z 300 inside a bar capped at
+ * 60 loses to a launch bar at 250 every time. That was the bug
+ * this scale fixes — the menu bar sat at 60 (the shared rule
+ * with the login topbar, which has no menus and stays 60), so
+ * its open dropdowns painted UNDER the top-left launch bar. */
+#desktopScreen .sysbar{z-index:300}
 .sysbar{gap:4px !important}
 .menuwrap{position:relative}
 .menubtn{background:transparent;border:1px solid transparent;color:#c4c4c4;padding:5px 10px;min-height:30px;cursor:pointer;font-size:12.5px;font-weight:500;border-radius:3px;display:inline-flex;gap:6px;align-items:center}
 .menubtn:hover,.menubtn.open{background:var(--grad-btn-h);border-color:#000;color:#fff}
 .menubtn.sys{font-family:var(--font-d);font-weight:700;letter-spacing:.14em;font-size:11.5px}
+/* This 300 ranks the panel inside the sysbar's stacking
+ * context; the bar itself carries the menu band against the
+ * rest of the shell (see the LAYER SCALE at DESKTOP). */
 .dropdown{position:absolute;top:calc(100% + 5px);left:0;min-width:210px;background:linear-gradient(180deg,rgba(32,32,32,.97),rgba(16,16,16,.97));backdrop-filter:blur(10px);border:1px solid #000;box-shadow:6px 8px 20px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.06);border-radius:5px;padding:5px;display:none;z-index:300}
 .dropdown.open{display:block}
 .dropdown button{display:flex;width:100%;align-items:center;gap:9px;background:none;border:none;color:#c9c9c9;padding:8px 9px;min-height:36px;cursor:pointer;font-size:12.5px;text-align:left;border-radius:3px}
 .dropdown button:hover{background:linear-gradient(90deg,#2e4a2e,#223322);color:#fff}
 .dropdown .sep{height:1px;background:var(--hair);margin:4px 6px}
 .dropdown .k{margin-left:auto;font-family:var(--font-m);font-size:10px;color:#777}
+/* Menu trees (core/menuTree.jsx): a menu's sections lay out by
+ * their node presentation — list (1D vertical by default, in
+ * `columns` columns; horizontal when direction is "h"), grid
+ * cards, or accordion groups that expand in place. */
+.mtree .mlist{column-gap:18px}
+.mtree .mlist .mitem{break-inside:avoid;min-width:148px}
+.mtree .mrow{display:flex;flex-direction:row;gap:4px;flex-wrap:wrap}
+.mtree .mrow .mitem{width:auto;white-space:nowrap}
+.mtree .mgrid{display:grid;gap:5px}
+.mtree .mgrid .mitem{width:auto;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;padding:9px 4px 7px;min-height:52px}
+.mtree .mcard .mhint{font-family:var(--font-m);font-size:8.5px;letter-spacing:.06em;color:#777}
+.mtree .mitem .mic{display:inline-flex;flex:none}
+.mtree .msec{margin-top:2px}
+.mtree .msec + .msec{border-top:1px solid var(--hair);margin-top:5px;padding-top:5px}
+.mtree .msec-h{font-family:var(--font-m);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:#8d8d8d;padding:3px 9px 4px}
+.mtree .macc-h{font-weight:600}
+.mtree .macc-arrow{margin-left:auto;color:#8d8d8d}
+.mtree .macc-body{padding-left:10px;border-left:1px solid var(--hair);margin:2px 0 2px 9px}
+.launcher .mitem{display:flex;width:100%;align-items:center;gap:10px;background:none;border:none;color:#d2d2d2;padding:8px;min-height:40px;cursor:pointer;border-radius:4px;font-size:13px;text-align:left}
+.launcher .mitem:hover{background:linear-gradient(90deg,#2e4a2e,#223322);color:#fff}
+.launcher .mitem .mhint{margin-left:auto;font-family:var(--font-m);font-size:9px;color:#777}
+.launcher .mgrid .mitem{width:auto;flex-direction:column;align-items:center;gap:4px;text-align:center;padding:9px 2px 7px;min-height:58px;font-size:11.5px}
+.launcher .mgrid .mitem .mhint{margin-left:0}
 .ws-ind{position:absolute;left:50%;transform:translateX(-50%);font-family:var(--font-m);font-size:10.5px;letter-spacing:.18em;color:#8f8f8f;text-transform:uppercase;display:flex;gap:8px;align-items:center}
 .desk-area{position:absolute;inset:34px 0 48px;overflow:hidden}
 /* Furniture z-band: windows carry z from 10 upward, growing with
@@ -235,14 +332,31 @@ input[type=range].sys::-moz-range-thumb{width:13px;height:19px;background:#2c2c2
 .dicon .dib{width:38px;height:38px;background:linear-gradient(145deg,#2e2e2e,#181818);border:1px solid #000;box-shadow:inset 0 1px 0 rgba(110,110,110,.5),0 3px 6px rgba(0,0,0,.5);border-radius:6px;display:flex;align-items:center;justify-content:center;color:#cfcfcf}
 .dicon span{font-size:11px;text-shadow:0 1px 3px #000;text-align:center;line-height:1.25}
 .widgets{position:absolute;top:14px;right:108px;display:flex;flex-direction:column;gap:10px;z-index:240;width:218px}
-.widget{background:linear-gradient(180deg,rgba(30,30,30,.88),rgba(14,14,14,.88));backdrop-filter:blur(8px);border:1px solid #000;box-shadow:5px 6px 16px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.06);border-radius:6px;padding:11px 12px}
+/* Desktop widgets carry a GRAY GRADATION step (--wgt/--wgb, set
+ * by the wg-1 … wg-4 classes) IN COMBINATION WITH their style set
+ * (ws-panel / ws-glass / ws-recessed below): the step picks the
+ * widget's place on the gray ladder, the style set renders that
+ * step as a solid plate, a translucent pane, or a sunken recess.
+ * wg-1 is the lightest step, wg-4 the darkest; the default
+ * (no wg- class) is the historical 30→14 plate. */
+.widget{--wgt:30 30 30;--wgb:14 14 14;background:linear-gradient(180deg,rgb(var(--wgt)/.88),rgb(var(--wgb)/.88));backdrop-filter:blur(8px);border:1px solid #000;box-shadow:5px 6px 16px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.06);border-radius:6px;padding:11px 12px}
+.widget.wg-1{--wgt:62 62 62;--wgb:44 44 44}
+.widget.wg-2{--wgt:52 52 52;--wgb:36 36 36}
+.widget.wg-3{--wgt:42 42 42;--wgb:27 27 27}
+.widget.wg-4{--wgt:34 34 34;--wgb:19 19 19}
 .widget .wtime{font-family:var(--font-d);font-size:30px;font-weight:600;color:#f2f2f2;line-height:1;font-variant-numeric:tabular-nums}
 .widget .wdate{font-family:var(--font-m);font-size:10px;letter-spacing:.16em;color:#999;text-transform:uppercase;margin-top:5px}
 .wmrow{display:grid;grid-template-columns:34px 1fr 40px;gap:8px;align-items:center;font-family:var(--font-m);font-size:10px;color:#a9a9a9;padding:3px 0}
 .wmrow .meter{height:8px}
 .wmrow b{text-align:right;font-weight:500;color:#ddd}
 /* dock */
-.dock{position:absolute;left:0;right:0;bottom:0;height:48px;display:flex;align-items:center;gap:6px;padding:0 8px;background:linear-gradient(0deg,rgba(10,10,10,.96),rgba(24,24,24,.94));backdrop-filter:blur(10px);border-top:1px solid #000;box-shadow:0 -1px 0 rgba(255,255,255,.05);z-index:200}
+/* The dock carries the CONTEXT-MENU band (500 in the layer
+ * scale above): #ctxMenu is its child, and the dock's own z is
+ * the ceiling for everything inside it. The dock strip itself
+ * overlaps nothing in the higher bands — the desk area ends
+ * exactly where the dock begins — so the higher z changes only
+ * its fixed children's reach, not the strip's own painting. */
+.dock{position:absolute;left:0;right:0;bottom:0;height:48px;display:flex;align-items:center;gap:6px;padding:0 8px;background:linear-gradient(0deg,rgba(10,10,10,.96),rgba(24,24,24,.94));backdrop-filter:blur(10px);border-top:1px solid #000;box-shadow:0 -1px 0 rgba(255,255,255,.05);z-index:500}
 .startbtn{font-family:var(--font-d);font-weight:700;letter-spacing:.12em;font-size:11.5px;background:var(--grad-primary);color:#d9ffd9;border:1px solid #000;border-radius:4px;padding:0 14px;height:38px;cursor:pointer;display:inline-flex;gap:8px;align-items:center;box-shadow:inset 0 1px 0 rgba(120,220,120,.25);flex:none}
 .startbtn:hover{filter:brightness(1.2)}
 .tasks{display:flex;gap:5px;flex:1;overflow-x:auto;overflow-y:hidden;padding:3px 0;scrollbar-width:none}
@@ -535,10 +649,30 @@ body.kc-textmode #loginScreen .topbar{box-shadow:inset 0 0 0 999px rgba(255,122,
 .dicon.layer.sel span{color:#a9f2e6}
 
 /* Widget style sets (the 0 key cycles them per widget).
- * panel = the default dark plate; glass = lighter and more
- * transparent; recessed = sunken into the desktop. */
-.widget.ws-glass{background:linear-gradient(180deg,rgba(96,116,134,.38),rgba(40,52,66,.30));border-color:rgba(255,255,255,.22);box-shadow:5px 6px 16px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.22)}
-.widget.ws-recessed{background:linear-gradient(180deg,#0e0e0e,#171717);border-color:#000;box-shadow:inset 0 3px 12px rgba(0,0,0,.85),inset 0 -1px 0 rgba(255,255,255,.05)}
+ * panel = the default plate; glass = the widget's gray step
+ * rendered translucent; recessed = the same step inverted and
+ * sunken into the desktop. Each set renders the widget's own
+ * gradation step (--wgt/--wgb), so style and gradation combine
+ * instead of the style flattening the step away. */
+/* Widget hosts (user, 2026-11-25): an unfrozen widget's host is
+ * live — it drags like a window. Dragged widgets leave the
+ * .widgets column for .widget-layer, at their stored position;
+ * the layer itself takes no events, only the hosts do. */
+.widget-host.live{cursor:grab}
+.widget-host.live:active{cursor:grabbing}
+.widget-layer{position:absolute;inset:0;pointer-events:none;z-index:241}
+.widget-layer .widget-host{position:absolute;width:218px;pointer-events:auto}
+.widget-layer .widget-host.collapsed:has(.wtitlebar.vert){width:auto}
+/* A widget collapsed into its titlebar: horizontal like a
+ * window's bar, or a vertical standing strip. The bar carries
+ * the widget's name and its live summary (the clock's time). */
+.widget.wtitlebar{display:flex;align-items:center;gap:8px;min-height:28px;padding:5px 10px;border-radius:5px}
+.wtitlebar .wt-name{font-family:var(--font-d);font-weight:600;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#d8d8d8;white-space:nowrap}
+.wtitlebar .wt-info{margin-left:auto;font-family:var(--font-m);font-size:11px;color:#f0f0f0;font-variant-numeric:tabular-nums;white-space:nowrap}
+.widget.wtitlebar.vert{writing-mode:vertical-rl;flex-direction:row;width:28px;height:196px;align-items:center;padding:10px 5px}
+.wtitlebar.vert .wt-info{margin-left:0;margin-top:auto}
+.widget.ws-glass{background:linear-gradient(180deg,rgb(var(--wgt)/.42),rgb(var(--wgb)/.32));border-color:rgba(255,255,255,.22);box-shadow:5px 6px 16px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.22)}
+.widget.ws-recessed{background:linear-gradient(180deg,rgb(var(--wgb)/.95),rgb(var(--wgt)/.9));border-color:#000;box-shadow:inset 0 3px 12px rgba(0,0,0,.85),inset 0 -1px 0 rgba(255,255,255,.05)}
 
 /* Frozen elements (the \ key): a frost cast, desaturated and
  * brightened; the body takes no events, so hosted content and

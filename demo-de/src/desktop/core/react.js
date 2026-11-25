@@ -32,4 +32,14 @@ export function setGreeter(patch) {
   store.set("settings", { greeter: { ...cur, ...patch } });
 }
 
+export function setPlatform(patch) {
+  const cur = store.get().settings.platform || {};
+  store.set("settings", { platform: { ...cur, ...patch } });
+}
+
+export function setSetup(patch) {
+  const cur = store.get().settings.setup || {};
+  store.set("settings", { setup: { ...cur, ...patch } });
+}
+
 export { store };

@@ -32,6 +32,7 @@
  * hide, group by group, until only the login modal remains.
  */
 
+import { useEffect, useState } from "react";
 import { useSlice, store } from "../core/react.js";
 import { GREETER_DATA as D } from "./greeterData.js";
 import { WeatherAnim, SunburstProcesses, VehicleMap, CamGrid, NetChart } from "../widgets/greeterWidgets.jsx";
@@ -89,6 +90,23 @@ export default function GreeterDashboard({ profile, children }) {
     st = D.storage, sy = D.system, ne = D.network, po = D.power,
     up = D.updates, se = D.security, np = D.nowPlaying, ve = D.vehicle;
   const unread = em.accounts.reduce((a, x) => a + x.unread, 0);
+  /* Now Playing transport state (greeter-local, like the profile):
+   * playing advances the progress bar once a second; prev/next
+   * restart the track's progress. The track itself is the data
+   * table's single entry. */
+  const [playing, setPlaying] = useState(true);
+  const [npPct, setNpPct] = useState(np.pct);
+  useEffect(() => {
+    if (!playing) return undefined;
+    const id = setInterval(() => setNpPct((p) => (p + 0.4 >= 100 ? 0 : p + 0.4)), 1000);
+    return () => clearInterval(id);
+  }, [playing]);
+  const npLabel = (() => {
+    const total = 309; // 5:09, the data table's label denominator
+    const cur = Math.round((npPct / 100) * total);
+    const f = (s) => Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+    return f(cur) + " / " + f(total);
+  })();
 
   return (
     <div className="login-wrap gdash">
@@ -101,6 +119,11 @@ export default function GreeterDashboard({ profile, children }) {
 
         <Panel title={"Email · " + unread + " unread"} shed={em.shed} personal testId="email" profile={profile}>
           <div className="gd-big">{unread}<span className="gd-cond"> unread</span></div>
+          <div className="gd-buckets">
+            <div className="gd-bucket"><b>{em.unreadBuckets.day}</b><span>Day</span></div>
+            <div className="gd-bucket"><b>{em.unreadBuckets.week}</b><span>Week</span></div>
+            <div className="gd-bucket"><b>{em.unreadBuckets.month}</b><span>Month</span></div>
+          </div>
           <div className="gd-msgs">
             {em.messages.map((m, i) => (
               <div className="gd-msg" key={i}>
@@ -176,8 +199,13 @@ export default function GreeterDashboard({ profile, children }) {
             <span className="gd-msg-subj">{np.track}</span>
             <span className="gd-msg-meta">{np.artist}</span>
           </div>
-          <Bar pct={np.pct} />
-          <Row k="PROGRESS" v={np.label} />
+          <Bar pct={npPct} />
+          <Row k="PROGRESS" v={npLabel} />
+          <div className="gd-transport">
+            <button type="button" className="gd-tbtn" aria-label="Previous track" onClick={() => setNpPct(0)}>⏮</button>
+            <button type="button" className="gd-tbtn main" aria-label={playing ? "Pause" : "Play"} onClick={() => setPlaying((p) => !p)}>{playing ? "⏸" : "▶"}</button>
+            <button type="button" className="gd-tbtn" aria-label="Next track" onClick={() => setNpPct(0)}>⏭</button>
+          </div>
         </Panel>
       </div>
     </div>

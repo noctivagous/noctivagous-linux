@@ -28,10 +28,15 @@ const initialState = {
     brightness: 78,
     wallpaper: 0, // classic gradient index (backdrop.mode 'classic')
     widgetStyles: {}, // widget id -> built-in style-set index (the 0 key cycles it)
+    // widgetPos: widget id -> {x, y} once an unfrozen widget has been dragged out of the column
+    // widgetCollapsed: widget id -> "h" | "v" (collapsed into a horizontal / vertical titlebar)
+    // widgetFrozen: widget id -> bool (absent = frozen, the default)
     appSettings: {}, // app id -> that app's own settings (edited from its launch menu's Settings…)
     launchColumn: {}, // the launch bar's own settings (its Configure page; the key predates the rename)
     backdrop: { ...BACKDROP_DEFAULTS },
     greeter: { knot: "trefoil", knotSpeed: 1 }, // the greeter medallion: knot form + rotation rate
+    platform: { origin: null }, // Platform Configuration (core/platform.js): "mac" | "windows" | "linux" | null until chosen
+    setup: { completed: false }, // the Setup Wizard (shell/SetupWizard.jsx): foundation only, not yet shown
   },
   windows: {
     order: [], // app ids, in open order (taskbar order)

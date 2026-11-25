@@ -122,7 +122,7 @@ export function SunburstProcesses({ procs, ramTotal }) {
     });
     root.sum((d) => d.cur || 0);
     partition().size([Math.PI * 2, 56])(root);
-    const cx = 120, cy = 90, rot = t * 0.000045;
+    const cx = 240, cy = 108, rot = t * 0.000045;
     ctx.clearRect(0, 0, cv.width, cv.height);
     const nodes = [];
     root.each((n) => { if (n.depth >= 1) nodes.push(n); });
@@ -138,6 +138,37 @@ export function SunburstProcesses({ procs, ramTotal }) {
         ctx.fill();
       }
     }
+    /* Annotations (user, 2026-11-25): each process GROUP is
+     * labelled on the chart itself with the common two-segment
+     * leader line — one segment out from the ring, then a
+     * horizontal segment — ending in the group's name and total.
+     * Drawn on the same canvas pass, so the labels track the
+     * ring's slow rotation instead of sitting in a static list. */
+    const fmtMB = (v) => v >= 1024 ? (v / 1024).toFixed(1) + " GB" : Math.round(v) + " MB";
+    ctx.font = "9px 'IBM Plex Mono', monospace";
+    for (const n of nodes) {
+      if (n.depth !== 1) continue;
+      const a = (n.x0 + n.x1) / 2 + rot;
+      const side = Math.cos(a) >= 0 ? 1 : -1;
+      const p1x = cx + Math.cos(a) * 88, p1y = cy + Math.sin(a) * 88;
+      const p2x = cx + Math.cos(a) * 104, p2y = cy + Math.sin(a) * 104;
+      const p3x = p2x + side * 22;
+      ctx.strokeStyle = "rgba(205,216,222,.6)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(p1x, p1y);
+      ctx.lineTo(p2x, p2y);
+      ctx.lineTo(p3x, p2y);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(220,228,233,.9)";
+      ctx.beginPath();
+      ctx.arc(p1x, p1y, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#cdd9df";
+      ctx.textAlign = side > 0 ? "left" : "right";
+      ctx.fillText(n.data.name + " " + fmtMB(n.value), p3x + side * 4, p2y + 3);
+    }
+    ctx.textAlign = "center";
     const used = leaves.reduce((a, n) => a + n.value, 0);
     ctx.fillStyle = "#d7e0e6";
     ctx.font = "600 21px 'IBM Plex Mono', monospace";
@@ -154,7 +185,7 @@ export function SunburstProcesses({ procs, ramTotal }) {
   });
   return (
     <div>
-      <canvas ref={cvRef} className="gd-anim gd-sun" width={480} height={180} data-anim="sunburst" />
+      <canvas ref={cvRef} className="gd-anim gd-sun" width={480} height={216} data-anim="sunburst" />
       <div className="gd-legend" ref={legendRef}></div>
     </div>
   );

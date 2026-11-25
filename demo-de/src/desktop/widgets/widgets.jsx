@@ -24,13 +24,21 @@ import { WeatherAnim, SunburstProcesses, VehicleMap, CamGrid, NetChart } from ".
  * selected index per widget (settings.widgetStyles). */
 export const WIDGET_STYLES = ["panel", "glass", "recessed"];
 
+/* GRAY GRADATIONS (user, 2026-11-25): each desktop widget also
+ * carries a gradation step (wg-1 lightest … wg-4 darkest) that
+ * COMBINES with its style set — the styles render the step as a
+ * plate, a translucent pane, or a recess (styles/nct-desktop.css,
+ * the --wgt/--wgb variables). Registry entries name their step;
+ * a caller may override it with the `gray` prop. */
+export const WIDGET_GRAYS = ["wg-1", "wg-2", "wg-3", "wg-4"];
+
 /* The desktop Clock: local time + date. `portsNode` is the
  * shell's PortDots element when the patch bay has this widget's
  * ports open; `preview` renders the bare widget for the Widgets
  * app's cards, without the desktop's data hooks. */
-export function ClockWidget({ now, hour24, styleName, frozen, portsNode, preview }) {
+export function ClockWidget({ now, hour24, styleName, gray, frozen, portsNode, preview }) {
   return (
-    <div className={"widget ws-" + (styleName || "panel") + (frozen ? " frozen" : "")}
+    <div className={"widget " + (gray || "wg-1") + " ws-" + (styleName || "panel") + (frozen ? " frozen" : "")}
       {...(preview ? {} : { "data-widget": "clock", "data-configure": "widget:clock", "data-patch-owner": "clock" })}>
       <div className="cap" style={{ marginBottom: 6 }}>Local time · <span style={{ color: "#5c5c5c" }}>W-01</span></div>
       <div className="wtime">{(() => {
@@ -47,10 +55,10 @@ export function ClockWidget({ now, hour24, styleName, frozen, portsNode, preview
 
 /* The desktop System Load: CPU / MEM / NET meters fed by the
  * shell's simulated load (ui.load). */
-export function SysLoadWidget({ load, styleName, frozen, portsNode, preview }) {
+export function SysLoadWidget({ load, styleName, gray, frozen, portsNode, preview }) {
   const l = load || { cpu: 0, mem: 0, net: 0 };
   return (
-    <div className={"widget ws-" + (styleName || "panel") + (frozen ? " frozen" : "")}
+    <div className={"widget " + (gray || "wg-2") + " ws-" + (styleName || "panel") + (frozen ? " frozen" : "")}
       {...(preview ? {} : { "data-widget": "sysload", "data-configure": "widget:sysload", "data-patch-owner": "sysload" })}>
       <div className="cap" style={{ marginBottom: 7 }}>System load · <span style={{ color: "#5c5c5c" }}>W-02</span></div>
       {portsNode}
@@ -66,8 +74,8 @@ export function SysLoadWidget({ load, styleName, frozen, portsNode, preview }) {
  * app's cards, settings.desktopWidgets); greeter entries are
  * the sign-in dashboard's panels. */
 export const WIDGETS = [
-  { id: "clock", name: "Clock", surface: "desktop", component: ClockWidget },
-  { id: "sysload", name: "System Load", surface: "desktop", component: SysLoadWidget },
+  { id: "clock", name: "Clock", surface: "desktop", component: ClockWidget, gray: "wg-1" },
+  { id: "sysload", name: "System Load", surface: "desktop", component: SysLoadWidget, gray: "wg-2" },
   { id: "weather", name: "Weather", surface: "greeter", component: WeatherAnim },
   { id: "processes", name: "Processes", surface: "greeter", component: SunburstProcesses },
   { id: "vehicle", name: "Vehicle", surface: "greeter", component: VehicleMap },
@@ -76,3 +84,41 @@ export const WIDGETS = [
 ];
 export const widgetById = (id) => WIDGETS.find((w) => w.id === id);
 export const DEFAULT_DESKTOP_WIDGETS = ["clock", "sysload"];
+
+/* The live one-line summary a widget shows when it is collapsed
+ * into its titlebar (user, 2026-11-25): the bar still carries
+ * the widget's essential information — the clock's bar shows
+ * the time, the load widget's bar shows CPU · MEM. */
+export function widgetTitleInfo(id, { now, load, hour24 } = {}) {
+  if (id === "clock" && now) {
+    if (hour24 !== false) return hm(now);
+    let h = now.getHours() % 12;
+    if (h === 0) h = 12;
+    return pad(h) + ":" + pad(now.getMinutes()) + " " + (now.getHours() < 12 ? "AM" : "PM");
+  }
+  if (id === "sysload") {
+    const l = load || { cpu: 0, mem: 0, net: 0 };
+    return "CPU " + l.cpu + "% · MEM " + l.mem + "%";
+  }
+  return "";
+}
+
+/* A widget collapsed into its titlebar (user, 2026-11-25):
+ * horizontal (a bar like a window's) or vertical (a standing
+ * strip). It carries the widget's name and its live title info,
+ * keeps the widget's gradation step + style set, and keeps the
+ * shell's data-widget / data-configure hooks so right-click,
+ * the 9 key and Configure… all still find the widget. */
+export function WidgetTitlebar({ id, orient, now, load, hour24, styleName, gray, frozen }) {
+  const w = widgetById(id);
+  if (!w) return null;
+  const info = widgetTitleInfo(id, { now, load, hour24 });
+  return (
+    <div className={"widget wtitlebar " + (gray || w.gray || "wg-2") + " ws-" + (styleName || "panel")
+        + (orient === "v" ? " vert" : "") + (frozen ? " frozen" : "")}
+      data-widget={id} data-configure={"widget:" + id}>
+      <span className="wt-name">{w.name}</span>
+      {info ? <span className="wt-info">{info}</span> : null}
+    </div>
+  );
+}

@@ -61,6 +61,10 @@ export const GREETER_DATA = {
       { name: "noct@muse.ai", unread: 5 },
       { name: "Personal", unread: 9 },
     ],
+    /* Unread divided by day / week / month (user, 2026-11-25):
+     * nested buckets — day ⊆ week ⊆ month, and month is the
+     * total unread across the accounts above. */
+    unreadBuckets: { day: 3, week: 8, month: 14 },
     messages: [
       { from: "Kavi", subject: "Greeter Dashboard build verified", time: "08:41" },
       { from: "M—", subject: "Re: what the machine is for", time: "06:12" },

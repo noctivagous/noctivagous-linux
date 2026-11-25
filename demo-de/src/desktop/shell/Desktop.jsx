@@ -16,16 +16,47 @@ import {
 } from "../core/patchbay.js";
 import { toggleLayer, toggleLayerFrozen, closeLayer, appMode, setAppMode } from "../core/layers.js";
 import { useNow, hms, hm, fullDate, pad } from "./useNow.js";
-import { WIDGETS, widgetById, WIDGET_STYLES, DEFAULT_DESKTOP_WIDGETS, ClockWidget, SysLoadWidget } from "../widgets/widgets.jsx";
+import { WIDGETS, widgetById, WIDGET_STYLES, DEFAULT_DESKTOP_WIDGETS, ClockWidget, SysLoadWidget, WidgetTitlebar } from "../widgets/widgets.jsx";
+import { MenuTree, menu as menuNode, item as menuItem, sep as menuSep, group as menuGroup } from "../core/menuTree.jsx";
 
+/* The system menu bar's menus are menu TREES (core/menuTree.jsx):
+ * each carries the default presentation — a list laid out in
+ * multiple columns (columns: 2) — unless it sets its own. */
 const MENUS = {
-  File: [["New Window", "files"], ["Open Terminal", "terminal"], ["—"], ["Lock Screen", "lock"], ["Log Out…", "logout"]],
-  Edit: [["Undo", "noop"], ["Redo", "noop"], ["—"], ["Settings…", "settings"]],
-  View: [["Change Wallpaper", "wallpaper"], ["System Monitor", "monitor"], ["—"], ["Show Desktop", "showdesk"]],
-  Window: [["Files", "files"], ["Terminal", "terminal"], ["Notes", "notes"], ["About", "about"]],
-  Patch: [["Patch Viewer", "viewer"], ["Show All Ports", "allports"], ["Hide All Ports", "hideports"], ["—"], ["Clear All Cords", "clearcords"]],
-  Help: [["About This System", "about"], ["System Monitor", "monitor"]],
+  File: menuNode(null, [menuItem("New Window", "files"), menuItem("Open Terminal", "terminal"), menuSep(), menuItem("Lock Screen", "lock"), menuItem("Log Out…", "logout")]),
+  Edit: menuNode(null, [menuItem("Undo", "noop"), menuItem("Redo", "noop"), menuSep(), menuItem("Settings…", "settings")]),
+  View: menuNode(null, [menuItem("Change Wallpaper", "wallpaper"), menuItem("System Monitor", "monitor"), menuSep(), menuItem("Show Desktop", "showdesk")]),
+  Window: menuNode(null, [menuItem("Files", "files"), menuItem("Terminal", "terminal"), menuItem("Notes", "notes"), menuItem("About", "about")]),
+  Patch: menuNode(null, [menuItem("Patch Viewer", "viewer"), menuItem("Show All Ports", "allports"), menuItem("Hide All Ports", "hideports"), menuSep(), menuItem("Clear All Cords", "clearcords")]),
+  Help: menuNode(null, [menuItem("About This System", "about"), menuItem("System Monitor", "monitor")]),
 };
+
+/* The NOCTIVAGOUS system menu: default multi-column list, with
+ * its session actions as a horizontal 1D section at the foot —
+ * a mixed presentation inside one menu. */
+const SYS_MENU = menuNode(null, [
+  menuItem("◈  About This System", "about"),
+  menuItem("⚙  Settings…", "settings", { kbd: "Ctrl+," }),
+  menuItem("▤  System Monitor", "monitor"),
+  menuSep(),
+  menuGroup(null, { direction: "h", view: "list", columns: 1 }, [
+    menuItem("▣  Lock", "lock", { kbd: "Ctrl+L" }),
+    menuItem("⏻  Log Out…", "logout"),
+  ]),
+]);
+
+/* The Start launcher is a menu tree with MIXED presentation:
+ * the standalone apps as grid cards in 3 columns at the top,
+ * then each app group as an accordion section (a tree list
+ * that expands in place) — the sections’ presentations are
+ * properties of their group nodes, not of the launcher. */
+const appMenuItem = (ap) => menuItem(ap.name, ap.id, { icon: <Icon name={ap.icon} />, hint: ap.hint });
+const LAUNCHER_MENU = menuNode({ direction: "v", view: "list", columns: 1 }, [
+  menuGroup(null, { view: "grid", columns: 3 },
+    APPS.filter((ap) => !GROUPS.some((g) => g.members.includes(ap.id))).map(appMenuItem)),
+  ...GROUPS.map((g) => menuGroup(g.name, { view: "accordion" },
+    g.members.map((id) => appMenuItem(appById(id))))),
+]);
 
 export default function Desktop({ onShutdown }) {
   const session = useSlice("session");
@@ -321,6 +352,82 @@ export default function Desktop({ onShutdown }) {
   const showWidget = (id) => store.set("settings", { desktopWidgets: [...placedWidgets, id] });
   const widgetName = (id) => (widgetById(id) ? widgetById(id).name : id);
 
+  /* ---------- unfrozen widgets act like windows (user, 2026-11-25) ----------
+   * An UNFROZEN widget is a draggable element: dragging it moves
+   * it out of the widget column onto the desktop, and its
+   * position persists (settings.widgetPos, relative to the
+   * desktop screen). A frozen widget does not drag — the freeze
+   * is what pins it. A widget can also COLLAPSE into a titlebar
+   * (settings.widgetCollapsed: id -> "h" | "v"), horizontal like
+   * a window's bar or a vertical standing strip; the bar carries
+   * the widget's live summary (the clock's bar shows the time —
+   * widgets.jsx widgetTitleInfo). Collapse/expand lives in the
+   * widget's right-click menu, like Freeze and Hide. */
+  const [widgetDrag, setWidgetDrag] = useState(null); // {id, x, y} while dragging
+  const widgetCollapsed = (id) => (settings.widgetCollapsed || {})[id] || null;
+  const setWidgetCollapsed = (id, mode) => {
+    const wc = { ...(settings.widgetCollapsed || {}) };
+    if (mode) wc[id] = mode; else delete wc[id];
+    store.set("settings", { widgetCollapsed: wc });
+  };
+  const effWidgetPos = (id) => {
+    if (widgetDrag && widgetDrag.id === id) return { x: widgetDrag.x, y: widgetDrag.y };
+    return (settings.widgetPos || {})[id] || null;
+  };
+  const startWidgetDrag = (id, frozen) => (e) => {
+    if (frozen || e.button !== 0) return;
+    if (e.target.closest("button")) return;
+    const sec = sectionRef.current;
+    if (!sec) return;
+    const secR = sec.getBoundingClientRect();
+    const hostR = e.currentTarget.getBoundingClientRect();
+    const offX = e.clientX - hostR.left, offY = e.clientY - hostR.top;
+    const move = (ev) => setWidgetDrag({
+      id,
+      x: Math.round(ev.clientX - secR.left - offX),
+      y: Math.round(ev.clientY - secR.top - offY),
+    });
+    const up = (ev) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setWidgetDrag(null);
+      store.set("settings", {
+        widgetPos: {
+          ...(store.get().settings.widgetPos || {}),
+          [id]: {
+            x: Math.round(ev.clientX - secR.left - offX),
+            y: Math.round(ev.clientY - secR.top - offY),
+          },
+        },
+      });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  const renderWidgetHost = (id) => {
+    const frozen = isWidgetFrozen(id);
+    const pos = effWidgetPos(id);
+    const collapsed = widgetCollapsed(id);
+    const h24 = !settings.appSettings || !settings.appSettings.clock || settings.appSettings.clock.hour24 !== false;
+    return (
+      <div key={id} className={"widget-host" + (frozen ? "" : " live") + (collapsed ? " collapsed" : "")}
+        data-widget-host={id}
+        style={pos ? { left: pos.x, top: pos.y } : undefined}
+        onPointerDown={startWidgetDrag(id, frozen)}>
+        {collapsed ? (
+          <WidgetTitlebar id={id} orient={collapsed} now={now} load={load} hour24={h24}
+            styleName={widgetStyle(id)} frozen={frozen} />
+        ) : id === "clock" ? (
+          <ClockWidget now={now} hour24={h24} styleName={widgetStyle(id)} frozen={frozen}
+            portsNode={patch.openFor.clock ? <PortDots owner="clock" /> : null} />
+        ) : id === "sysload" ? (
+          <SysLoadWidget load={load} styleName={widgetStyle(id)} frozen={frozen}
+            portsNode={patch.openFor.sysload ? <PortDots owner="sysload" /> : null} />
+        ) : null}
+      </div>
+    );
+  };
+
   return (
     <section ref={sectionRef} className={"screen on lcpos-" + lcPos} id="desktopScreen">
       <div className={"wall" + (settings.backdrop.mode === "parametric" ? " para" : "")} id="deskWall" data-w={settings.wallpaper}>
@@ -337,12 +444,7 @@ export default function Desktop({ onShutdown }) {
             <span className="sq" style={{ width: 8, height: 8, background: "var(--green)", display: "inline-block" }}></span> NOCTIVAGOUS ▾
           </button>
           <div className={"dropdown" + (openMenu === "sys" ? " open" : "")}>
-            <button data-act="about" onClick={() => menuAction("about")}>◈ &nbsp;About This System</button>
-            <button data-act="settings" onClick={() => menuAction("settings")}>⚙ &nbsp;Settings… <span className="k">Ctrl+,</span></button>
-            <button data-act="monitor" onClick={() => menuAction("monitor")}>▤ &nbsp;System Monitor</button>
-            <div className="sep"></div>
-            <button data-act="lock" onClick={() => menuAction("lock")}>▣ &nbsp;Lock Screen <span className="k">Ctrl+L</span></button>
-            <button data-act="logout" onClick={() => menuAction("logout")}>⏻ &nbsp;Log Out…</button>
+            <MenuTree tree={SYS_MENU} onAction={menuAction} />
           </div>
         </div>
         <nav style={{ display: "flex", gap: 2 }}>
@@ -353,13 +455,7 @@ export default function Desktop({ onShutdown }) {
                 {name}
               </button>
               <div className={"dropdown" + (openMenu === name ? " open" : "")}>
-                {MENUS[name].map((it, i) =>
-                  it[0] === "—" ? (
-                    <div className="sep" key={i}></div>
-                  ) : (
-                    <button key={i} data-act={it[1]} onClick={() => menuAction(it[1])}>{it[0]}</button>
-                  ),
-                )}
+                <MenuTree tree={MENUS[name]} onAction={menuAction} />
               </div>
             </div>
           ))}
@@ -553,23 +649,12 @@ export default function Desktop({ onShutdown }) {
           <div className="wtr"><span>WINDOW</span><span>STACK</span></div>
         </div>
         <div className={"widgets" + (displaced.widgets ? " displaced" : "")}>
-          {placedWidgets.map((id) => {
-            const frozen = isWidgetFrozen(id);
-            if (id === "clock") {
-              const h24 = !settings.appSettings || !settings.appSettings.clock || settings.appSettings.clock.hour24 !== false;
-              return (
-                <ClockWidget key={id} now={now} hour24={h24} styleName={widgetStyle(id)} frozen={frozen}
-                  portsNode={patch.openFor.clock ? <PortDots owner="clock" /> : null} />
-              );
-            }
-            if (id === "sysload") {
-              return (
-                <SysLoadWidget key={id} load={load} styleName={widgetStyle(id)} frozen={frozen}
-                  portsNode={patch.openFor.sysload ? <PortDots owner="sysload" /> : null} />
-              );
-            }
-            return null;
-          })}
+          {placedWidgets.filter((id) => !effWidgetPos(id)).map((id) => renderWidgetHost(id))}
+        </div>
+        {/* Dragged widgets leave the column and live on the
+            desktop itself, at their stored positions. */}
+        <div className="widget-layer">
+          {placedWidgets.filter((id) => effWidgetPos(id)).map((id) => renderWidgetHost(id))}
         </div>
         {ui.layer === "navgraph" && <NavGraphLayer frozen={!!(ui.frozenLayers && ui.frozenLayers.navgraph)} />}
         {ui.layer && ui.layer !== "navgraph" && (() => {
@@ -604,13 +689,7 @@ export default function Desktop({ onShutdown }) {
             <div className="mono" style={{ fontSize: 10, color: "#777", letterSpacing: ".1em" }}>{session.sessionType.toUpperCase()} · :0</div>
           </div>
         </div>
-        <div>
-          {APPS.map((ap) => (
-            <button key={ap.id} className="app" onClick={() => { closeAll(); openWindow(ap.id); }}>
-              <Icon name={ap.icon} /><span>{ap.name}</span><small>{ap.hint}</small>
-            </button>
-          ))}
-        </div>
+        <MenuTree tree={LAUNCHER_MENU} onAction={menuAction} />
         <div className="hairline"></div>
         <div style={{ display: "flex", gap: 6 }}>
           <button className="btn sm" style={{ flex: 1 }} data-lact="lock" onClick={() => { closeAll(); lockScreen(); }}>Lock</button>
@@ -762,6 +841,12 @@ export default function Desktop({ onShutdown }) {
         <div className="ctxmenu open" id="ctxMenu" style={{ left: ctx.x, top: ctx.y }}>
           <div className="ctxhead">{widgetName(ctx.id)} Widget</div>
           <button onClick={() => { setCtx(null); toggleWidgetFrozen(ctx.id); }}>{isWidgetFrozen(ctx.id) ? "Unfreeze" : "Freeze"}</button>
+          {widgetCollapsed(ctx.id)
+            ? <button onClick={() => { setCtx(null); setWidgetCollapsed(ctx.id, null); }}>Expand Widget</button>
+            : (<>
+                <button onClick={() => { setCtx(null); setWidgetCollapsed(ctx.id, "h"); }}>Collapse to Titlebar — Horizontal</button>
+                <button onClick={() => { setCtx(null); setWidgetCollapsed(ctx.id, "v"); }}>Collapse to Titlebar — Vertical</button>
+              </>)}
           <button onClick={() => { setCtx(null); hideWidget(ctx.id); }}>Hide Widget</button>
           <button onClick={() => { setCtx(null); openAppSettings("widget:" + ctx.id); }}>Configure…</button>
         </div>

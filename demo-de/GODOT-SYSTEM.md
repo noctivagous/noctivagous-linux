@@ -448,3 +448,162 @@ None of these block the architecture. They resolve into one
 rule for the NCT Godot Kit: **its font assets ship with the
 rendering mode chosen per use** — MSDF for in-scene and
 display type, raster with oversampling for UI text.
+
+## 11. Languages — GDScript, C#, and native code
+
+Godot offers three language tiers, and the system assigns
+each tier a place rather than leaving the choice to every
+app:
+
+- **GDScript.** Built into every Godot build; the engine's
+  default scripting language, running on a bytecode VM, with
+  hot reload into a running instance. It is the tier the
+  rapid-authoring and generation story rests on: the editor,
+  the examples, and the ecosystem assume it.
+- **C#.** Fully supported, but only in the separate **.NET
+  edition** of the engine — a different binary from the
+  standard build, carrying its own runtime.
+- **C / C++ via GDExtension.** Native libraries loaded
+  against a stable C API, with no engine recompile. The
+  engine itself is C++ underneath all three tiers; this is
+  the tier built for performance and OS access.
+
+The assignment:
+
+- **Apps, shell, and greeter are GDScript.** The greeter and
+  shell are apps by the process model of § 2, and they take
+  the app tier.
+- **The extension layer of § 4 is C++ GDExtension.** D-Bus,
+  layer-shell, and PipeWire access were always native work;
+  GDExtension is where native work lives.
+- **C# is an open question, not a default.** Supporting C#
+  apps means the pinned runtime becomes the .NET edition,
+  or a second pinned runtime ships alongside the first —
+  real size and upgrade-surface cost, paid by every install,
+  for a language the kit does not need: hot paths already
+  have the GDExtension route. C# support is adopted only
+  when a concrete C# app demands it, and the demand, not
+  the possibility, is the trigger.
+
+## 12. One engine, shared — runtime size and memory
+
+The default Godot export bakes a template binary — of the
+~50 MB class — into every app. The lane and system model
+forbids that: it is the Electron failure mode, one runtime
+per app, paid in disk and in updates. Under
+GODOT-BRIDGE.md, apps ship as `.pck` only, against the one
+pinned runtime, so the accounting is:
+
+- **Disk: one engine, total.** N apps cost one template
+  binary plus N data packs. A utility's `.pck` is scenes,
+  scripts, and assets — often a few hundred KB.
+- **Memory: code shared, data private.** Each app is its
+  own process — that is the crash isolation of § 2 — but
+  every process executes the *same binary file*, so the OS
+  maps its code pages once and shares them across all
+  processes through the page cache. The marginal RAM of an
+  additional app is its own heap: scene data, script state,
+  loaded assets. Later apps also start faster, from a warm
+  cache.
+- **GPU: the honest per-app floor.** Each process creates
+  its own Vulkan device context, swapchain, and shader set.
+  That memory is *not* shared, and it is the real marginal
+  cost of an open app — the same floor any GPU app pays,
+  Firefox's processes included. Low-processor mode keeps
+  idle apps from burning CPU against it, and the shell
+  being one process for all its furniture (§ 2) keeps the
+  always-on cost to a single context.
+
+Two refinements belong to this model:
+
+- **The template build is already custom.** The NCT
+  default-theme swap of GODOT-BRIDGE.md requires a custom
+  template build; that build can also disable unused
+  modules, shrinking the binary below the stock figure. The
+  ~50 MB number is a ceiling, not a constant.
+- **Sharing is safe only because of the pin.** A `.pck` is
+  tied to the format of its engine version; one runtime can
+  serve every app only because the pin guarantees every
+  pack matches it. That is the upgrade-ownership cost
+  already recorded in GODOT-BRIDGE.md: the distribution
+  bumps the runtime deliberately, for everything at once.
+
+## 13. App construction inside the environment
+
+The lane of GODOT-BRIDGE.md solves *hosting* apps. This
+section solves *supply*: apps are constructed inside the
+environment itself, by an agent CLI harness working against
+the engine, because a desktop whose apps are text an agent
+can write, run, inspect, and fix can grow its own catalogue.
+
+**Why Godot is agent-drivable.** The properties are
+concrete, and each one removes a wall an agent would
+otherwise hit:
+
+- **Every project artefact is text.** `.tscn` scenes,
+  `.tres` resources, `project.godot`, `.gd` scripts — an
+  agent writes and diffs them with ordinary file tools,
+  every iteration is versioned in git, and a malformed
+  scene is caught by validation before it runs. There is
+  no binary project format to corrupt.
+- **The engine is CLI-complete, headlessly.** Import,
+  script validation, running the project, unit tests, and
+  `.pck` export all run with no GUI in the loop.
+- **The harness can see its own work.** The remote debugger
+  exposes the live scene tree of a running instance, and a
+  viewport captures to an image. The construction loop is
+  therefore write → run → inspect the tree → screenshot →
+  fix: a debug loop, not blind generation.
+- **Hot reload is native.** GDScript and scene changes
+  reload into a running instance. Its limit is known and
+  shapes the discipline: reload preserves the scene, but
+  state held by a changed script can reset — so logic is
+  verified by tests, and reload serves look-and-feel
+  iteration. A small **dev-bridge** addon in the app under
+  construction — the bridge cooperation pattern of
+  GODOT-BRIDGE.md, pointed at development — exposes reload,
+  error, and state operations to the harness directly.
+
+**The harness tool set.** An agent CLI of the OpenCode
+class is given tools, not shell habits:
+
+| Tool | What it does |
+| --- | --- |
+| `scaffold_app` | New app from a kit template: bridge wired, theme applied, bundle registered |
+| `edit_scene` | Structured `.tscn` edits, validated on write |
+| `run_tests` | Headless unit tests against the app |
+| `launch_app` | Run in the real compositor or a headless display, on the pinned runtime |
+| `inspect_tree` | Live scene-tree and property dump from the running instance |
+| `screenshot` | Viewport capture for visual judgement |
+| `hot_reload` | Push script and scene changes into the running instance |
+| `conformance` | The EXT-FWKS checks: bridge handshake, style-set re-skin, device classes |
+| `package_app` | `.pck` export, `.desktop` generation, launcher registration |
+
+**The flagship test case: a spreadsheet.** The first app
+the construction system is proven against is a spreadsheet
+of *defined scope* — explicitly not Excel parity:
+
+- a custom-drawn grid `Control`, not a grid of line edits;
+- a cell model with a dependency graph;
+- formula evaluation built on Godot's built-in `Expression`
+  class, with A1-reference rewriting as the small added
+  mechanism — reuse of a solved problem over invention, per
+  the standing practice;
+- CSV / TSV interchange.
+
+The case is chosen because every component is verifiable
+headlessly — the formula engine in numbers, the grid in
+screenshots. That verifiability is what makes it an agent
+task with a gate rather than an agent hope.
+
+**Placement and discipline.** The construction system lives
+inside the environment: the Godot editor is itself a Godot
+app, the agent CLI runs in a terminal, and finished apps
+exit the loop already kit-conformant and packaged.
+Registration is gated — **conformance passes before an app
+enters the launcher**, never after — and the signing,
+permissions, and sandboxing requirements of
+GODOT-BRIDGE.md apply in full to agent-built apps. That
+last point is not decorative: generated apps are code with
+OS access, and the moment an agent can publish to the
+launcher, those requirements stop being theoretical.
