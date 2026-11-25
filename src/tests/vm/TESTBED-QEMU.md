@@ -39,7 +39,7 @@ cd src\vm
 
 The script boots a *copy* of the image (`nct-test-run.img`); the
 pristine file is never written to. SSH is forwarded to host port
-2222 (`ssh -p 2222 nct@localhost`, test password `nct-test-2026` —
+2222 (`ssh -p 2222 nct@127.0.0.1`, test password `nct-test-2026` —
 VM-only by design, same as the other rig). The serial console goes
 to `src/vm/qemu-image/qemu-serial.log` — the first place to look
 when a boot misbehaves.
@@ -49,7 +49,7 @@ when a boot misbehaves.
 ```powershell
 ssh-keygen -t ed25519 -f $env:USERPROFILE\.ssh\nct-qemu
 .\vm-test-qemu.ps1                       # boot interactively
-ssh -p 2222 nct@localhost "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys" `
+ssh -p 2222 nct@127.0.0.1 "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys" `
   < $env:USERPROFILE\.ssh\nct-qemu.pub   # password: nct-test-2026
 ```
 

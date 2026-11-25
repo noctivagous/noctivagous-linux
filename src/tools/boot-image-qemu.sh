@@ -21,7 +21,7 @@ echo "== qemu boot (emulation, ${TIMEOUT}s time box) -> $LOG"
 timeout "$TIMEOUT" qemu-system-x86_64 \
   -m 2048 -smp 2 -machine q35 -display none -serial "file:$LOG" -monitor none \
   -kernel "$IMG/vmlinuz" -initrd "$IMG/initrd.img" \
-  -append "root=/dev/vda rw console=ttyS0 systemd.unit=multi-user.target" \
+  -append "root=/dev/vda rw console=ttyS0 systemd.unit=multi-user.target ip=dhcp" \
   -drive "file=$IMG/nct-$VARIANT.img,format=raw,if=virtio" \
   -netdev user,id=n0 -device virtio-net-pci,netdev=n0 || true
 echo "== boot log tail:"
