@@ -1,2 +1,7 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+# The Linux guest runs src/ straight off the VirtualBox shared folder,
+# where CRLF breaks every shell script the session executes (dash aborts
+# on `set -eu\r`). Force LF checkouts for the whole distro tree so no
+# Windows checkout or pull can reintroduce CRLF there.
+src/** text=auto eol=lf

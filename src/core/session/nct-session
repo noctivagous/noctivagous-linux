@@ -22,8 +22,12 @@ case "$comp" in
     # rung environment is exported here, so labwc and everything it
     # autostarts (shell, apps via nct-godot-run) inherit it. Native
     # first; the software rung only when an attempt dies fast.
+    # NOTE: labwc has no LABWC_CONFIG_DIR variable — the config dir
+    # goes via -C, or labwc runs the empty default config and autostart
+    # (which starts the shell) never runs. That silent skip was the
+    # run-all 04 failure on the rig.
     . "$here/nct-render-ladder.sh"
     code=0
-    ladder_run "$state" session.log env LABWC_CONFIG_DIR="$cfgdir" labwc || code=$?
+    ladder_run "$state" session.log labwc -C "$cfgdir" || code=$?
     exit "$code" ;;
 esac

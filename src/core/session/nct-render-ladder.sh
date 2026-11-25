@@ -114,8 +114,12 @@ ladder_run() {
       echo "ladder: rung=$_lr_rung ok (clean exit after ${_lr_elapsed}s)" >> "$_lr_dir/$_lr_log"
       _lr_ok=1
     elif [ "$_lr_elapsed" -ge "$_lr_window" ]; then
-      echo "ladder: rung=$_lr_rung ok (stayed up ${_lr_elapsed}s; exit $_lr_code)" >> "$_lr_dir/$_lr_log"
-      _lr_ok=1
+      # A nonzero exit past the window is still a dead session — on a
+      # slow software stack the same breakage can outlive the window
+      # (labwc died 17 s in on the rig with the same dmabuf signature
+      # as the 2 s deaths). Keep stepping instead of blessing the rung.
+      echo "ladder: rung=$_lr_rung failed after window (exit $_lr_code after ${_lr_elapsed}s)" >> "$_lr_dir/$_lr_log"
+      _lr_ok=0
     else
       echo "ladder: rung=$_lr_rung failed fast (exit $_lr_code after ${_lr_elapsed}s)" >> "$_lr_dir/$_lr_log"
       _lr_ok=0
@@ -126,6 +130,6 @@ ladder_run() {
       return "$_lr_code"
     fi
   done
-  echo "ladder: all rungs failed fast; last exit $_lr_code" >> "$_lr_dir/$_lr_log"
+  echo "ladder: all rungs failed; last exit $_lr_code" >> "$_lr_dir/$_lr_log"
   return "$_lr_code"
 }

@@ -10,7 +10,7 @@ MIRROR=""; [ -d "$SRC/tests/vm" ] && MIRROR="$SRC/tests/vm/results" && mkdir -p 
 PASS=0; FAIL=0
 : > "$RES/summary.txt"
 ok()  { PASS=$((PASS+1)); echo "PASS $1" | tee -a "$RES/summary.txt"; }
-bad() { FAIL=$((FAIL+1)); echo "FAIL $1 — $2 (log: $RES/$1.log)" | tee -a "$RES/summary.txt"; }
+bad() { FAIL=$((FAIL+1)); echo "FAIL $1 — $2 (log: $RES/${1%%-*}.log)" | tee -a "$RES/summary.txt"; }
 want() { [ $# -eq 0 ] || true; }
 SELECTED="$*"
 run() { # run <id> <fn>
@@ -112,7 +112,10 @@ check08() { # collect logs for everything above
 }
 
 run 00 check00; run 01 check01; run 02 check02; run 03 check03
-run 04 check04; run 05 check05; run 07 check07; run 09 check09; run 08 check08
+# 09 before 04: a successful login (04 START) legitimately ends the
+# greeter session, so the greeter-persistence check must measure the
+# pre-login seat — not the post-login one.
+run 09 check09; run 04 check04; run 05 check05; run 07 check07; run 08 check08
 echo "== run-all: $PASS passed, $FAIL failed ==" | tee -a "$RES/summary.txt"
 [ -n "$MIRROR" ] && cp -r "$RES/"* "$MIRROR/" 2>/dev/null || true
 [ "$FAIL" = 0 ]
