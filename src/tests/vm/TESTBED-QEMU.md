@@ -89,9 +89,13 @@ when packing; if this signature reappears, inspect the .deb's modes
 
 - The image boots end-to-end on a stack that is not VirtualBox:
   greetd → greeter (ladder on virtio-gpu) → login → user session.
-- ASSUMPTION A14 on a second stack: which rung virtio-gpu lands on
-  is genuinely unknown — its dmabuf path is healthy, so the native
-  rungs have a real chance here, unlike on vmwgfx.
+- The ladder on a second DRM stack — with one expectation set
+  correctly: standard Windows QEMU builds have no virglrenderer, so
+  virtio-gpu here means clean 2D DRM plus software rendering in the
+  guest. Expect the ladder to settle on a software rung; that still
+  discriminates the DRM/dmabuf stack and the image chain, but it
+  does NOT prove the ladder's native GPU rung. A14's proof stands
+  on the VirtualBox rig, where the ladder walked rungs 0→3.
 - A12 (real pointer) can be exercised in the QEMU window with the
   host mouse, the same manual check as the VirtualBox console.
 
