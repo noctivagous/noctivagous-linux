@@ -106,8 +106,17 @@ export function CinquefoilBackdrop() {
       const W = Math.round(size * dpr);
       if (canvas.width !== W) canvas.width = canvas.height = W;
       const t = (now - t0) / 1000;
-      const yaw = t * 0.06; // slow: about 105 s per turn
-      const pitch = 0.92 + Math.sin(t * 0.09) * 0.06;
+      /* Rotation that READS (user, 2026-11-25: "doesn't seem to
+       * be rotating"): the first version yawed at 0.06 rad/s
+       * with a flat shading ramp, and a five-fold woven disc
+       * spinning in its own plane at that rate is nearly
+       * imperceptible. Now: yaw at the medallion's own rate
+       * (0.16 rad/s), a wider pitch breathing so the silhouette
+       * itself turns, and the medallion's full depth ramp with
+       * the warm shift at the front, so segments visibly brighten
+       * and darken as they come around. */
+      const yaw = t * 0.16;
+      const pitch = 0.92 + Math.sin(t * 0.05) * 0.16;
       const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
       const pts = [];
       for (let i = 0; i < N; i++) {
@@ -123,8 +132,10 @@ export function CinquefoilBackdrop() {
       ctx.lineCap = "round";
       for (const sg of segs) {
         const d = Math.max(0, Math.min(1, (sg.z + 3.1) / 6.2));
-        const r = Math.round((30 + d * 120) * 0.6), g = Math.round((36 + d * 128) * 0.6), b = Math.round((32 + d * 110) * 0.6);
-        ctx.strokeStyle = "rgb(" + r + "," + g + "," + b + ")";
+        let r = 34 + d * 150, g = 40 + d * 158, b = 36 + d * 138;
+        if (d > 0.8) { const k = (d - 0.8) * 1.6; r += (216 - r) * k * 0.35; g += (188 - g) * k * 0.35; b += (118 - b) * k * 0.35; }
+        const dim = 0.72; // a backdrop: the medallion's ramp, dimmed
+        ctx.strokeStyle = "rgb(" + Math.round(r * dim) + "," + Math.round(g * dim) + "," + Math.round(b * dim) + ")";
         ctx.lineWidth = tube * (0.8 + d * 0.4);
         ctx.beginPath();
         ctx.moveTo(C + sg.a[0] * scale, C - sg.a[1] * scale);

@@ -161,6 +161,25 @@ export default function SettingsApp() {
             </div>
             <Slider label="Knot rotation" min={0} max={2} step={0.25} value={greeter.knotSpeed}
               onChange={(v) => setGreeter({ knotSpeed: v })} format={(v) => v.toFixed(2) + "\u00d7"} />
+            <div className="cap" style={{ margin: "12px 0 7px" }}>Greeter · clock knot presentation</div>
+            <div className="srow">
+              <label>Clock knot view</label>
+              <div className="selwrap" style={{ flex: 1 }}>
+                <select className="tinput" value={greeter.clockKnotView || "webgl"} onChange={(e) => setGreeter({ clockKnotView: e.target.value })}>
+                  <option value="webgl">WebGL 3D knot</option>
+                  <option value="canvas">Canvas 2D knot</option>
+                </select>
+              </div>
+            </div>
+            <div className="srow">
+              <label>Clock format</label>
+              <div className="selwrap" style={{ flex: 1 }}>
+                <select className="tinput" value={greeter.clockAmpm === false ? "h24" : "ampm"} onChange={(e) => setGreeter({ clockAmpm: e.target.value === "ampm" })}>
+                  <option value="ampm">12-hour · AM/PM label</option>
+                  <option value="h24">24-hour</option>
+                </select>
+              </div>
+            </div>
           </div>
         )}
 

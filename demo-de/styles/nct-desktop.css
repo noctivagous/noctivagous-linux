@@ -181,6 +181,7 @@ input[type=range].sys::-moz-range-thumb{width:13px;height:19px;background:#2c2c2
 .login-clock .time,.login-clock .date,.login-clock .sessline{position:relative;z-index:1}
 .knot-backdrop{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:360px;height:360px;pointer-events:none;opacity:.5;z-index:0}
 .login-clock .time{font-family:var(--font-d);font-weight:600;font-size:clamp(44px,8vw,72px);letter-spacing:.02em;color:#f0f0f0;line-height:1;text-shadow:0 2px 12px rgba(0,0,0,.8);font-variant-numeric:tabular-nums}
+.login-clock .ampm{font-family:var(--font-m);font-size:.30em;font-weight:400;letter-spacing:.22em;color:#9d9d9d;margin-left:.35em;text-shadow:0 1px 6px rgba(0,0,0,.8)}
 .login-clock .date{font-family:var(--font-m);font-size:11.5px;letter-spacing:.22em;text-transform:uppercase;color:#9d9d9d;margin-top:8px}
 .login-clock .sessline{font-family:var(--font-m);font-size:10.5px;letter-spacing:.14em;color:#6f6f6f;margin-top:5px}
 /* NCT window */

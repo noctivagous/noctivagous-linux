@@ -19,6 +19,10 @@ export function pad(n) {
 export function hm(d) {
   return pad(d.getHours()) + ":" + pad(d.getMinutes());
 }
+export function hm12(d) {
+  const h = d.getHours();
+  return { time: pad(((h + 11) % 12) + 1) + ":" + pad(d.getMinutes()), ampm: h < 12 ? "AM" : "PM" };
+}
 export function hms(d) {
   return hm(d) + ":" + pad(d.getSeconds());
 }

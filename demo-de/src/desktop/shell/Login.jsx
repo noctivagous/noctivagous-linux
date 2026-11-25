@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import { store, useSlice } from "../core/react.js";
 import { toast } from "../core/bus.js";
 import { enterDesktop, finishUnlock } from "./sessionActions.js";
-import { useNow, hm, hms, fullDate, MONS } from "./useNow.js";
+import { useNow, hm, hm12, hms, fullDate, MONS } from "./useNow.js";
 import GreeterDashboard from "../greeter/GreeterDashboard.jsx";
 import GreeterKnot, { CinquefoilBackdrop } from "../greeter/GreeterKnot.jsx";
+const CinquefoilWebGL = lazy(() => import("../greeter/GreeterKnotGL.jsx"));
 import { HOSTNAME, LAUNCH_NAMES } from "../greeter/greeterData.js";
 
 const PROFILES = [
@@ -170,8 +171,18 @@ export default function Login({ onPower, onRestart }) {
 
       <GreeterDashboard profile={profile}>
         <div className="login-clock">
-          <CinquefoilBackdrop />
-          <div className="time">{hm(now)}</div>
+          {((settings.greeter || {}).clockKnotView || "webgl") === "webgl" ? (
+            <Suspense fallback={<CinquefoilBackdrop />}>
+              <CinquefoilWebGL />
+            </Suspense>
+          ) : (
+            <CinquefoilBackdrop />
+          )}
+          {(settings.greeter || {}).clockAmpm !== false ? (
+            <div className="time">{hm12(now).time}<span className="ampm">{hm12(now).ampm}</span></div>
+          ) : (
+            <div className="time">{hm(now)}</div>
+          )}
           <div className="date">{fullDate(now)}</div>
           <div className="sessline">SESSION · {session.sessionType.toUpperCase()} &nbsp;/&nbsp; DISPLAY :0</div>
         </div>

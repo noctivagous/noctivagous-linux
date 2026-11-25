@@ -34,7 +34,7 @@ const initialState = {
     appSettings: {}, // app id -> that app's own settings (edited from its launch menu's Settings…)
     launchColumn: {}, // the launch bar's own settings (its Configure page; the key predates the rename)
     backdrop: { ...BACKDROP_DEFAULTS },
-    greeter: { knot: "trefoil", knotSpeed: 1 }, // the greeter medallion: knot form + rotation rate
+    greeter: { knot: "trefoil", knotSpeed: 1, clockKnotView: "webgl", clockAmpm: true }, // medallion knot form + rate; clockKnotView: the greeter clock knot's presentation view — "webgl" (3D) or "canvas" (2D); clockAmpm: the greeter clock shows 12-hour time with an AM/PM label by default
     platform: { origin: null }, // Platform Configuration (core/platform.js): "mac" | "windows" | "linux" | null until chosen
     setup: { completed: false }, // the Setup Wizard (shell/SetupWizard.jsx): foundation only, not yet shown
   },
