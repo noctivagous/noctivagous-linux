@@ -313,8 +313,8 @@ two:
 
 - RESERVED — the system's operators; apps cannot override
   them. F above all: F is the system left-click inside and
-  outside apps, on every layout. Also A, G, O, P, E, R, T, Tab,
-  Space, Esc, Alt+K, Alt+L.
+  outside apps, on every layout. Also A, G, O, P, E, R, T, S,
+  Tab, Space, Esc, Alt+K, Alt+L.
 - OVERRIDABLE — slots an app may bind for its own windows. A
   binding consumes the press inside that app's windows;
   everywhere else the slot keeps its global meaning.
@@ -456,7 +456,7 @@ reserved slot.
 Four system pieces landed together; the key-click-relevant
 parts:
 
-- **Groups in the launch column.** A group is a launch item
+- **Groups in the launch bar.** A group is a launch item
   that opens its contents in place (Utilities → Calculator,
   TextTransformer — the latter carrying caseconvert.net's
   function set: UPPER, lower, Sentence, Title, Capital,
@@ -474,7 +474,7 @@ parts:
 - **Settings live outside the app.** `settings.appSettings`
   holds each app's own settings; the doors are the icon menu's
   **Settings…**, the Configure key (below), and Settings →
-  Applications (which also hosts shell pages: Launch Column,
+  Applications (which also hosts shell pages: Launch Bar,
   the two desktop widgets). Apps declare settings as a
   **property list** rendered by the **stock settings kit**
   (`apps/settingsKit.jsx` — checkbox / select / segment /
@@ -496,7 +496,7 @@ opens; Calculator computes and honours its kit-bound rounding
 (1 ÷ 3 = 0.33 at 2 places); TextTransformer's three spot-checked
 conversions and its kit checkbox (sentence-case rest off keeps
 "HELLO WORLD"); `\` over an icon / the clock / a column gap
-opens Notes' / the Clock Widget's / the Launch Column's page;
+opens Notes' / the Clock Widget's / the Launch Bar's page;
 the kit segment sets the clock's style; bare desktop gives the
 shake and no page change; Calculator migrates window → layer →
 window and computes inside the layer; NavGraph's mode toggle is
@@ -538,3 +538,66 @@ NavGraph layer; `pw` opens the drawer with the file's content
 at the list's right; `cat` prints; a bad `cd` errors in shell
 style; ArrowUp recalls history; the drawer's Close dismisses
 it; the HUD target width stays fixed.
+
+## S minimizes, and minimized windows live on the launch bar (2026-11-24)
+
+- **S = Minimize**: over a window, S dispatches
+  `nct:appctl {op:"minimize"}` (the A/G bridge family) and the
+  shell minimizes that window. S joins the RESERVED slots in
+  `core/keymaps.js` — an app cannot override it.
+- **The minimized window becomes a list item on its app's
+  launch-bar button** (Desktop.jsx `renderMinList`, `.minlist`):
+  directly underneath the button when the bar is at the top
+  (above it at the bottom), as a horizontal item; to the side
+  of the button when the bar is on a side, where the item
+  stands vertical (icon over name) instead of horizontal.
+  Group members carry theirs inside the group's flyout.
+- **F restores it**: the item is an ordinary button, so the
+  engine's F — the system click at the cursor — clicks it like
+  any other control, and its handler focuses the window (which
+  clears the minimized state). A mouse click does the same.
+
+## The key-click bar: live option rows + a vertical orientation (2026-11-24)
+
+Modelled on NibGlider's KeymapWidget (nibglider
+`src/components/KeymapWidget.tsx` + `engine.getKeymapRows()`):
+NibGlider's bar is a vertical table of key chip + action that
+re-renders from the engine's current context, so it always lists
+the options available *right now*, with the recurring adjust
+cluster set off as its own section. The desktop's bar now works
+the same way:
+
+- **Live rows, not a fixed hint string.** The static `.kc-hints`
+  text is gone. `hudContextRows()` in the engine mirrors
+  `onKeyDown`'s own branching — patch-pending, cord, port, the
+  bar itself, stack items, minimized items, widgets, window,
+  frozen window, icon, NavGraph layer, open menus, text mode
+  (Esc + the armed F), labels mode, drag-lock — and `setMode()`
+  rebuilds the row DOM only when the row signature changes. The
+  always-available keys (Tab, Space, Alt+L, Alt+K, \, 9) form
+  the trailing system section, de-duplicated against the
+  contextual rows; in the horizontal strip it follows a ·
+  separator, in vertical it sits under a rule, like NibGlider's
+  adjust section. The bar never promises a key the handler
+  would not honour in that context.
+- **Right-click → menu.** The bar's right-click used to toggle
+  collapse directly; it now opens the bar's own menu
+  (`#kcHudMenu`): **Vertical orientation**, **Horizontal
+  orientation** (the current one carries a ✓), and **Collapse
+  bar** — the old gesture's outcome, one click further. Menu
+  items act on mousedown, like the board caps, so F clicks them
+  too; Esc or a mousedown elsewhere dismisses it. E/R over the
+  bar still collapse/expand it directly, as before.
+- **Vertical orientation.** `#kcHud.kc-vertical` stands the bar
+  down the left edge (top:110px, 202px wide — the keyboard
+  panel's anchor): mode and target lines, then the rows as a
+  table of chip + action. The choice persists in
+  `localStorage` (`nct-kc-orient`) across sessions; horizontal
+  remains the default. The collapsed task-bar button is
+  unchanged in both orientations.
+- Verified by a 22-check headless suite: text-mode rows,
+  per-context rows (window/icon/wallpaper), menu contents and
+  current-orientation mark, switching both ways, persistence
+  across reload, collapse from the menu, and the E gesture
+  intact. The minimize (13) and launch-bar (16) suites still
+  pass.

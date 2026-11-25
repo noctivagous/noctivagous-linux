@@ -220,14 +220,21 @@ input[type=range].sys::-moz-range-thumb{width:13px;height:19px;background:#2c2c2
 .dropdown .k{margin-left:auto;font-family:var(--font-m);font-size:10px;color:#777}
 .ws-ind{position:absolute;left:50%;transform:translateX(-50%);font-family:var(--font-m);font-size:10.5px;letter-spacing:.18em;color:#8f8f8f;text-transform:uppercase;display:flex;gap:8px;align-items:center}
 .desk-area{position:absolute;inset:34px 0 48px;overflow:hidden}
-.icons{position:absolute;top:14px;left:12px;display:grid;grid-template-columns:84px;gap:6px;z-index:5}
+/* Furniture z-band: windows carry z from 10 upward, growing with
+ * every focus, and #winLayer forms no stacking context — so the
+ * shell furniture (launch bar 250, Window Stack 250, widgets 240)
+ * sits in a band above any plausible window z but below the
+ * menus (300+), the patch layer (400) and context menus (500).
+ * Without it, a window paints over the bar's flyouts and
+ * minimized-window items and takes their clicks. */
+.icons{position:absolute;top:14px;left:12px;display:grid;grid-template-columns:84px;gap:6px;z-index:250}
 .icons.right{left:auto;right:12px}
 .dicon{display:flex;flex-direction:column;align-items:center;gap:5px;padding:9px 4px 7px;background:transparent;border:1px solid transparent;border-radius:5px;cursor:pointer;color:#ddd;min-height:44px}
 .dicon:hover{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.08)}
 .dicon.sel{background:rgba(92,184,92,.14);border-color:rgba(92,184,92,.4)}
 .dicon .dib{width:38px;height:38px;background:linear-gradient(145deg,#2e2e2e,#181818);border:1px solid #000;box-shadow:inset 0 1px 0 rgba(110,110,110,.5),0 3px 6px rgba(0,0,0,.5);border-radius:6px;display:flex;align-items:center;justify-content:center;color:#cfcfcf}
 .dicon span{font-size:11px;text-shadow:0 1px 3px #000;text-align:center;line-height:1.25}
-.widgets{position:absolute;top:14px;right:108px;display:flex;flex-direction:column;gap:10px;z-index:4;width:218px}
+.widgets{position:absolute;top:14px;right:108px;display:flex;flex-direction:column;gap:10px;z-index:240;width:218px}
 .widget{background:linear-gradient(180deg,rgba(30,30,30,.88),rgba(14,14,14,.88));backdrop-filter:blur(8px);border:1px solid #000;box-shadow:5px 6px 16px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.06);border-radius:6px;padding:11px 12px}
 .widget .wtime{font-family:var(--font-d);font-size:30px;font-weight:600;color:#f2f2f2;line-height:1;font-variant-numeric:tabular-nums}
 .widget .wdate{font-family:var(--font-m);font-size:10px;letter-spacing:.16em;color:#999;text-transform:uppercase;margin-top:5px}
@@ -507,7 +514,7 @@ body.kc-textmode #loginScreen .topbar{box-shadow:inset 0 0 0 999px rgba(255,122,
 /* The WindowTransformer assembly: stack + square in one wrap.
  * While the cursor is inside it, the whole assembly shrinks a
  * step; a window restored from the stack expands back out. */
-.wtr-wrap{position:absolute;right:10px;bottom:58px;width:104px;z-index:5;display:flex;flex-direction:column;gap:8px;transition:transform .18s ease;transform-origin:100% 100%}
+.wtr-wrap{position:absolute;right:10px;bottom:58px;width:104px;z-index:250;display:flex;flex-direction:column;gap:8px;transition:transform .18s ease;transform-origin:100% 100%}
 .wtr-wrap:hover{transform:scale(.94)}
 .wtr{width:104px;height:104px;flex:none;border:1.5px dashed rgba(255,255,255,.35);border-radius:6px;background:rgba(255,255,255,.03);display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:6px 0}
 .wtr span{font-family:var(--font-m,monospace);font-size:9px;font-weight:700;letter-spacing:.3em;color:rgba(255,255,255,.45)}
@@ -585,6 +592,11 @@ body.kc-textmode #loginScreen .topbar{box-shadow:inset 0 0 0 999px rgba(255,122,
 .appset-title{font-family:var(--font-d);font-size:14px;font-weight:700;color:#eee;margin-bottom:8px}
 .setrow{display:flex;gap:8px;align-items:center;padding:5px 0;font-size:12px;color:#ccc;cursor:pointer}
 .segrow{display:flex;gap:6px}
+.setmatrix{display:grid;gap:4px;width:156px}
+.setmatrix-cell{height:34px;border:1px dashed rgba(255,255,255,.09);border-radius:5px}
+.setmatrix-slot{height:34px;background:linear-gradient(180deg,#2a2a2a,#1b1b1b);border:1px solid #000;border-radius:5px;color:#ccc;font-size:10.5px;letter-spacing:.06em;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.07)}
+.setmatrix-slot:hover{color:#fff}
+.setmatrix-slot.on{background:var(--grad-primary);color:var(--green-t);font-weight:700}
 .setkit .srow{margin:2px 0}
 .dicon.layer.nobadge::after{display:none}
 .wampm{font-size:13px;color:#999;margin-left:5px;letter-spacing:.08em}
@@ -749,3 +761,72 @@ body.kc-textmode #loginScreen .topbar{box-shadow:inset 0 0 0 999px rgba(255,122,
 .lcpos-right .icons.right{left:12px;right:auto}
 .lcpos-top .icons{display:flex;flex-direction:row;flex-wrap:nowrap;grid-template-columns:none}
 .lcpos-bottom .icons{top:auto;bottom:60px;display:flex;flex-direction:row;flex-wrap:nowrap;grid-template-columns:none}
+/* Displaced furniture: when the launch bar moves to an edge
+ * where a desktop widget's home anchor would overlap the bar
+ * (measured in Desktop.jsx, which sets .displaced on the piece
+ * that would collide), the widget relocates to a clear anchor
+ * instead of being covered — the clock/system-load widgets drop
+ * below the top bar's band; the Window Stack moves to the
+ * bottom-left when the bar takes the right edge, and up the
+ * right side under the widgets when the bar takes the bottom. */
+.lcpos-top .widgets.displaced{top:108px}
+.lcpos-right .wtr-wrap.displaced{right:auto;left:10px;transform-origin:0 100%}
+.lcpos-bottom .wtr-wrap.displaced{bottom:auto;top:225px}
+/* Minimized windows as list items on the launch bar (the S key
+ * minimizes; Desktop.jsx renderMinList): the item hangs directly
+ * underneath its app's button when the bar is at the top (above
+ * it at the bottom) as a horizontal row; when the bar is on a
+ * side the item stands to the side of the button, vertical
+ * (icon over name) instead of horizontal. */
+.dwrap{position:relative;display:flex}
+.minlist{position:absolute;z-index:6;display:flex;gap:4px}
+.minitem{display:flex;align-items:center;gap:6px;padding:4px 8px;background:linear-gradient(180deg,#1e1e1e,#131313);border:1px solid #000;border-radius:6px;box-shadow:0 8px 18px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.06);color:#ddd;font-size:10.5px;cursor:pointer;white-space:nowrap}
+.minitem:hover{color:#fff;border-color:#3a3a3a}
+.minitem svg{width:15px;height:15px;flex:none}
+.lcpos-top .minlist{top:calc(100% + 4px);left:0;flex-direction:column}
+.lcpos-bottom .minlist{bottom:calc(100% + 4px);left:0;flex-direction:column}
+.lcpos-left .minlist{left:calc(100% + 4px);top:0;flex-direction:row}
+.lcpos-right .minlist{right:calc(100% + 4px);top:0;flex-direction:row}
+.lcpos-left .minitem,.lcpos-right .minitem{flex-direction:column;gap:3px;padding:5px 6px}
+/* Additional launch bars (.xbar): the user's own containers,
+ * positioned by their own edge class — the primary bar's
+ * .lcpos-* rules do not reach them — and stacked inward in
+ * bands when they share an edge (Desktop.jsx computes the
+ * band offset inline). An empty bar is a dashed container with
+ * its name; drag mode (armed from the bar's right-click menu)
+ * outlines the bar green and makes it grabbable. Minimized
+ * items anchor by the bar's OWN edge, not the primary's. */
+.xbar{position:absolute;z-index:250;display:grid;grid-template-columns:84px;gap:6px}
+.xbar.xpos-top{display:flex;flex-direction:row;flex-wrap:nowrap;grid-template-columns:none}
+.xbar.xpos-bottom{display:flex;flex-direction:row;flex-wrap:nowrap;grid-template-columns:none}
+.xbar-empty{display:flex;align-items:center;justify-content:center;min-width:84px;min-height:46px;padding:6px 12px;border:1px dashed #4d4d4d;border-radius:6px;color:#8f8f8f;background:rgba(18,18,18,.45);font-size:10px;letter-spacing:.1em;white-space:nowrap}
+.xbar.dragmode,.icons.dragmode{outline:2px dashed #5cb85c;outline-offset:4px;cursor:grab}
+.xbar.dragmode:active,.icons.dragmode:active{cursor:grabbing}
+.xpos-top .minlist{top:calc(100% + 4px);left:0;flex-direction:column}
+.xpos-bottom .minlist{bottom:calc(100% + 4px);left:0;flex-direction:column}
+.xpos-left .minlist{left:calc(100% + 4px);top:0;flex-direction:row}
+.xpos-right .minlist{right:calc(100% + 4px);top:0;flex-direction:row}
+.xpos-left .minitem,.xpos-right .minitem{flex-direction:column;gap:3px;padding:5px 6px}
+/* Desktop widgets are frozen by default — the same freeze the
+ * windows and layers wear: desaturated under a pale cast, the
+ * inside inert (the key-click engine refuses clicks into
+ * .frozen, and the widget's children take no pointer events),
+ * while the widget's own frame still takes the right-click
+ * that unfreezes, hides or configures it. */
+.widget{position:relative}
+/* The Widgets app: a scrollable grid of widget cards. A card
+ * carries a live preview of its widget; an unplaced desktop
+ * card can be dragged out of the window onto the desktop. */
+.wgrid{flex:1;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;padding:10px;align-content:start}
+.wcard{display:flex;flex-direction:column;gap:7px;padding:9px;background:linear-gradient(180deg,#1d1d1d,#141414);border:1px solid #000;border-radius:8px;box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+.wcard:not(.placed):not(.greeter){cursor:grab}
+.wcard.dragging{opacity:.55;cursor:grabbing}
+.wcard-head{display:flex;align-items:center;justify-content:space-between;font-family:var(--font-d);font-weight:600;letter-spacing:.08em;color:#eee;font-size:12px}
+.wtag{font-family:var(--font-m,monospace);font-size:8.5px;font-weight:700;letter-spacing:.18em;color:#8f8f8f;border:1px solid #333;border-radius:3px;padding:2px 5px}
+.wcard.placed .wtag{color:#66ff66;border-color:rgba(92,184,92,.5)}
+.wcard-state{font-size:11px;color:#9a9a9a;line-height:1.45}
+.wcard-preview .widget{pointer-events:none}
+.wdrag-ghost{position:fixed;z-index:9999;pointer-events:none;padding:5px 10px;font-family:var(--font-m,monospace);font-size:10.5px;font-weight:700;letter-spacing:.06em;color:#dff5df;background:linear-gradient(180deg,rgba(42,42,42,.95),rgba(18,18,18,.95));border:1px solid #5cb85c;border-radius:5px;box-shadow:3px 3px 6px rgba(0,0,0,.6)}
+.widget.frozen{filter:saturate(.45) brightness(1.07)}
+.widget.frozen::after{content:"FROZEN";position:absolute;top:5px;right:7px;font-family:var(--font-m,monospace);font-size:8px;font-weight:700;letter-spacing:.28em;color:rgba(165,220,255,.8);pointer-events:none}
+.widget.frozen>*{pointer-events:none}

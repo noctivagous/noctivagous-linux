@@ -111,6 +111,13 @@ schema, and bundle rules, with a binding per external framework
 (Godot, Processing, openFrameworks, JUCE). Framework support lives
 in that module, never in per-framework compositor work.
 
+The maximal form is specced in [GODOT-SYSTEM.md](GODOT-SYSTEM.md):
+the Godot system, in which the greeter, the shell, and the apps
+are all Godot processes over a thin NCT-LIB-EXT-CORE compositor
+core. It is recorded as an architecture option for decision; the
+lane above is the default, and the map's classification does not
+change under either outcome.
+
 ## Current features, classified
 
 | Universal (COMPOSITOR) | Native-only (KIT) | Bridged (BRIDGE) |

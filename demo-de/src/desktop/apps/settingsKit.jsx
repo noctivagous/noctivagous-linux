@@ -16,6 +16,15 @@
  *     options: [{ value, label }], default }
  *   { key, label, type: "slider", min, max, step, format, default }
  *   { key, label, type: "text", placeholder, default }
+ *   { key, label, type: "matrix", cols, rows,
+ *     options: [{ value, label, slot: [col, row] }], default }
+ *     — a 2D matrix of stationary slots, modelled on the app
+ *     kit's matrix controls: each option sits in its slot of
+ *     the grid, slots with no option stay empty, and clicking
+ *     a slot selects its value. For a position setting the
+ *     slots are laid out as the thing being positioned (the
+ *     Launch Bar's matrix is a little map of the screen's
+ *     edges).
  * Option values may be any JSON value (null, numbers, strings);
  * the kit maps them through option indexes, never coercion.
  */
@@ -71,6 +80,32 @@ function KitRow({ e, val, set }) {
         <input type="range" className="sys" min={e.min} max={e.max} step={e.step || 1}
           value={val} onChange={(ev) => set(parseFloat(ev.target.value))} />
         <span className="sval">{e.format ? e.format(val) : val}</span>
+      </div>
+    );
+  }
+  if (e.type === "matrix") {
+    const cols = e.cols || 3;
+    const rows = e.rows || 3;
+    const bySlot = new Map((e.options || []).map((o) => {
+      const s = o.slot || [0, 0];
+      return [s[0] + "," + s[1], o];
+    }));
+    const cells = [];
+    for (let rI = 0; rI < rows; rI++) {
+      for (let cI = 0; cI < cols; cI++) {
+        const o = bySlot.get(cI + "," + rI);
+        cells.push(o ? (
+          <button key={cI + "," + rI} className={"setmatrix-slot" + (o.value === val ? " on" : "")}
+            onClick={() => set(o.value)}>{o.label}</button>
+        ) : (
+          <div key={cI + "," + rI} className="setmatrix-cell"></div>
+        ));
+      }
+    }
+    return (
+      <div className="srow">
+        <label>{e.label}</label>
+        <div className="setmatrix" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>{cells}</div>
       </div>
     );
   }

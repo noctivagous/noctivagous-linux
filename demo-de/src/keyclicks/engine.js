@@ -60,8 +60,8 @@ export function createKeyClicks(hooks = {}) {
   root.id = "kcRoot";
   root.innerHTML = `
     <div id="kcReticle"></div>
-    <div id="kcHud"><span class="kc-mode">KEY-CLICK</span><span class="kc-target">target — —</span><span class="kc-hints"><span class="kc-kbd">F</span> click <span class="kc-kbd">E</span> collapse+drag <span class="kc-kbd">R</span> collapse <span class="kc-kbd">T</span> vertical <span class="kc-kbd">A</span> close <span class="kc-kbd">G</span> hide <span class="kc-kbd">H</span> resize <span class="kc-kbd">D</span> back <span class="kc-kbd">Tab</span> target <span class="kc-kbd">Space</span> drag-lock <span class="kc-kbd">Alt+L</span> labels <span class="kc-kbd">Alt+K</span> keys <span class="kc-kbd">\</span> configure <span class="kc-sep">·</span> <span class="kc-kbd">9</span> freeze</span><button id="kcHudCollapse" type="button" title="Collapse the status bar into the task bar (or hover it and press E)">▾</button></div>
-    <button id="kcHudBtn" type="button" title="Key-click status — click to expand, right-click to collapse">KEY-CLICK</button>
+    <div id="kcHud"><span class="kc-mode">KEY-CLICK</span><span class="kc-target">target — —</span><span class="kc-hints"></span><button id="kcHudCollapse" type="button" title="Collapse the status bar into the task bar (or hover it and press E)">▾</button></div>
+    <button id="kcHudBtn" type="button" title="Key-click status — click to expand, right-click for bar options">KEY-CLICK</button>
     <button id="kcTab" type="button" aria-label="Toggle onscreen keyboard" title="Onscreen keyboard (Alt+K)">KEYBOARD</button>
     <div id="kcPanel" hidden></div>`;
   document.body.appendChild(root);
@@ -71,6 +71,76 @@ export function createKeyClicks(hooks = {}) {
     hudCollapsed = on;
     hud.style.display = on ? "none" : "";
     hudBtn.style.display = on ? "" : "none";
+  }
+  /* ---------- the bar: orientation + live option rows ----------
+   * Modelled on NibGlider's KeymapWidget (nibglider
+   * src/components/KeymapWidget.tsx): the bar lists the
+   * key-click options AVAILABLE right now — rows of key chip +
+   * action, recomputed from the cursor's context (the same
+   * branching the key handler acts on) whenever the mode or the
+   * hover changes — with the always-available system keys as a
+   * separated section at the end, like NibGlider's adjust
+   * section. NibGlider's bar stands vertical by default; here
+   * the horizontal strip is the default and the vertical
+   * orientation is offered on the bar's right-click menu, next
+   * to the collapse the right-click used to do on its own. The
+   * choice persists across sessions. */
+  let hudOrient = "h";
+  try { hudOrient = localStorage.getItem("nct-kc-orient") === "v" ? "v" : "h"; } catch (err) { /* storage off */ }
+  let hudMenu = null;
+  function applyHudOrient() {
+    hud.classList.toggle("kc-vertical", hudOrient === "v");
+    renderHudRows(true);
+  }
+  function setHudOrient(o) {
+    hudOrient = o;
+    try { localStorage.setItem("nct-kc-orient", o); } catch (err) { /* storage off */ }
+    applyHudOrient();
+  }
+  function closeHudMenu() {
+    if (!hudMenu) return;
+    hudMenu.remove();
+    hudMenu = null;
+    document.removeEventListener("mousedown", onHudMenuOutside, true);
+  }
+  function onHudMenuOutside(e) {
+    if (hudMenu && !(e.target.closest && e.target.closest("#kcHudMenu"))) closeHudMenu();
+  }
+  function showHudMenu() {
+    closeHudMenu();
+    hudMenu = document.createElement("div");
+    hudMenu.id = "kcHudMenu";
+    const item = (label, fn, on) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "kc-hudmenu-item" + (on ? " on" : "");
+      b.textContent = (on ? "✓ " : "") + label;
+      // mousedown, like the board caps: the engine's F path
+      // enters #kcRoot through a synthetic mousedown.
+      b.addEventListener("mousedown", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        closeHudMenu();
+        fn();
+      });
+      hudMenu.appendChild(b);
+    };
+    item("Vertical orientation", () => setHudOrient("v"), hudOrient === "v");
+    item("Horizontal orientation", () => setHudOrient("h"), hudOrient === "h");
+    const sep = document.createElement("div");
+    sep.className = "kc-hudmenu-sep";
+    hudMenu.appendChild(sep);
+    item(hudCollapsed ? "Expand bar" : "Collapse bar", () => setHudCollapsed(!hudCollapsed), false);
+    root.appendChild(hudMenu);
+    // Anchor at the bar: above it when horizontal, beside it
+    // when vertical; clamped into the viewport.
+    const anchor = (hudCollapsed ? hudBtn : hud).getBoundingClientRect();
+    const mw = hudMenu.offsetWidth, mh = hudMenu.offsetHeight;
+    let x = anchor.left, y = anchor.top - mh - 6;
+    if (hudOrient === "v" && !hudCollapsed) { x = anchor.right + 6; y = anchor.top; }
+    hudMenu.style.left = Math.max(4, Math.min(innerWidth - mw - 4, x)) + "px";
+    hudMenu.style.top = Math.max(4, Math.min(innerHeight - mh - 4, y)) + "px";
+    document.addEventListener("mousedown", onHudMenuOutside, true);
   }
   // The HUD is pointer-events:none (it must never block the dock
   // beneath it), so its right-click is caught by hit-testing the
@@ -83,13 +153,103 @@ export function createKeyClicks(hooks = {}) {
       if (under && under.closest && under.closest(".nwin, .dicon, .dock .task")) return;
       e.preventDefault();
       e.stopPropagation();
-      setHudCollapsed(!hudCollapsed);
+      if (hudMenu) closeHudMenu(); else showHudMenu();
     }
+  }
+  /* The rows for the cursor's current context — a mirror of
+   * onKeyDown's branching, so the bar never promises a key the
+   * handler would not honour. Returns {rows, sys}: sys is the
+   * always-available section, de-duplicated against rows. */
+  function hudContextRows() {
+    const SYS = [
+      ["Tab", "target"], ["Space", "drag-lock"], ["Alt+L", "labels"],
+      ["Alt+K", "keys"], ["\\", "configure"], ["9", "freeze"],
+    ];
+    if (textMode) {
+      const rows = [["Esc", "leave text mode"]];
+      if (textArm) rows.push(["F", "click " + nameOf(textArm.target)]);
+      else rows.push(["F", "type — hover a control to arm a click"]);
+      return { rows, sys: [] };
+    }
+    if (labelsOn) {
+      return {
+        rows: [["A–Z", "type a label"], ["F", "click target"], ["D", "back"], ["Esc", "dismiss"]],
+        sys: [],
+      };
+    }
+    if (dragLock) {
+      return {
+        rows: [["F", "drop"], ["Space", "drop"], ["D", "cancel"], ["Esc", "cancel"]],
+        sys: SYS,
+      };
+    }
+    const rows = [];
+    const at = document.elementFromPoint(mouseX, mouseY);
+    const inEl = (sel) => (at && at.closest ? at.closest(sel) : null);
+    if (document.querySelector(".dropdown.open, .launcher.open, .ctxmenu.open")) {
+      if (currentTarget()) rows.push(["F", "click"]);
+      rows.push(["A", "close menu"], ["D", "back"]);
+      return { rows, sys: SYS };
+    }
+    if (document.body.classList.contains("patch-pending")) {
+      rows.push(["F", inEl("[data-port]") ? "complete the cord" : "cancel the cord"]);
+      rows.push(["A", "cancel the cord"], ["Esc", "cancel the cord"]);
+      return { rows, sys: SYS };
+    }
+    if (inEl("[data-cord]")) rows.push(["F", "move cord"], ["A", "remove cord"]);
+    else if (inEl("[data-port]")) rows.push(["F", "draw a cord"]);
+    if (hudAtCursor()) rows.push(["E", "collapse bar"], ["R", "collapse bar"]);
+    if (inEl("[data-stack-item]")) rows.push(["F", "raise window"], ["A", "close window"]);
+    if (inEl("[data-min-item]")) rows.push(["F", "restore window"]);
+    if (inEl("[data-widget]")) {
+      rows.push(["0", "widget style"], ["O", "ports"]);
+      rows.push(["9", inEl("[data-widget].frozen") ? "unfreeze widget" : "freeze widget"]);
+    }
+    const win = winAtCursor();
+    if (win) {
+      rows.push(
+        ["F", "click"], ["E", "collapse + drag"], ["R", "collapse"],
+        ["T", "vertical collapse"], ["S", "minimize"], ["A", "close"],
+        ["G", "hide"], ["H", "resize"], ["P", "flip"], ["O", "ports"],
+      );
+    } else if (frozenWinAtCursor()) {
+      rows.push(["9", "unfreeze"]);
+    } else if (iconAtCursor()) {
+      rows.push(["F", "open"], ["D", "group"], ["G", "hide / show"], ["A", "quit"]);
+    }
+    if (inEl(".ng-layer")) rows.push([";", "rotate"], ["'", "rotate"], ["[ ]", "scale"]);
+    if (!rows.length) rows.push(["F", "click"], ["/", "start menu"]);
+    if (!rows.some((r) => r[0] === "D")) rows.push(["D", "back"]);
+    const seen = new Set(rows.map((r) => r[0]));
+    return { rows, sys: SYS.filter((r) => !seen.has(r[0])) };
+  }
+  let hudRowsSig = "";
+  function renderHudRows(force) {
+    if (!hintsEl) return;
+    const { rows, sys } = hudContextRows();
+    const all = rows.map((r) => [r[0], r[1], ""])
+      .concat(sys.map((r) => [r[0], r[1], "sys"]));
+    const sig = hudOrient + "|" + all.map((r) => r[0] + "=" + r[1]).join(",");
+    if (!force && sig === hudRowsSig) return;
+    hudRowsSig = sig;
+    hintsEl.textContent = "";
+    all.forEach(([key, label, sec], i) => {
+      const row = document.createElement("span");
+      row.className = "kc-row" + (sec ? " sys" : "") +
+        (sec && (i === 0 || all[i - 1][2] !== "sys") ? " sys-first" : "");
+      const kbd = document.createElement("span");
+      kbd.className = "kc-kbd";
+      kbd.textContent = key;
+      row.appendChild(kbd);
+      row.appendChild(document.createTextNode(" " + label));
+      hintsEl.appendChild(row);
+    });
   }
   const reticle = root.querySelector("#kcReticle");
   const hud = root.querySelector("#kcHud");
   const hudMode = hud.querySelector(".kc-mode");
   const hudTgt = hud.querySelector(".kc-target");
+  const hintsEl = hud.querySelector(".kc-hints");
   const tab = root.querySelector("#kcTab");
   const panel = root.querySelector("#kcPanel");
 
@@ -209,6 +369,7 @@ export function createKeyClicks(hooks = {}) {
     const t = currentTarget();
     hudTgt.textContent =
       "target — " + (t ? nameOf(t) : labelsOn ? "type a label" : "—");
+    renderHudRows(false);
     onMode(m);
   }
 
@@ -895,6 +1056,12 @@ export function createKeyClicks(hooks = {}) {
   }
   function onKeyDown(e) {
     syncTextMode();
+    // The bar's own menu takes Escape first, in any mode.
+    if (hudMenu && e.key === "Escape") {
+      e.preventDefault();
+      closeHudMenu();
+      return;
+    }
     // Alt+K is global: the shell's Cancel focuses a text field, so
     // a text-mode exemption here would strand the keyboard user.
     if (e.altKey && (e.key === "k" || e.key === "K")) {
@@ -1130,9 +1297,18 @@ export function createKeyClicks(hooks = {}) {
           if (fw9) {
             window.dispatchEvent(new CustomEvent("nct:freeze", { detail: { target: "window", id: fw9.getAttribute("data-app") } }));
           } else {
-            const layerEl = document.querySelector("[data-layer-app]");
-            if (layerEl) {
-              window.dispatchEvent(new CustomEvent("nct:freeze", { detail: { target: "layer", id: layerEl.getAttribute("data-layer-app") } }));
+            // A desktop widget under the cursor freezes too —
+            // widgets are frozen by default, so 9 over one is
+            // usually the unfreeze.
+            const wEl = document.elementFromPoint(mouseX, mouseY);
+            const wd = wEl && wEl.closest && wEl.closest("[data-widget]");
+            if (wd) {
+              window.dispatchEvent(new CustomEvent("nct:freeze", { detail: { target: "widget", id: wd.getAttribute("data-widget") } }));
+            } else {
+              const layerEl = document.querySelector("[data-layer-app]");
+              if (layerEl) {
+                window.dispatchEvent(new CustomEvent("nct:freeze", { detail: { target: "layer", id: layerEl.getAttribute("data-layer-app") } }));
+              }
             }
           }
         }
@@ -1158,6 +1334,20 @@ export function createKeyClicks(hooks = {}) {
           void reticle.offsetWidth;
           reticle.classList.add("kc-noconfig");
           setTimeout(() => reticle.classList.remove("kc-noconfig"), 420);
+        }
+        setMode();
+        return;
+      }
+      case "s": case "S": {
+        // Minimize the window under the cursor. The minimized
+        // window becomes a list item under (or beside) its app's
+        // launch-bar button — the shell renders it (Desktop.jsx
+        // .minlist) — and F over that item restores it, F being
+        // the click, as everywhere.
+        e.preventDefault();
+        const wS = winAtCursor();
+        if (wS) {
+          window.dispatchEvent(new CustomEvent("nct:appctl", { detail: { op: "minimize", app: wS.getAttribute("data-app") } }));
         }
         setMode();
         return;
@@ -1263,10 +1453,12 @@ export function createKeyClicks(hooks = {}) {
   document.addEventListener("focusin", onFocusChange);
   document.addEventListener("focusout", onFocusChange);
   const boardTimer = setInterval(() => { if (boardOn) renderBoard(false); }, 900);
+  applyHudOrient();
   setMode();
 
   return {
     destroy() {
+      closeHudMenu();
       disarmTextClick();
       clearInterval(boardTimer);
       clearTimeout(bufferTimer);

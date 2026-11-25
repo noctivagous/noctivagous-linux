@@ -29,7 +29,7 @@ const initialState = {
     wallpaper: 0, // classic gradient index (backdrop.mode 'classic')
     widgetStyles: {}, // widget id -> built-in style-set index (the 0 key cycles it)
     appSettings: {}, // app id -> that app's own settings (edited from its launch menu's Settings…)
-    launchColumn: {}, // the launch column's own settings (its Configure page)
+    launchColumn: {}, // the launch bar's own settings (its Configure page; the key predates the rename)
     backdrop: { ...BACKDROP_DEFAULTS },
     greeter: { knot: "trefoil", knotSpeed: 1 }, // the greeter medallion: knot form + rotation rate
   },

@@ -112,6 +112,19 @@ the panels compact, then shed group by group (CSS classes
 remains. It is shell furniture — `NCT-WL-COMPOSITOR` in the map's
 terms — and the desktop after login is untouched by it.
 
+**The Widget System** (`src/desktop/widgets/`) is the single
+module both widget surfaces draw from: `widgets.jsx` holds the
+registry (`WIDGETS` — each widget names its surface), the shared
+style sets, and the desktop surface's widgets (Clock, System
+Load) as components; `greeterWidgets.jsx` holds the greeter
+surface's animated panels, which the dashboard imports from
+here. The shell owns desktop placement (`settings.desktopWidgets`,
+an ordered id list), freezing (widgets are frozen by default)
+and the widgets' right-click menu; the **Widgets app** is the
+registry's gallery — a scrollable card layout whose desktop
+cards can be dragged out of the window onto the desktop to
+place their widget.
+
 **Desktop-layer apps** are the second app form: they render on the
 desk area itself, under the window layer, with no window frame.
 The open one is named by the store's `ui.layer` field (actions in

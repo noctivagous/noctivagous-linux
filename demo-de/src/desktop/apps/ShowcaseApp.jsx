@@ -22,7 +22,7 @@
  */
 
 import { useRef, useState } from "react";
-import { WIDGET_STYLES } from "../shell/Desktop.jsx";
+import { WIDGET_STYLES } from "../widgets/widgets.jsx";
 import { DeviceContext, FRAME_PRESETS, resolveProp, useDevice } from "../core/devices.js";
 import { StatusBar } from "./shared.jsx";
 import { SettingsKit, specValue } from "./settingsKit.jsx";

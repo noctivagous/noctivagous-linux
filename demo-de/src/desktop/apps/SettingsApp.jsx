@@ -5,7 +5,7 @@ import { playTestTone } from "../services/soundService.js";
 import { BACKDROP_SURFACES, BACKDROP_DENSITIES } from "../services/surfaces.js";
 import { StatusBar } from "./shared.jsx";
 import { APPS } from "../core/registry.jsx";
-import { WIDGET_STYLES } from "../shell/Desktop.jsx";
+import { WIDGET_STYLES } from "../widgets/widgets.jsx";
 import { appMode, setAppMode } from "../core/layers.js";
 import { store } from "../core/react.js";
 import { SettingsKit } from "./settingsKit.jsx";
@@ -23,7 +23,7 @@ function Slider({ label, min, max, step, value, onChange, format }) {
 }
 
 const SHELL_PAGES = [
-  { id: "launchcolumn", name: "Launch Column" },
+  { id: "launchcolumn", name: "Launch Bar" },
   { id: "widget:clock", name: "Clock Widget" },
   { id: "widget:sysload", name: "System Load Widget" },
 ];
@@ -209,6 +209,9 @@ export default function SettingsApp() {
                 {SHELL_PAGES.map((pg) => (
                   <button key={pg.id} className={selPage === pg.id ? "sel" : ""} onClick={() => setSelPage(pg.id)}>{pg.name}</button>
                 ))}
+                {(settings.launchBars || []).map((b) => (
+                  <button key={"bar:" + b.id} className={selPage === "bar:" + b.id ? "sel" : ""} onClick={() => setSelPage("bar:" + b.id)}>Launch Bar · {b.position}</button>
+                ))}
               </div>
               <div className="appset-page">
                 {(() => {
@@ -240,15 +243,49 @@ export default function SettingsApp() {
                     const lc = settings.launchColumn || {};
                     return (
                       <>
-                        <div className="appset-title">Launch Column</div>
+                        <div className="appset-title">Launch Bar</div>
                         <SettingsKit
                           spec={[
-                            { key: "position", type: "segment", label: "Position", options: [{ value: "left", label: "Left" }, { value: "right", label: "Right" }, { value: "top", label: "Top" }, { value: "bottom", label: "Bottom" }], default: "left" },
+                            { key: "position", type: "matrix", label: "Position", cols: 3, rows: 3, default: "top", options: [
+                              { value: "top", label: "Top", slot: [1, 0] },
+                              { value: "left", label: "Left", slot: [0, 1] },
+                              { value: "right", label: "Right", slot: [2, 1] },
+                              { value: "bottom", label: "Bottom", slot: [1, 2] },
+                            ] },
                             { key: "utilitiesOpen", type: "checkbox", label: "Utilities group starts open", default: false },
                             { key: "layerBadge", type: "checkbox", label: "Show the diamond badge on desktop-layer app icons", default: true },
                           ]}
                           value={lc}
                           onChange={(v) => store.set("settings", { ...settings, launchColumn: v })} />
+                      </>
+                    );
+                  }
+                  if (selPage.startsWith("bar:")) {
+                    const barId = selPage.slice(4);
+                    const bars = settings.launchBars || [];
+                    const bar = bars.find((b) => b.id === barId);
+                    if (!bar) return <div className="cap">This launch bar no longer exists.</div>;
+                    const val = { position: bar.position };
+                    APPS.forEach((a) => { val["app:" + a.id] = bar.items.includes(a.id); });
+                    return (
+                      <>
+                        <div className="appset-title">Launch Bar · {bar.position}</div>
+                        <SettingsKit
+                          spec={[
+                            { key: "position", type: "matrix", label: "Position", cols: 3, rows: 3, default: "bottom", options: [
+                              { value: "top", label: "Top", slot: [1, 0] },
+                              { value: "left", label: "Left", slot: [0, 1] },
+                              { value: "right", label: "Right", slot: [2, 1] },
+                              { value: "bottom", label: "Bottom", slot: [1, 2] },
+                            ] },
+                            ...APPS.map((a) => ({ key: "app:" + a.id, type: "checkbox", label: a.name, default: false })),
+                          ]}
+                          value={val}
+                          onChange={(v) => {
+                            const items = APPS.filter((a) => v["app:" + a.id]).map((a) => a.id);
+                            store.set("settings", { ...settings, launchBars: bars.map((b) => (b.id === barId ? { ...b, position: v.position, items } : b)) });
+                          }} />
+                        <div className="cap" style={{ marginTop: 8 }}>Checked apps appear on this bar, in catalogue order. The bar itself is moved by its right-click menu's Drag Mode.</div>
                       </>
                     );
                   }
