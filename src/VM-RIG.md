@@ -23,7 +23,8 @@ tests/vm/, fixing what the checks expose.
 1. `git pull` in the Windows clone of this repo.
 2. `cd src/vm && vagrant up` (first run provisions via provision.sh).
 3. Run the test bed: `vagrant ssh -c "sudo /opt/nct/src/tests/vm/run-all.sh"`
-   or from the host: `src/vm/vm-test.sh` (does up + test + pulls artifacts).
+   or from the host: `src/vm/vm-test.sh` — or `src/vm/vm-test.ps1`
+   on PowerShell — (does up + test + pulls artifacts).
 4. Read `tests/vm/results/` (pulled to the host): one line per check,
    PASS/FAIL, plus logs and screenshots for the failures.
 5. Fix in the repo (provision, scripts, configs — the guest is disposable),
@@ -65,6 +66,22 @@ Rules for the agent on the rig:
 
 ## Log
 
+- 2026-11-25 (rig) — **A13 CLOSED: 02+03+09 3/3 PASS.** The greeter session stays up (bento/debian-13, VMSVGA, host 7.2.22). Three stacked causes, all fixed in-repo: unwritable $HOME for the greeter user (Debian's _greetd owned /var/lib/greetd → Godot segfault; greeter now owns /var/lib/nct-greeter, also fixed in build-rootfs.sh so the QEMU image inherits it); vt=1 fought getty@tty1 (now vt=7); vmwgfx dmabuf import broken (host 3D defect, confirmed live on 7.2) so the greeter session is fully software (cage WLR_RENDERER=pixman; Godot x11 + opengl3 + LIBGL_ALWAYS_SOFTWARE=1). The cage stdout+stderr capture added to nct-greeter-session is what cracked it. Next: 04/05 will likely need the same software treatment for the user session (labwc + shell apps).
+- 2026-11-25 (rig) — First bring-up findings. `debian/trixie64` ships
+  libvirt only, so `vagrant up` on Windows/VirtualBox fails before
+  creating the VM; Vagrantfile now uses `bento/debian-13` (still Debian
+  13, A11 intact) with `box_architecture = "amd64"` pinned (`vagrant up`
+  does not auto-resolve the arch; an explicit `vagrant box add
+  --provider virtualbox --architecture amd64` succeeds). The Vagrantfile
+  also syncs the repo root at `/vagrant`, which provision.sh, run-all.sh
+  and vm-test.sh all assume (`/vagrant/src/...`); the default sync of the
+  Vagrantfile's own directory breaks that. Windows checkouts share CRLF
+  into the guest and every guest-run shell script breaks on it
+  (`$'\r': command not found` in build-deb.sh); the tracked tree was
+  normalized to LF in place (binary-safe pass, `git diff --name-only`
+  shows only the three intended files) and provision.sh strips CR from
+  package-list.txt defensively. Open hardening: `eol=lf` attributes so
+  future Windows clones check out LF.
 - 2026-11-25 (Stage 2, complete in Muse) — **The assembled system
   boots.** QEMU boots of the built image (agent-build-log/11):
   multi-user boot reached a login prompt; graphical boot started

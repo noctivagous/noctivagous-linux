@@ -12,6 +12,16 @@ vagrant up            # first run provisions; watch for provision errors
 vagrant ssh -c "sudo bash /vagrant/src/tests/vm/run-all.sh"
 ```
 
+No host-side bash is needed on Windows: the scripts run inside the
+guest, and `vagrant ssh -c` drives them from PowerShell as above
+(host Git's `bash.exe` exists here but is not required). For the
+console screenshot, call VBoxManage by its full path, e.g.
+`& "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" controlvm
+nct-test screenshotpng ..\tests\vm\results\host-console.png`.
+Keep the checkout's line endings LF: a CRLF tree is shared verbatim
+into the guest and every guest-run shell script breaks on it
+(`$'\r': command not found`).
+
 Note on file modes: src/ reached GitHub by snapshot push, which does
 not carry executable bits — scripts check out as 644. Everything the
 *installed system* executes gets its mode back from the debs
@@ -21,8 +31,10 @@ scripts are affected; run them via `bash <path>` as above (or
 `chmod +x` them in your clone — a mode-only commit from a real git
 client would settle it for good).
 
-Or `bash vm-test.sh` from Git Bash in src/vm (also grabs a host-side
-console screenshot). Results land in the guest's /tmp/nct-results/ and,
+Or `bash vm-test.sh` from Git Bash in src/vm, or on a bash-less
+Windows host `.\vm-test.ps1` from PowerShell in src/vm (both also grab
+a host-side console screenshot; `vm-test.ps1 [-Checks "03 09"]` runs
+only those checks). Results land in the guest's /tmp/nct-results/ and,
 when /vagrant is mounted, in src/tests/vm/results/: summary.txt (one
 line per check), a log per failing check, screenshots.
 

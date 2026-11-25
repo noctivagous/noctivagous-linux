@@ -2,7 +2,10 @@
 # ASSUMPTION A2/A3 (tests/vm/ASSUMPTIONS.md): field shapes from greetd's
 # documented config; the VM test bed is the first real proof.
 [terminal]
-vt = 1
+# vt7: the classic display-manager VT. vt1 is owned by the enabled
+# getty@tty1 — putting the greeter there made cage fail to acquire the
+# terminal and the session exited within ~2 s (ASSUMPTION A13).
+vt = 7
 
 [default_session]
 command = "/usr/lib/nct/core/session/nct-greeter-session"

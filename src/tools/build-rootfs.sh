@@ -53,7 +53,7 @@ rm -f "$DIR"/tmp/*.deb
 # image built by filtering alone would ship an empty hosts file).
 printf '127.0.0.1 localhost\n127.0.1.1 nct-%s\n::1 localhost ip6-localhost ip6-loopback\n' "$VARIANT" > "$DIR/etc/hosts"
 echo "== users and services"
-chroot "$DIR" sh -c 'id greeter >/dev/null 2>&1 || useradd --system --home /var/lib/greetd --shell /usr/sbin/nologin greeter; mkdir -p /var/lib/greetd; usermod -aG video,input,render greeter || true'
+chroot "$DIR" sh -c 'id greeter >/dev/null 2>&1 || useradd --system --home /var/lib/nct-greeter --shell /usr/sbin/nologin greeter; usermod -d /var/lib/nct-greeter greeter; mkdir -p /var/lib/nct-greeter; chown greeter: /var/lib/nct-greeter; usermod -aG video,input,render greeter || true'
 if [ "$VARIANT" = test ]; then
   chroot "$DIR" sh -c 'id nct >/dev/null 2>&1 || useradd --create-home --shell /bin/bash nct; echo "nct:nct-test-2026" | chpasswd; usermod -aG video,input,render,sudo nct || true'
 fi

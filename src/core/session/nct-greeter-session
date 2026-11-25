@@ -30,6 +30,29 @@ case "$comp" in
     printf 'output * resolution 1280x800\ndefault_border none\nexec %s --fullscreen\n' "$greeter_cmd" > "$cfg"
     sway -c "$cfg" ;;
   cage|*)
-    # cage is a single-app Wayland compositor: cage -- <command>
-    exec cage -- sh -c "$greeter_cmd --fullscreen" ;;
+    # A7/A13: the pinned Godot defaults to Vulkan, which does not survive
+    # this stack (vmwgfx dmabuf import fails, then the Wayland display
+    # dispatch breaks). opengl3 is the verified fallback — keep the
+    # override greeter-local until checks 04/05 say otherwise.
+    export NCT_RENDER_DRIVER=${NCT_RENDER_DRIVER:-opengl3}
+    # Same story one layer up: Godot's Wayland-EGL buffers go through the
+    # broken dmabuf import, while Xwayland survives on its software
+    # fallback. Run the greeter as an X11 client on software GL (the
+    # locally proven configuration: XWayland + opengl3) until 04/05 say
+    # otherwise.
+    export NCT_DISPLAY_DRIVER=${NCT_DISPLAY_DRIVER:-x11}
+    export LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE:-1}
+    # Compositor half of the same workaround: keep cage itself off the
+    # broken vmwgfx dmabuf path with the software renderer. The web
+    # confirms this shape (wlroots on VMware-class drivers fails dmabuf
+    # import; WLR_RENDERER=pixman is the documented escape hatch).
+    export WLR_RENDERER=${WLR_RENDERER:-pixman}
+    # cage is a single-app Wayland compositor: cage -- <command>.
+    # No exec: capture cage's (and the greeter's) output in the state
+    # dir first — under greetd nothing forwards it to the journal,
+    # which is the evidence gap behind ASSUMPTION A13.
+    cage -- sh -c "$greeter_cmd --fullscreen" >>"$state/cage.log" 2>&1
+    code=$?
+    echo "nct-greeter-session: cage exited with code $code" >>"$state/cage.log"
+    exit "$code" ;;
 esac
