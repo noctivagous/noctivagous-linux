@@ -1,0 +1,82 @@
+Key-Clicks
+
+Example Configuration
+
+	F - corresponding to index finger, equivalent to left mouse click.  
+	We call it the Activate event because it activates buttons,
+	checkboxes, text field focus, etc.  (On left-handed layout it is assigned to J).
+	
+	A - designated as Close, will close any element.
+	Hover over a window and press A and it closes.
+	In a vector-drawing program we made it Finish, for finishing
+	the drawing of a rectangle or spline (path).
+
+	Spacebar - instant grab and drag of what is under the cursor, placing
+	the element into a drag-lock (also known as sticky drag).
+		
+	We often assign these consistently but the other keys
+	can change from one context or app to the next.  That said,
+	in an OS we might have to devise a conventional set
+	of key maps that apps follow so that the user experiences
+	consistence.
+	
+	For the OS and windows:
+	
+	S - designated as Minimize, will minimize any element.
+
+	E - Titlebar Collapse Toggle
+	
+	Modes: 
+	
+	Text Entry Mode - When the user needs to enter text,
+	the keyboard switches over.  This occurs automatically
+	when a text field gains focus. The system UI changes to an orange cast
+	to indicate that the keyboard is in Text Entry Mode instead of Interaction
+	key-clicks.  Until the user presses Escape (or, as a fallback, uses 
+	physical mouse click to click outside of the text element), key-clicks
+	are suspended.  Instinctively, however, a person often wants
+	to click without having to press Esc to exit Text Entry Mode and
+	the requirement to press Esc to exit Text Entry Mode becomes a friction.
+	For this reason an exception was established, which is what we
+	call a grace period where if the person moves the mouse a timer counts
+	down (not shown in the UI but has been), allowing certain key-clicks
+	to be used while Text Entry Mode is on.  This is because certain kinds
+	of mouse movements and subsequent cursor locations (the user focused
+	on a text field by clicking it with F but wants to click something else
+	after doing that and not press Escape first) indicate an intent to click
+	during Text Entry Mode.
+		
+		Text Entry Mode was established in the Noctivagous Chrome extension KeyPilot
+		where Noctivagous had to figure out how to allow the user to switch between
+		navigation of the web page, browser tabs, and extension UI features
+		and the keyboard state of text entry.
+		      
+		Navigation Mode - the user is using the keyboard for key-clicks.
+		
+
+	Step Keys
+	
+	These are increment and decrement keys, step keys, that follow the right side
+	of the keyboard in pairs.
+
+	In the app Floating Marker, Noctivagous established the following keys
+	
+	Steps related to size: 
+		- and =  
+		e.g.will increase or decrease stroke or font size.
+	
+	Steps related to scale
+		[  and ]
+		e.g. will scale a shape down and up
+		
+		
+	Steps related to rotation
+		;  and '
+		e.g. will scale a shape down and up
+		
+	Shift + a step key will step at a higher amount  (e.g. 45 deg rotation instead of 15 deg)
+	Alt + a step key will step at a lower amount (e.g. 5 deg rotation instead of 15 deg)
+		
+		
+	
+ 
