@@ -163,7 +163,7 @@ export default function Window({ id, rec, focused, locked }) {
         <span className="tt">{ap.name}</span>
         <span className="wctl">
           <button className="wbtn shade" title="Windowshade" aria-label="Shade" onClick={(e) => { e.stopPropagation(); toggleShade(id); }}>≡</button>
-          <button className="wbtn min" title="Minimize" aria-label="Minimize" onClick={(e) => { e.stopPropagation(); minimizeWindow(id); }}>_</button>
+          <button className="wbtn min" title="Minimize" aria-label="Minimize" onClick={(e) => { e.stopPropagation(); minimizeWindow(id); }}>−</button>
           <button className="wbtn max" title="Maximize" aria-label="Maximize" onClick={(e) => { e.stopPropagation(); toggleMax(id); }}>□</button>
           <button className="wbtn close" title="Close" aria-label="Close" onClick={onClose}>✕</button>
         </span>

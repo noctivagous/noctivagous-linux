@@ -5,7 +5,7 @@ import { playTestTone } from "../services/soundService.js";
 import { BACKDROP_SURFACES, BACKDROP_DENSITIES } from "../services/surfaces.js";
 import { StatusBar } from "./shared.jsx";
 import { APPS } from "../core/registry.jsx";
-import { WIDGET_STYLES } from "../widgets/widgets.jsx";
+import { WIDGET_STYLES, widgetStyleIndex } from "../widgets/widgets.jsx";
 import { appMode, setAppMode } from "../core/layers.js";
 import { store } from "../core/react.js";
 import { SettingsKit } from "./settingsKit.jsx";
@@ -307,7 +307,7 @@ export default function SettingsApp() {
                   }
                   if (selPage.startsWith("widget:")) {
                     const wid = selPage.slice(7);
-                    const cur = ((settings.widgetStyles || {})[wid] || 0) % WIDGET_STYLES.length;
+                    const cur = widgetStyleIndex(settings, wid);
                     const clockMine = (settings.appSettings && settings.appSettings.clock) || {};
                     return (
                       <>

@@ -153,7 +153,7 @@ input[type=range].sys::-moz-range-thumb{width:13px;height:19px;background:#2c2c2
 .gd-wxcredit{position:absolute;right:6px;bottom:5px;font-family:var(--font-m);font-size:8.5px;letter-spacing:.08em;color:rgba(235,242,246,.85);text-shadow:0 1px 3px rgba(0,0,0,.85)}
 .gd-net{border:none;background:transparent;height:40px}
 .gd-map{height:84px}
-.gd-legend{font-family:var(--font-m);font-size:9.5px;color:#bcbcbc;letter-spacing:.03em;padding-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gd-legend{font-family:var(--font-m);font-size:11.5px;color:#bcbcbc;letter-spacing:.03em;padding-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Setup Wizard (shell/SetupWizard.jsx) — foundation only, not
  * mounted yet; these styles wait with the component for the
  * first-launch showing. */
@@ -177,7 +177,9 @@ input[type=range].sys::-moz-range-thumb{width:13px;height:19px;background:#2c2c2
 .gd-queued .gd-ptitle .led{background:#d8b96a;box-shadow:0 0 6px rgba(216,185,106,.9)}
 .gd-qtag{margin-left:auto;font-size:8.5px;letter-spacing:.14em;color:#b5b5b5}
 .gd-queued .gd-qtag{color:#d8b96a}
-.login-clock{text-align:center}
+.login-clock{text-align:center;position:relative}
+.login-clock .time,.login-clock .date,.login-clock .sessline{position:relative;z-index:1}
+.knot-backdrop{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:360px;height:360px;pointer-events:none;opacity:.5;z-index:0}
 .login-clock .time{font-family:var(--font-d);font-weight:600;font-size:clamp(44px,8vw,72px);letter-spacing:.02em;color:#f0f0f0;line-height:1;text-shadow:0 2px 12px rgba(0,0,0,.8);font-variant-numeric:tabular-nums}
 .login-clock .date{font-family:var(--font-m);font-size:11.5px;letter-spacing:.22em;text-transform:uppercase;color:#9d9d9d;margin-top:8px}
 .login-clock .sessline{font-family:var(--font-m);font-size:10.5px;letter-spacing:.14em;color:#6f6f6f;margin-top:5px}
@@ -186,13 +188,22 @@ input[type=range].sys::-moz-range-thumb{width:13px;height:19px;background:#2c2c2
 .nwin.focused{box-shadow:12px 14px 34px rgba(0,0,0,.75),inset 0 1px 0 rgba(100,100,100,.9),0 0 0 1px rgba(255,255,255,.04)}
 .nwin.opening{animation:winIn .16s ease}
 @keyframes winIn{from{opacity:0;transform:scale(.985) translateY(4px)}to{opacity:1;transform:none}}
-.titlebar{background:var(--grad-title);color:var(--title);padding:0 8px 0 10px;height:30px;display:grid;grid-template-columns:1fr minmax(0,26em) 1fr;align-items:center;gap:8px;border-bottom:2px solid #000;cursor:grab;user-select:none;touch-action:none;flex:none}
+/* Titlebar layout (fixed 2026-11-25): the columns are
+ * minmax(0,1fr) | auto | minmax(0,1fr) — the title track sizes
+ * to the title, the two side tracks are EQUAL, so the title is
+ * centred on the bar at every window width. The old template
+ * (1fr minmax(0,26em) 1fr) let the middle track balloon to
+ * 26em first; the sides then split what was left from unequal
+ * minimums, so the title drifted off-centre and, on narrow
+ * windows, the WIN · nnn id was crushed into a wrapped stack
+ * taller than the bar. */
+.titlebar{background:var(--grad-title);color:var(--title);padding:0 8px 0 10px;height:30px;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:8px;border-bottom:2px solid #000;cursor:grab;user-select:none;touch-action:none;flex:none}
 .titlebar:active{cursor:grabbing}
-.titlebar .tt{font-family:var(--font-d);font-weight:600;font-size:11.5px;line-height:1.1;letter-spacing:.18em;text-transform:uppercase;text-align:center;justify-self:center;min-width:0;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.titlebar .tt{font-family:var(--font-d);font-weight:600;font-size:11.5px;line-height:1.1;letter-spacing:.18em;text-transform:uppercase;text-align:center;justify-self:center;min-width:0;max-width:26em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nwin.focused .titlebar .tt{color:#a8a8a8}
-.titlebar .tid{font-family:var(--font-m);font-size:9.5px;color:#555;letter-spacing:.05em;justify-self:start}
+.titlebar .tid{font-family:var(--font-m);font-size:9.5px;color:#555;letter-spacing:.05em;justify-self:start;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .wctl{display:flex;gap:4px;flex:none;justify-self:end}
-.wbtn{width:26px;height:22px;min-height:22px;border:1px solid #000;border-radius:3px;background:var(--grad-btn);color:#777;cursor:pointer;font-size:11px;display:inline-flex;align-items:center;justify-content:center;box-shadow:inset 0 1px 0 rgba(60,60,60,.9);padding:0;font-family:var(--font-m)}
+.wbtn{width:26px;height:22px;min-height:22px;line-height:1;border:1px solid #000;border-radius:3px;background:var(--grad-btn);color:#777;cursor:pointer;font-size:11px;display:inline-flex;align-items:center;justify-content:center;box-shadow:inset 0 1px 0 rgba(60,60,60,.9);padding:0;font-family:var(--font-m)}
 .wbtn:hover{color:#fff}
 .wbtn.close:hover{background:linear-gradient(145deg,#4a0000,#2f0000);color:#ff6666}
 .wbtn.min:hover,.wbtn.max:hover{background:linear-gradient(145deg,#2a4a2a,#1f351f);color:#66ff66}
@@ -673,6 +684,12 @@ body.kc-textmode #loginScreen .topbar{box-shadow:inset 0 0 0 999px rgba(255,122,
 .wtitlebar.vert .wt-info{margin-left:0;margin-top:auto}
 .widget.ws-glass{background:linear-gradient(180deg,rgb(var(--wgt)/.42),rgb(var(--wgb)/.32));border-color:rgba(255,255,255,.22);box-shadow:5px 6px 16px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.22)}
 .widget.ws-recessed{background:linear-gradient(180deg,rgb(var(--wgb)/.95),rgb(var(--wgt)/.9));border-color:#000;box-shadow:inset 0 3px 12px rgba(0,0,0,.85),inset 0 -1px 0 rgba(255,255,255,.05)}
+/* Transparent (user, 2026-11-25): no plate, no border, no
+ * shadow — the widget's text sits directly on the backdrop,
+ * like the greeter's clock area; a soft text shadow keeps it
+ * legible over the wallpaper. */
+.widget.ws-transparent{background:transparent;border-color:transparent;box-shadow:none;backdrop-filter:none}
+.widget.ws-transparent .wtime,.widget.ws-transparent .wdate{text-shadow:0 1px 10px rgba(0,0,0,.75),0 0 2px rgba(0,0,0,.6)}
 
 /* Frozen elements (the \ key): a frost cast, desaturated and
  * brightened; the body takes no events, so hosted content and

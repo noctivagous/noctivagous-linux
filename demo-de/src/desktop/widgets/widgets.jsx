@@ -21,8 +21,26 @@ import { WeatherAnim, SunburstProcesses, VehicleMap, CamGrid, NetChart } from ".
 
 /* The desktop widgets' built-in style sets. The 0 key cycles
  * the set of the widget under the cursor; the shell stores the
- * selected index per widget (settings.widgetStyles). */
-export const WIDGET_STYLES = ["panel", "glass", "recessed"];
+ * selected index per widget (settings.widgetStyles).
+ * "transparent" (user, 2026-11-25) is the fourth set: no plate
+ * at all — the widget's text sits directly on the backdrop,
+ * the way the greeter's clock area does. A widget may name a
+ * defaultStyle in the registry (the clock's is transparent);
+ * a stored choice always wins over the default. */
+export const WIDGET_STYLES = ["panel", "glass", "recessed", "transparent"];
+
+/* The effective style index for a widget: the stored choice,
+ * else the widget's registry default, else "panel". */
+export function widgetStyleIndex(settings, id) {
+  const stored = settings && settings.widgetStyles ? settings.widgetStyles[id] : undefined;
+  if (stored != null) return stored % WIDGET_STYLES.length;
+  const w = widgetById(id);
+  const d = w && w.defaultStyle ? WIDGET_STYLES.indexOf(w.defaultStyle) : -1;
+  return d >= 0 ? d : 0;
+}
+export function widgetStyleName(settings, id) {
+  return WIDGET_STYLES[widgetStyleIndex(settings, id)];
+}
 
 /* GRAY GRADATIONS (user, 2026-11-25): each desktop widget also
  * carries a gradation step (wg-1 lightest … wg-4 darkest) that
@@ -74,7 +92,7 @@ export function SysLoadWidget({ load, styleName, gray, frozen, portsNode, previe
  * app's cards, settings.desktopWidgets); greeter entries are
  * the sign-in dashboard's panels. */
 export const WIDGETS = [
-  { id: "clock", name: "Clock", surface: "desktop", component: ClockWidget, gray: "wg-1" },
+  { id: "clock", name: "Clock", surface: "desktop", component: ClockWidget, gray: "wg-1", defaultStyle: "transparent" },
   { id: "sysload", name: "System Load", surface: "desktop", component: SysLoadWidget, gray: "wg-2" },
   { id: "weather", name: "Weather", surface: "greeter", component: WeatherAnim },
   { id: "processes", name: "Processes", surface: "greeter", component: SunburstProcesses },

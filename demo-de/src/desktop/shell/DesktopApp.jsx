@@ -20,7 +20,7 @@ import { lockScreen, logOut } from "./sessionActions.js";
 import { startKeyClicks } from "../../keyclicks/index.js";
 import Login from "./Login.jsx";
 import Desktop from "./Desktop.jsx";
-import { WIDGET_STYLES } from "../widgets/widgets.jsx";
+import { WIDGET_STYLES, widgetStyleIndex } from "../widgets/widgets.jsx";
 import BackdropView from "./BackdropView.jsx";
 
 export default function DesktopApp() {
@@ -90,7 +90,7 @@ export default function DesktopApp() {
       if (!id) return;
       const st = store.get().settings;
       const ws = { ...(st.widgetStyles || {}) };
-      ws[id] = ((ws[id] || 0) + 1) % WIDGET_STYLES.length;
+      ws[id] = (widgetStyleIndex(st, id) + 1) % WIDGET_STYLES.length;
       store.set("settings", { ...st, widgetStyles: ws });
     };
     window.addEventListener("nct:widgetstyle", onWidgetStyle);

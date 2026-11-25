@@ -4,7 +4,7 @@ import { toast } from "../core/bus.js";
 import { enterDesktop, finishUnlock } from "./sessionActions.js";
 import { useNow, hm, hms, fullDate, MONS } from "./useNow.js";
 import GreeterDashboard from "../greeter/GreeterDashboard.jsx";
-import GreeterKnot from "../greeter/GreeterKnot.jsx";
+import GreeterKnot, { CinquefoilBackdrop } from "../greeter/GreeterKnot.jsx";
 import { HOSTNAME, LAUNCH_NAMES } from "../greeter/greeterData.js";
 
 const PROFILES = [
@@ -170,6 +170,7 @@ export default function Login({ onPower, onRestart }) {
 
       <GreeterDashboard profile={profile}>
         <div className="login-clock">
+          <CinquefoilBackdrop />
           <div className="time">{hm(now)}</div>
           <div className="date">{fullDate(now)}</div>
           <div className="sessline">SESSION · {session.sessionType.toUpperCase()} &nbsp;/&nbsp; DISPLAY :0</div>

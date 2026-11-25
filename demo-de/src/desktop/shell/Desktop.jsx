@@ -16,7 +16,7 @@ import {
 } from "../core/patchbay.js";
 import { toggleLayer, toggleLayerFrozen, closeLayer, appMode, setAppMode } from "../core/layers.js";
 import { useNow, hms, hm, fullDate, pad } from "./useNow.js";
-import { WIDGETS, widgetById, WIDGET_STYLES, DEFAULT_DESKTOP_WIDGETS, ClockWidget, SysLoadWidget, WidgetTitlebar } from "../widgets/widgets.jsx";
+import { WIDGETS, widgetById, widgetStyleName, DEFAULT_DESKTOP_WIDGETS, ClockWidget, SysLoadWidget, WidgetTitlebar } from "../widgets/widgets.jsx";
 import { MenuTree, menu as menuNode, item as menuItem, sep as menuSep, group as menuGroup } from "../core/menuTree.jsx";
 
 /* The system menu bar's menus are menu TREES (core/menuTree.jsx):
@@ -233,8 +233,7 @@ export default function Desktop({ onShutdown }) {
   /* A stack item's click restores its window to a titlebar at
    * the click point and hands it to drag-lock, so the bar
    * arrives already carried by the cursor. */
-  const widgetStyle = (id) =>
-    WIDGET_STYLES[((settings.widgetStyles || {})[id] || 0) % WIDGET_STYLES.length];
+  const widgetStyle = (id) => widgetStyleName(settings, id);
 
   const restoreStacked = (id) => (e) => {
     const rec = windows.byId[id];

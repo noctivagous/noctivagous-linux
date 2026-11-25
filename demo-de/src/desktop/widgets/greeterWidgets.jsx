@@ -122,7 +122,7 @@ export function SunburstProcesses({ procs, ramTotal }) {
     });
     root.sum((d) => d.cur || 0);
     partition().size([Math.PI * 2, 56])(root);
-    const cx = 240, cy = 108, rot = t * 0.000045;
+    const cx = 300, cy = 132, rot = t * 0.000045;
     ctx.clearRect(0, 0, cv.width, cv.height);
     const nodes = [];
     root.each((n) => { if (n.depth >= 1) nodes.push(n); });
@@ -145,14 +145,19 @@ export function SunburstProcesses({ procs, ramTotal }) {
      * Drawn on the same canvas pass, so the labels track the
      * ring's slow rotation instead of sitting in a static list. */
     const fmtMB = (v) => v >= 1024 ? (v / 1024).toFixed(1) + " GB" : Math.round(v) + " MB";
-    ctx.font = "9px 'IBM Plex Mono', monospace";
+    /* Label size (user, 2026-11-25): the annotations and the
+     * centre text must be READABLE at the panel's display size —
+     * the canvas is drawn at 600px and shown at ~230px, so the
+     * type is set large here (18px annotations, 40px centre)
+     * to land at a legible size on screen. */
+    ctx.font = "18px 'IBM Plex Mono', monospace";
     for (const n of nodes) {
       if (n.depth !== 1) continue;
       const a = (n.x0 + n.x1) / 2 + rot;
       const side = Math.cos(a) >= 0 ? 1 : -1;
       const p1x = cx + Math.cos(a) * 88, p1y = cy + Math.sin(a) * 88;
-      const p2x = cx + Math.cos(a) * 104, p2y = cy + Math.sin(a) * 104;
-      const p3x = p2x + side * 22;
+      const p2x = cx + Math.cos(a) * 110, p2y = cy + Math.sin(a) * 110;
+      const p3x = p2x + side * 20;
       ctx.strokeStyle = "rgba(205,216,222,.6)";
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -162,21 +167,27 @@ export function SunburstProcesses({ procs, ramTotal }) {
       ctx.stroke();
       ctx.fillStyle = "rgba(220,228,233,.9)";
       ctx.beginPath();
-      ctx.arc(p1x, p1y, 1.6, 0, Math.PI * 2);
+      ctx.arc(p1x, p1y, 2.4, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = "#cdd9df";
       ctx.textAlign = side > 0 ? "left" : "right";
-      ctx.fillText(n.data.name + " " + fmtMB(n.value), p3x + side * 4, p2y + 3);
+      ctx.fillText(n.data.name + " " + fmtMB(n.value), p3x + side * 5, p2y + 6);
     }
     ctx.textAlign = "center";
     const used = leaves.reduce((a, n) => a + n.value, 0);
     ctx.fillStyle = "#d7e0e6";
-    ctx.font = "600 21px 'IBM Plex Mono', monospace";
+    ctx.font = "600 40px 'IBM Plex Mono', monospace";
     ctx.textAlign = "center";
-    ctx.fillText((used / 1024).toFixed(1), cx, cy - 2);
-    ctx.font = "9px 'IBM Plex Mono', monospace";
-    ctx.fillStyle = "#8fa3b0";
-    ctx.fillText("GB · " + Math.round((used / ramTotal) * 100) + "% RAM", cx, cy + 13);
+    ctx.fillText((used / 1024).toFixed(1), cx, cy - 4);
+    ctx.font = "14px 'IBM Plex Mono', monospace";
+    const sub = "GB · " + Math.round((used / ramTotal) * 100) + "% RAM";
+    const subW = ctx.measureText(sub).width;
+    ctx.fillStyle = "rgba(6,10,14,.55)";
+    ctx.beginPath();
+    ctx.roundRect(cx - subW / 2 - 6, cy + 12, subW + 12, 19, 4);
+    ctx.fill();
+    ctx.fillStyle = "#a9bfcc";
+    ctx.fillText(sub, cx, cy + 26);
     if (legendRef.current) {
       const top = [...leaves].sort((a, b) => b.value - a.value).slice(0, 3);
       legendRef.current.textContent =
@@ -185,7 +196,7 @@ export function SunburstProcesses({ procs, ramTotal }) {
   });
   return (
     <div>
-      <canvas ref={cvRef} className="gd-anim gd-sun" width={480} height={216} data-anim="sunburst" />
+      <canvas ref={cvRef} className="gd-anim gd-sun" width={600} height={264} data-anim="sunburst" />
       <div className="gd-legend" ref={legendRef}></div>
     </div>
   );
