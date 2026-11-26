@@ -14,6 +14,11 @@ boot_splash/show_image=false
 [display]
 window/size/viewport_width=900
 window/size/viewport_height=620
+; Fullscreen from engine start: without this the window (and the
+; boot splash painted into it) starts at the viewport size above
+; and only grows to the display once the compositor configure
+; lands - a small grey island on black at every boot.
+window/size/mode=3
 
 [rendering]
 ; Match the boot background: no second flash between splash-off and
