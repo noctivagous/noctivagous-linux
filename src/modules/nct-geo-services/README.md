@@ -70,3 +70,7 @@ Mode slices (nct-environment-manager/modes/ — PLACEHOLDER):
 
 Status: STUB — laid out 2026-11-26 at the owner's direction, not
 built. Plan: src/plans/ENVIRONMENT-MANAGER.md §1.
+Exception: the weather section has a v1 prototype — the
+nct-weather-bridge adapter (spec: WEATHER-BRIDGE.md in this
+directory; code: src/services/nct-weather-bridge/; first consumer:
+src/godot/apps/nct-weather/), built 2026-11-26, build log 25.
