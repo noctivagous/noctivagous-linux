@@ -779,3 +779,237 @@ Each app window is a `Control` node inside the Workspace layer. Its z-index with
 
 
 
+> We have an opportunity, since we are starting from the ground up, to make sure that our windows are rendered from vector graphics so they render sharply at any resolution, possibly based on SVG.  So, our design system guide might include SVGs with annotations (ignored by regular SVG renderers) for how the boxes will be resized, so that a rounded corner doesn't get stretched, etc.
+
+This is a well-motivated direction, and there's prior art that validates it — but one important caveat: **SVG has no native 9-slice**. A [W3C bug was filed in 2014](https://www.w3.org/Bugs/Public/show_bug.cgi?id=26299) requesting it, and a [formal issue on the SVG Working Group](https://github.com/w3c/svgwg/issues/51) in 2016. Neither was implemented. So your "annotations ignored by regular renderers" approach is the right call — it's the only way to carry the resize semantics in the file itself.
+
+**The annotation format:**
+
+A custom namespace (e.g. `xmlns:g="http://your-de/glyph"`) with a single element that encodes the 9-slice grid. Regular SVG renderers skip unknown namespaces:
+
+```xml
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:g="http://your-de/glyph"
+     viewBox="0 0 120 40" width="120" height="40">
+
+  <!-- Resize annotation: ignored by regular SVG renderers -->
+  <g:patch
+    left="12" right="12" top="8" bottom="8"
+    content-left="16" content-right="16" content-top="10" content-bottom="10"/>
+
+  <!-- The actual vector art -->
+  <rect x="0" y="0" width="120" height="40" rx="8" ry="8"
+        fill="#2d2d2d" stroke="#555" stroke-width="1"/>
+  <rect x="16" y="10" width="88" height="20" rx="4" ry="4"
+        fill="#3a3a3a"/>
+
+</svg>
+```
+
+| Attribute | Meaning |
+|---|---|
+| `left` / `right` / `top` / `bottom` | Width/height of the **fixed corner regions** (in SVG user units at the reference size). Everything inside these margins is a corner — never stretched. |
+| `content-*` | The **content padding** (where child content is placed), analogous to Android's 9-patch content area. |
+
+The 9 regions are derived: the four corners are `[0..left] × [0..top]`, `[width-right..width] × [0..top]`, etc. The edges and center are stretchable. This is identical to Android's `.9.png` 1-pixel border encoding, but expressed in XML where it's human-readable and editable in Inkscape/Figma.
+
+**Why this beats raster 9-patch:**
+
+| | Raster `.9.png` | Annotated SVG |
+|---|---|---|
+| 96 DPI (100%) | Sharp | Sharp |
+| 144 DPI (150%) | Upscaled, soft edges | **Sharp** — vectors re-rasterized at target DPI |
+| 192 DPI (200%) | Blurry | **Sharp** |
+| Fractional scaling (125%, 175%) | Artifacts | **Sharp** |
+| Editable in vector tool | No (1px border is fragile) | **Yes** — edit paths, adjust corner radius |
+| File size (simple shape) | ~2KB per DPI variant | ~1KB, one file for all DPIs |
+
+**How Godot renders it:**
+
+Godot's `StyleBoxTexture` already does 9-slice on a raster `Texture2D`. Two paths:
+
+**Path A: Rasterize at load time (simplest)**
+1. Parse the SVG (via a GDExtension wrapping [nanosvg](https://github.com/mono0x2/NanoSVG) or [resvg](https://github.com/RazrFalcon/resvg)).
+2. Read the `<g:patch>` attributes.
+3. Render the SVG to a `Texture2D` at the current screen DPI.
+4. Create a `StyleBoxTexture` with the 9-slice margins scaled to the rasterized size.
+5. Done — Godot's existing 9-slice code handles the rest.
+
+This is what [dlangui's SVG nine-patch implementation](https://github.com/buggins/dlangui/issues/847) does: "render at WxH × SCREEN_DPI / BASE_DPI, scale frame and padding by the same factor, add the transparent 1-pixel border and set the NinePatch."
+
+**Path B: True vector 9-slice (sharper, more work)**
+1. Parse the SVG paths.
+2. Split the path geometry into 9 regions at the `<g:patch>` boundaries.
+3. At render time, scale the stretchable regions (edges by 1 axis, center by 2) and draw all 9 as vector primitives to Godot's canvas.
+4. Corners are drawn at fixed size — never scaled.
+
+This is what [romainguy/v9](https://github.com/romainguy/v9) does for Android: "dynamically resize Path objects as you would 9-patch bitmaps... the chat bubble is dynamically resized while preserving the corners." It's more work but gives you true resolution independence even for non-integer scale factors.
+
+**For a DE, Path A is almost certainly sufficient.** The reason: window decorations are rendered at the screen's native DPI. A 120×40 title bar SVG rasterized at 2x is a 240×80 texture — that's plenty sharp. You only need Path B if you support fractional scaling (125%, 175%) where the rasterization target isn't an integer multiple.
+
+**The design system guide structure:**
+
+```
+design-system/
+├── chrome/
+│   ├── titlebar-normal.svg        ← <g:patch> annotation + vector art
+│   ├── titlebar-focused.svg
+│   ├── titlebar-maximized.svg
+│   ├── titlebar-minimized.svg
+│   ├── titlebar-closed.svg
+│   ├── border-normal.svg
+│   ├── border-focused.svg
+│   ├── button-close.svg
+│   ├── button-minimize.svg
+│   ├── button-maximize.svg
+│   └── button-restore.svg
+├── widgets/
+│   ├── button-normal.svg
+│   ├── button-hover.svg
+│   ├── button-pressed.svg
+│   ├── button-disabled.svg
+│   ├── checkbox-checked.svg
+│   ├── checkbox-unchecked.svg
+│   ├── slider-track.svg
+│   ├── slider-thumb.svg
+│   ├── scroll-track.svg
+│   └── scroll-thumb.svg
+├── states/
+│   ├── tooltip.svg
+│   ├── context-menu.svg
+│   └── notification.svg
+└── spec.md                         ← The rules
+```
+
+**The rules in `spec.md` (your "consistent layout engine rules" for chrome):**
+
+1. **Reference size**: All SVGs are authored at a canonical size (e.g. titlebar = 120×40, button = 32×32). The `<g:patch>` values are in this reference coordinate space.
+2. **Corner radius**: Defined in the SVG path. The `<g:patch>` left/right/top/bottom values must be ≥ the corner radius so the rounded region is always in a fixed (non-stretched) corner.
+3. **Minimum size**: The rendered size can never be smaller than `2×(left + right)` wide or `2×(top + bottom)` tall (the corners must fit).
+4. **Stretch behavior**: Edges stretch by tiling or linear interpolation (specify which per asset). Center stretches freely.
+5. **State variants**: Each state (normal, hover, pressed, disabled, focused) is a separate SVG file. The `<g:patch>` values must be **identical across all states** for a given control — only the fill/stroke changes. This guarantees the resize behavior is consistent regardless of state.
+6. **Theme override**: A theme can swap the SVG files (e.g. a "dark" theme uses `titlebar-dark.svg`) but must preserve the same `<g:patch>` geometry.
+7. **Content area**: The `content-*` values define where child content (title text, icons) is placed. The DE's window decoration code reads these to position the title label and buttons.
+
+**The one thing to watch:**
+
+The `<g:patch>` annotation is your **contract between the designer and the runtime**. If a designer changes the corner radius in the SVG but forgets to update the `<g:patch>` margins, the corner will stretch and look wrong. Your design tool (or a CI check) should validate that `left ≥ corner_radius` and `top ≥ corner_radius` for every asset. This is the same class of bug as Android 9-patch's "you drew the corner bigger than the fixed region" error — it's a design-time validation, not a runtime problem.
+
+**The broader implication for your app kit:**
+
+If window chrome is vector 9-slice, then **all** your app kit's control backgrounds should be too. A `Button`'s background is an SVG with `<g:patch>`. A `Panel`'s border is an SVG with `<g:patch>`. A `Tab`'s background is an SVG with `<g:patch>`. The entire visual identity of the DE is a set of annotated SVGs, and the runtime's job is just: parse the annotation, 9-slice it, render it. That's a clean, testable, designer-friendly pipeline — and it's the same architecture that [Telerik's RadControls](https://docs.telerik.com/devtools/winforms/telerik-presentation-framework/vector-images-support) uses for their vector image support in WinForms.
+
+> We had goals to put other features in our SVG namespace such as hatch and mesh gradients that were not included in the spec., including repeats, shape primitives.
+
+Good news: both hatch and mesh gradients had **full specifications written** for SVG 2, were implemented in Inkscape, and were only removed from the *shipping* spec (SVG 2.0, May 2018) because no browser implemented them. They live on in the **svg-next** branch (the tentative SVG 2.1). Since you're building your own renderer, you can adopt those specs directly into your `g:` namespace.
+
+**What's in the abandoned spec (ready to lift):**
+
+**Hatch** (`<g:hatch>` / `<g:hatchpath>`) — from the SVG 2.1 draft:
+
+```xml
+<g:hatch id="diag-hatch" hatchUnits="userSpaceOnUse"
+         x="0" y="0" pitch="8" rotate="45">
+  <g:hatchpath d="M0,0 l8,0" stroke="#888" stroke-width="1"/>
+</g:hatch>
+
+<!-- Cross-hatch: two paths -->
+<g:hatch id="cross-hatch" pitch="6" rotate="45">
+  <g:hatchpath d="M0,0 l6,0" stroke="#666" stroke-width="0.75"/>
+  <g:hatchpath d="M0,0 l6,0" stroke="#666" stroke-width="0.75" rotate="90"/>
+</g:hatch>
+```
+
+The critical difference from `<pattern>`: hatches draw **continuous lines** across the fill region. A `<pattern>` tiles a discrete square, so diagonal lines get clipped at tile boundaries (the "constriction" artifact). A `<hatch>` generates lines that span the entire shape with no seams. For UI use (disabled states, selection indicators, "dirty" markers, print-preview hatching), this matters.
+
+**Mesh gradient** (`<g:meshgradient>`) — Coons patch bilinear interpolation, same math as PDF Type 6 Shading:
+
+```xml
+<g:meshgradient id="panel-bg" gradientUnits="objectBoundingBox">
+  <g:meshrow>
+    <g:meshpatch p1="0,0" p2="0.5,0" p3="0.5,1" p4="0,1"
+                 c1="#1a1a2e" c2="#16213e" c3="#0f3460" c4="#1a1a2e"/>
+    <g:meshpatch p1="0.5,0" p2="1,0" p3="1,1" p4="0.5,1"
+                 c1="#16213e" c2="#0f3460" c3="#1a1a2e" c4="#0f3460"/>
+  </g:meshrow>
+</g:meshgradient>
+```
+
+Each patch is a quadrilateral with 4 corner colors; the interior is bilinearly interpolated. For UI: subtle panel backgrounds, titlebar gradients that shift across the width, notification card backgrounds. Inkscape's implementation (by Tavmjong Bah, who wrote the spec) is a reference for the math.
+
+**What's NOT in any SVG spec (you'd define fresh in `g:`):**
+
+**Repeat mode for 9-slice edges** — this is an annotation on `<g:patch>`, not a paint server:
+
+```xml
+<g:patch left="12" right="12" top="8" bottom="8"
+         stretch-x="tile" stretch-y="stretch"/>
+```
+
+| Value | Behavior |
+|---|---|
+| `stretch` | Scale the edge region (default, standard 9-slice) |
+| `tile` | Repeat the edge region (for scrollbars, list separators, grid lines) |
+| `none` | Don't render this region (for asymmetric chrome) |
+
+This is the one thing that has no prior art in any SVG spec. It's specific to the 9-slice use case.
+
+**Shape primitives** — things that are common in UI chrome but verbose or absent in SVG:
+
+```xml
+<!-- Independent corner radii (SVG <rect> only has uniform rx/ry) -->
+<g:rect x="0" y="0" width="120" height="40"
+        rx-tl="8" rx-tr="8" rx-br="0" rx-bl="0"/>
+
+<!-- Chamfer (45° cut corners) -->
+<g:chamfer x="0" y="0" width="100" height="30" size="6"/>
+
+<!-- Capsule / stadium (fully rounded ends) -->
+<g:capsule x="0" y="0" width="200" height="32"/>
+
+<!-- Regular polygon (for icons, badges) -->
+<g:polygon cx="16" cy="16" r="14" sides="6"/>
+
+<!-- Star (for ratings, badges) -->
+<g:star cx="16" cy="16" r-outer="14" r-inner="6" points="5"/>
+
+<!-- Bevel (3D edge — inset highlight + outset shadow) -->
+<g:bevel x="0" y="0" width="100" height="30" size="2"
+         light="#ffffff40" dark="#00000040"/>
+```
+
+The reason to add these as first-class primitives rather than `<path>` data:
+
+1. **Parametric** — a designer changes `rx-tl="8"` to `rx-tl="12"` and the shape updates. With a `<path>`, they'd have to redraw the arc.
+2. **9-slice compatible** — the `<g:patch>` annotation works on any of these. A `<g:chamfer>` with `<g:patch>` gives you a chamfered panel that resizes correctly.
+3. **Smaller files** — `<g:capsule width="200" height="32"/>` is 30 bytes vs. a `<path>` with two arcs that's ~150 bytes.
+4. **Editable in your design tool** — the form designer's property grid shows "Corner Radius: 8" instead of "Path Data: M8,0 L112,0 A8,8...".
+
+**The full `g:` namespace element list:**
+
+| Element | Source | Purpose |
+|---|---|---|
+| `<g:patch>` | Your invention | 9-slice annotation (corners, content area, stretch mode) |
+| `<g:hatch>` / `<g:hatchpath>` | SVG 2.1 spec (abandoned) | Continuous-line fill patterns |
+| `<g:meshgradient>` / `<g:meshrow>` / `<g:meshpatch>` | SVG 2.1 spec (abandoned) | Multi-point gradient fills |
+| `<g:rect>` | Your invention | Rect with independent corner radii |
+| `<g:chamfer>` | Your invention | 45° cut corners |
+| `<g:capsule>` | Your invention | Fully rounded ends |
+| `<g:polygon>` | Your invention | Regular N-gon |
+| `<g:star>` | Your invention | N-point star |
+| `<g:bevel>` | Your invention | 3D edge effect |
+
+**One design rule that keeps this clean:**
+
+The `g:` namespace is **additive only**. Every `g:` element either (a) annotates a standard SVG element (`<g:patch>` on a `<rect>`), or (b) is a shorthand that *desugars* to standard SVG path data at render time (`<g:capsule>` → `<path d="M16,0 H184 A16,16..."/>`). Your renderer resolves `g:` elements into standard SVG geometry before rasterizing. This means:
+
+- The SVG is still valid if you strip the `g:` namespace (you lose the annotations and the shorthand expands to nothing, but the file doesn't break).
+- Your web adapter can ignore `g:` elements and fall back to the standard SVG content.
+- Inkscape can open the file and render the standard SVG parts (it already ignores unknown namespaces).
+- Your Godot renderer uses the `g:` elements for the enhanced rendering.
+
+That's the same contract Inkscape uses with `inkscape:` and `sodipodi:` namespaces — the file is valid SVG for any renderer, and the extra namespace is a superset that only your toolchain understands.
+
+
+> I was thinking about including Metafont since it would potentially provide a lot of quality fonts for free because of its description based spec.
+
