@@ -9,4 +9,14 @@ Owns:
 
 Hosting / language: Outside Godot — service stack; the TUI is not a Godot program.
 
-Status: STUB — laid out 2026-11-26, not built. Plan: src/plans/SYSTEM-INTERFACE.md §5.
+Status: SLICE D BUILT (2026-11-26, agent-build-log/22) —
+recovery_backend.py (the repairs behind one interface:
+Startup Repair, Driver Rollback, Package Rescue with the
+desktop-core removal block, Snapshots; receipts = the System
+Changes feed; the failed-boot auto-offer rule), recovery_tui.py
+(the emergency TUI: menu model + curses front-end, shell last
+and labelled manual), boot/nct-recovery.conf (the boot entry,
+carrying nct.recovery=1). Booting into recovery is a rig
+proof, owed — not claimed here. The graphical environment and
+its wizards are the follow-up. Plan:
+src/plans/SYSTEM-INTERFACE.md §5, §6.
