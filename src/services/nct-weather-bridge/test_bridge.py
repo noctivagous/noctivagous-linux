@@ -15,7 +15,15 @@ class TestRegistry(unittest.TestCase):
             "sat.goes-east.ir-clean", "sat.goes-west.ir-clean",
             "sat.goes-east.vis", "sat.goes-west.vis",
             "sat.himawari.geocolor", "sat.himawari.ir-clean",
-            "sat.viirs-noaa20.truecolor"})
+            "sat.viirs-noaa20.truecolor",
+            "sat.goes-east.wv", "sat.goes-west.wv",
+            "sat.goes-east.fulldisk-ir", "sat.goes-west.fulldisk-ir",
+            "sat.goes-east.meso1-ir", "sat.goes-west.meso1-ir",
+            "sat.goes-east.pw", "sat.goes-east.ctp",
+            "sat.composite.global-ir", "sat.composite.mollweide-ir",
+            "sat.composite.arctic-ir", "sat.composite.antarctic-ir",
+            "radar.nexrad.ncr-dfw", "radar.nexrad.ncr-chi",
+            "model.gfs.t850", "obs.surface-hourly"})
     def test_ids_name_things_not_providers(self):
         for ds_id in b.DATASETS:
             for p in ("cira", "s3", "adde", "edex"):
@@ -77,6 +85,65 @@ class TestAdde(unittest.TestCase):
         import struct
         with self.assertRaises(b.AddeError):
             b._parse_area_directory(struct.pack(">64i", *([0] * 64)))
+
+def _grid_header_words(rows=2, cols=3, ref_day=2026330, ref_time=0, ftime=6,
+                       parm="T   ", scale=2, units="K   ", level=850):
+    import struct
+    w = [0] * 64
+    w[1], w[2], w[3], w[4], w[5] = rows, cols, ref_day, ref_time, ftime
+    w[6] = struct.unpack(">i", parm.encode())[0]
+    w[7] = scale
+    w[8] = struct.unpack(">i", units.encode())[0]
+    w[9], w[10] = level, 0
+    w[11] = struct.unpack(">i", b"MB  ")[0]
+    return w
+
+class TestAddeGrids(unittest.TestCase):
+    def test_grid_header_parse(self):
+        h = b._parse_grid_header(_grid_header_words())
+        self.assertEqual((h["rows"], h["cols"]), (2, 3))
+        self.assertEqual(h["param"], "T"); self.assertEqual(h["units"], "K")
+        self.assertEqual(h["level"], 850.0)
+        self.assertEqual(h["run"], "2026-11-26T00:00:00Z")
+        self.assertEqual(h["valid"], "2026-11-26T06:00:00Z")
+    def test_gget_parse_skips_heartbeats(self):
+        import struct
+        hdr = _grid_header_words()
+        vals = [28000, 28100, 28200, 28300, 28400, -2139062144]
+        stream = [4, 11223344, 4, 11223344]
+        body = hdr + vals + [0]
+        stream += [len(body) * 4, len(body) * 4, 1] + body
+        data = struct.pack(f">{len(stream)}i", *stream)
+        [(header, grid)] = b._parse_gget(data)
+        self.assertEqual(header["valid"], "2026-11-26T06:00:00Z")
+        self.assertEqual(grid.shape, (2, 3))
+        # column-major arrival, first row sent is northernmost: the
+        # first value of column 0 is the top-left cell
+        self.assertAlmostEqual(grid[0, 0], 280.0)
+        self.assertAlmostEqual(grid[1, 0], 281.0)
+        self.assertTrue(grid[1, 2] != grid[1, 2])  # NaN for missing
+
+class TestAddePoints(unittest.TestCase):
+    def test_mdks_parse(self):
+        import struct
+        def pk(s): return struct.unpack(">i", s.ljust(4).encode())[0]
+        names = ["ID", "LAT", "LON", "T", "TIME", "DAY"]
+        units = ["CHAR", "DEG", "DEG", "K", "HMS", "CYD"]
+        scales = [0, 4, 4, 2, 0, 0]
+        rec = [pk("KORD"), 419742, 879072, 27106, 130000, 2026330]
+        stream = ([len(names) * 4] + [pk(n) for n in names] +
+                  [len(units) * 4] + [pk(u) for u in units] +
+                  [len(scales) * 4] + scales +
+                  [len(rec) * 4] + rec + [0])
+        data = struct.pack(f">{len(stream)}i", *stream)
+        meta, records = b._parse_mdks(data)
+        self.assertEqual([m["name"] for m in meta], names)
+        self.assertEqual(len(records), 1)
+        r = records[0]
+        self.assertEqual(r["ID"], "KORD")
+        self.assertAlmostEqual(r["LAT"], 41.9742)
+        self.assertAlmostEqual(r["LON"], -87.9072)   # positive-west negated
+        self.assertAlmostEqual(r["T"], 271.06)
 
 if __name__ == "__main__":
     unittest.main()

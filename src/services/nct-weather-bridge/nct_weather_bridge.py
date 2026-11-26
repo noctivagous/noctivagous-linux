@@ -26,7 +26,7 @@ from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 CACHE = os.environ.get("NCT_WB_CACHE",
         os.path.expanduser("~/.cache/nct-weather-bridge"))
 os.makedirs(CACHE, exist_ok=True)
@@ -246,6 +246,129 @@ def _adir_entries(body):
             seen.add(e["time"]); uniq.append(e)
     return uniq
 
+MCMISSING = -2139062144          # 0x80808080, the McIDAS missing value
+ADDE_HEARTBEAT = 11223344        # GGET keep-alive marker (AddeGridReader)
+
+def _packed_str(word):
+    import struct
+    return struct.pack(">i", word).decode("ascii", errors="replace").strip()
+
+def _parse_grid_header(words):
+    """One 64-word McIDAS grid directory (GridDirectory layout).
+    Grid reference dates are YYYYDDD, unlike AREA directories'
+    CYYDDD — one of ADDE's three date encodings."""
+    ref_day = words[3]
+    ref = (datetime(ref_day // 1000, 1, 1, tzinfo=timezone.utc)
+           + timedelta(days=ref_day % 1000 - 1))
+    tod = words[4]
+    ref = ref.replace(hour=tod // 10000, minute=(tod // 100) % 100,
+                      second=tod % 100)
+    ftime = words[5]
+    valid = ref + timedelta(hours=ftime)
+    iso = lambda d: d.isoformat().replace("+00:00", "Z")
+    return {"rows": words[1], "cols": words[2],
+            "run": iso(ref), "forecast_hours": ftime, "valid": iso(valid),
+            "param": _packed_str(words[6]), "scale_exp": words[7],
+            "units": _packed_str(words[8]),
+            "level": words[9] * (10.0 ** words[10]),
+            "level_units": _packed_str(words[11])}
+
+def _skip_heartbeats(ints, off):
+    """GGET/GDIR streams open with (4, heartbeat) pairs while the
+    server prepares data; returns (first_real_int, new_offset)."""
+    n = ints[off]; off += 1
+    while n == 4:
+        if ints[off] != ADDE_HEARTBEAT:
+            raise AddeError("grid stream: expected heartbeat marker")
+        off += 1
+        n = ints[off]; off += 1
+    return n, off
+
+def _parse_gdir(data):
+    """GDIR response -> list of grid header dicts, response order."""
+    import struct
+    ints = struct.unpack(f">{len(data) // 4}i", data[:len(data) // 4 * 4])
+    _, off = _skip_heartbeats(ints, 0)
+    headers = []
+    while off < len(ints):
+        check = ints[off]; off += 1
+        if check != 0:
+            break
+        off += 64                                   # file header block
+        while off < len(ints):
+            check2 = ints[off]; off += 1
+            if check2 != 0:
+                break
+            headers.append(_parse_grid_header(ints[off:off + 64]))
+            off += 64
+    return headers
+
+def _parse_gget(data):
+    """GGET response -> list of (header dict, 2D numpy array,
+    north-up), in stream order. Data arrives column-major (one
+    longitude column at a time, south-to-north within a column per
+    VisAD's storage flip); a zero check word follows each grid."""
+    import struct
+    import numpy as np
+    ints = struct.unpack(f">{len(data) // 4}i", data[:len(data) // 4 * 4])
+    num_bytes, off = _skip_heartbeats(ints, 0)
+    check = ints[off]; off += 1
+    if check != num_bytes:
+        raise AddeError("grid stream: byte-count check failed")
+    ngrids = ints[off]; off += 1
+    if ngrids < 1:
+        raise AddeError("grid stream: no grids returned")
+    out = []
+    for _ in range(ngrids):
+        header = _parse_grid_header(ints[off:off + 64]); off += 64
+        rows, cols = header["rows"], header["cols"]
+        raw = np.array(ints[off:off + rows * cols], dtype=np.float64)
+        off += rows * cols
+        raw[raw == MCMISSING] = np.nan
+        raw = raw / (10.0 ** header["scale_exp"])
+        # column-major arrival, first row sent is the northernmost
+        # (checked against the rendered field: warm south, cold north)
+        grid = raw.reshape(cols, rows).T
+        out.append((header, grid))
+        off += 1                                    # per-grid check word
+    return out
+
+def _parse_mdks(data):
+    """MDKS response -> (meta, records). Layout (AddePointDataReader):
+    param names, unit names, scaling exponents, then length-prefixed
+    records of raw ints terminated by a zero length. Values are
+    raw / 10**scale; CHAR params are 4-char packed strings; McIDAS
+    longitude is positive-west and is negated here to degrees east."""
+    import struct
+    ints = struct.unpack(f">{len(data) // 4}i", data[:len(data) // 4 * 4])
+    off = 0
+    npb = ints[off]; off += 1
+    names = [_packed_str(ints[off + i]) for i in range(npb // 4)]; off += npb // 4
+    nub = ints[off]; off += 1
+    units = [_packed_str(ints[off + i]) for i in range(nub // 4)]; off += nub // 4
+    nsb = ints[off]; off += 1
+    scales = [ints[off + i] for i in range(nsb // 4)]; off += nsb // 4
+    meta = [{"name": n, "units": u, "scale": s}
+            for n, u, s in zip(names, units, scales)]
+    records = []
+    while off < len(ints):
+        ndb = ints[off]; off += 1
+        if ndb == 0:
+            break
+        rec = ints[off:off + ndb // 4]; off += ndb // 4
+        row = {}
+        for m, v in zip(meta, rec):
+            if v == MCMISSING:
+                row[m["name"]] = None
+            elif m["units"] == "CHAR":
+                row[m["name"]] = _packed_str(v)
+            else:
+                row[m["name"]] = v / (10.0 ** m["scale"])
+        if row.get("LON") is not None:
+            row["LON"] = -row["LON"]                # McIDAS: positive west
+        records.append(row)
+    return meta, records
+
 class AddeClient:
     """Minimal ADDE client: a Python port of the request packet and
     AREA parsing in VisAD's edu.wisc.ssec.mcidas.adde.AddeURLConnection
@@ -288,10 +411,16 @@ class AddeClient:
                                 resp.split(b"\r\n")[0].decode(errors="replace"))
             return s, resp.split(b"\r\n\r\n", 1)[1]
         return socket.create_connection((self.host, self.port), timeout=timeout), b""
-    def request(self, svc, request, timeout=120):
+    def request(self, svc, request, timeout=120, binary=b""):
         """One ADDE round trip. Returns the response body after the
         leading byte-count int; raises AddeError on a server error
-        trailer."""
+        trailer. `binary` is the optional binary-data block some
+        services (MDKS) carry after the request string."""
+        return self.request_full(svc, request, timeout, binary)[4:]
+    def request_full(self, svc, request, timeout=120, binary=b""):
+        """Like request() but returns the whole response stream —
+        grid and point responses carry their first length int as
+        payload, not as a prefix."""
         import gzip, socket, struct
         log_egress("adde", f"adde://{self.host}:{self.port}/{svc.decode()} {request}")
         s, raw = self._connect(timeout)
@@ -311,12 +440,14 @@ class AddeClient:
         out.write(svc)                                     # service again
         ob = request.encode()
         if len(ob) <= 120:
-            out.write(struct.pack(">i", 0))
+            out.write(struct.pack(">i", len(binary)))
             out.write(ob); out.write(b" " * (120 - len(ob)))
         else:
-            out.write(struct.pack(">i", len(ob)))
+            out.write(struct.pack(">i", len(ob) + len(binary)))
             out.write(struct.pack(">i", len(ob)))
             out.write(b"\x00" * 116); out.write(ob)
+        if binary:
+            out.write(binary)
         s.sendall(out.getvalue())
         try:
             while True:
@@ -333,25 +464,62 @@ class AddeClient:
         if n == 0:
             msg = data[12:84].decode(errors="replace").strip("\x00 ").strip()
             raise AddeError(f"ADDE server error: {msg or 'unknown'}")
-        return data[4:]
-    def adir(self, group, descr, count=12):
+        return data
+    def adir(self, group, descr, count=12, station=None):
         """Newest-first list of {time, lines, elems} for a dataset."""
-        req = (f"{group} {descr} {-count + 1} 0 TRACE=0 BAND=ALL X "
+        id_kw = f"ID={station} " if station else ""
+        req = (f"{group} {descr} {-count + 1} 0 {id_kw}TRACE=0 BAND=ALL X "
                "AUX=YES TRACKING=0 VERSION=1")
         return _adir_entries(self.request(b"adir", req, timeout=60))
+    def gdir(self, group, descr, parm=None, lev=None, num=48):
+        """Grid directory: newest-first list of grid header dicts
+        (port of AddeGridReader.getGridDirectory + GridDirectory)."""
+        kw = ""
+        if parm: kw += f" PARM={parm}"
+        if lev is not None: kw += f" LEV={lev}"
+        req = f"{group} {descr} 999999{kw} NUM={num} TRACE=0 VERSION=A"
+        return _parse_gdir(self.request_full(b"gdir", req, timeout=60))
+    def gget(self, group, descr, parm, lev, num=48):
+        """Grids matching PARM/LEV, in directory order: a list of
+        (header dict, 2D float array, north-up). POS= selection does
+        not address grids the way it addresses images on this server,
+        so callers fetch the filtered set and pick by header. Port of
+        AddeGridReader.getGridData: the stream opens with heartbeat
+        pairs (4, 11223344) while the server works."""
+        req = (f"{group} {descr} 999999 PARM={parm} LEV={lev} "
+               f"NUM={num} TRACE=0 VERSION=A")
+        return _parse_gget(self.request_full(b"gget", req, timeout=120))
+    def mdks(self, group, descr, params, select=None, maxrec=3000):
+        """Point data (surface obs etc). Returns (meta, records):
+        meta is [{name, units, scale}], records are lists of decoded
+        values (CHAR params as strings, missing as None). Port of
+        AddePointDataReader; the parameter list also travels as the
+        packet's binary-data block, 4 chars per parameter."""
+        parm_str = " ".join(params)
+        sel = f" SELECT='{select}'" if select else ""
+        req = (f"{group} {descr} PARM={parm_str}{sel} POS=0 TRACE=0 "
+               f"MAX={maxrec} VERSION=1")
+        binary = b"".join(p.ljust(4).encode() for p in params)
+        return _parse_mdks(self.request_full(b"mdks", req, timeout=90,
+                                             binary=binary))
     def aget_ir(self, group, descr, band, pos, native_lines, native_elems,
-                max_lines=600):
+                max_lines=600, station=None, unit="BRIT"):
         """One frame at position pos, blown down server-side to at
         most max_lines lines. Returns (png_bytes, valid_iso). UNIT=BRIT
-        gives one brightness byte per pixel."""
+        gives one brightness byte per pixel; unit="X" returns the
+        product's raw data values (NEXRAD levels). band=None omits
+        BAND= (derived products and composites carry their own band
+        map); station adds ID= (NEXRAD products are per-station)."""
         import math
         import numpy as np
         from PIL import Image
         mag = max(1, math.ceil(native_lines / max_lines))
         lines = math.ceil(native_lines / mag)
         elems = math.ceil(native_elems / mag)
+        band_kw = f"BAND={band} " if band is not None else ""
+        id_kw = f"ID={station} " if station else ""
         req = (f"{group} {descr} {pos} X X X -{mag} {lines} {elems} "
-               f"BAND={band} TRACE=0 SPAC=X UNIT=BRIT NAV=X AUX=YES "
+               f"{band_kw}{id_kw}TRACE=0 SPAC=X UNIT={unit} NAV=X AUX=YES "
                "TRACKING=0 DOC=NO TIME=X X I CAL=X VERSION=1")
         body = self.request(b"aget", req)
         w = _parse_area_directory(body)
@@ -379,10 +547,15 @@ class AddeProvider:
     are relative and shift as new images arrive."""
     name = "adde"
     licence = "NOAA/NESDIS data via Unidata ADDE (adde.ucar.edu); public, no registration"
-    def __init__(self, group, descr, band, host=None):
+    def __init__(self, group, descr, band=None, host=None, station=None,
+                 colormap=None, max_lines=600, unit="BRIT"):
         self.group = group
         self.descr = descr
         self.band = band
+        self.station = station
+        self.colormap = colormap
+        self.max_lines = max_lines
+        self.unit = unit
         self.host = host or os.environ.get("NCT_WB_ADDE_HOST", "adde.ucar.edu")
         self._avail = None
         self._avail_at = 0.0
@@ -399,20 +572,207 @@ class AddeProvider:
         self._avail_at = time.time()
         return self._avail
     def times(self, limit=12):
-        entries = AddeClient(self.host).adir(self.group, self.descr, limit)
+        entries = AddeClient(self.host).adir(self.group, self.descr, limit,
+                                             station=self.station)
         return [{"time": e["time"], "id": e["time"]} for e in entries[:limit]]
     def frame(self, time_id, **kw):
         client = AddeClient(self.host)
-        entries = client.adir(self.group, self.descr, 24)
+        entries = client.adir(self.group, self.descr, 24, station=self.station)
         for i, e in enumerate(entries):
             if e["time"] == time_id:
-                png, valid = client.aget_ir(self.group, self.descr, self.band,
-                                            -i, e["lines"], e["elems"])
+                png, valid = client.aget_ir(
+                    self.group, self.descr, self.band, -i, e["lines"],
+                    e["elems"], max_lines=self.max_lines, station=self.station,
+                    unit=self.unit)
                 if valid != time_id:
                     raise AddeError(
                         f"frame time mismatch: asked {time_id}, got {valid}")
+                if self.colormap:
+                    png = _apply_colormap(png, self.colormap)
                 return png
         raise AddeError(f"time {time_id} no longer in ADDE directory")
+
+def _apply_colormap(png_bytes, cmap):
+    """Map a grayscale PNG through a colour LUT. 'radar' is for
+    NEXRAD Level 3 AREA data fetched with UNIT=X: pixel values are
+    the product's raw data levels (0-14 for NCR), coloured with the
+    operational reflectivity palette (blues -> greens -> yellow ->
+    red -> magenta -> white)."""
+    import numpy as np
+    from PIL import Image
+    a = np.asarray(Image.open(io.BytesIO(png_bytes)).convert("L"))
+    if cmap == "radar":
+        palette = [(0, 0, 0), (0, 145, 200), (0, 200, 230), (0, 205, 0),
+                   (0, 160, 0), (255, 255, 0), (231, 192, 0), (255, 144, 0),
+                   (255, 0, 0), (214, 0, 0), (255, 0, 255), (153, 85, 201),
+                   (255, 255, 255), (255, 255, 255), (255, 255, 255),
+                   (255, 255, 255)]
+        lut = np.array([palette[min(v, 15)] for v in range(256)],
+                       dtype=np.uint8)
+        rgb = lut[a]
+        buf = io.BytesIO(); Image.fromarray(rgb).save(buf, "PNG")
+        return buf.getvalue()
+    return png_bytes
+
+class AddeGridProvider:
+    """Gridded model fields from ADDE (RTGRIDS: GFS, NAM, UKMET).
+    A dataset fixes group/descriptor + PARM + LEV; times are the
+    directory's valid times (run + forecast hour); a frame re-lists,
+    selects by position inside the same PARM/LEV filter, and verifies
+    the returned grid header matches the requested valid time."""
+    name = "adde"
+    licence = "NOAA/NCEP model grids via Unidata ADDE (adde.ucar.edu); public, no registration"
+    def __init__(self, group, descr, parm, lev, host=None):
+        self.group, self.descr, self.parm, self.lev = group, descr, parm, lev
+        self.host = host or os.environ.get("NCT_WB_ADDE_HOST", "adde.ucar.edu")
+        self._avail = None
+        self._avail_at = 0.0
+    @property
+    def available(self):
+        if self._avail is not None and time.time() - self._avail_at < 60:
+            return self._avail
+        try:
+            AddeClient(self.host).request(
+                b"lwpr", f"ALG.{self.group} VERSION=1", timeout=15)
+            self._avail = True
+        except Exception:
+            self._avail = False
+        self._avail_at = time.time()
+        return self._avail
+    def _headers(self, num=48):
+        return AddeClient(self.host).gdir(self.group, self.descr,
+                                          self.parm, self.lev, num)
+    def times(self, limit=12):
+        # the grid directory is in file order, not time order — sort
+        # newest valid time first, as every other provider returns
+        out = []
+        for h in self._headers(max(limit, 24)):
+            out.append({"time": h["valid"], "id": h["valid"],
+                        "run": h["run"], "forecast_hours": h["forecast_hours"]})
+        out.sort(key=lambda e: e["time"], reverse=True)
+        return out[:limit]
+    def frame(self, time_id, **kw):
+        client = AddeClient(self.host)
+        for hdr, grid in client.gget(self.group, self.descr, self.parm,
+                                     self.lev, 48):
+            if hdr["valid"] == time_id:
+                return _render_grid_png(grid, hdr)
+        raise AddeError(f"valid time {time_id} not in the current "
+                        "grid directory window")
+
+def _render_grid_png(grid, hdr):
+    """Render a grid field as a PNG: temperature ramp for T (K),
+    percentile stretch otherwise; missing cells dark. Upscaled
+    nearest-neighbour so the native grid stays legible."""
+    import numpy as np
+    from PIL import Image
+    if hdr["param"] == "T" and hdr["units"] == "K":
+        lo, hi = 200.0, 315.0
+    else:
+        lo, hi = np.nanpercentile(grid, [2, 98])
+        if hi <= lo: hi = lo + 1.0
+    t = np.clip((grid - lo) / (hi - lo), 0, 1)
+    stops = np.array([[10, 10, 60], [30, 80, 200], [0, 180, 220],
+                      [40, 200, 90], [240, 230, 90], [250, 140, 40],
+                      [200, 30, 30]], dtype=np.float64)
+    pos = t * (len(stops) - 1)
+    i0 = np.floor(pos).astype(int); i1 = np.minimum(i0 + 1, len(stops) - 1)
+    frac = (pos - i0)[..., None]
+    rgb = (stops[i0] * (1 - frac) + stops[i1] * frac).astype(np.uint8)
+    rgb[np.isnan(grid)] = (12, 12, 12)
+    img = Image.fromarray(rgb)
+    scale = max(1, 900 // grid.shape[1])
+    img = img.resize((grid.shape[1] * scale, grid.shape[0] * scale),
+                     Image.NEAREST)
+    buf = io.BytesIO(); img.save(buf, "PNG")
+    return buf.getvalue()
+
+class AddePointProvider:
+    """Point observations from ADDE (RTPTSRC). Not frames: the
+    dataset serves JSON records via /obs. times() derives the
+    distinct observation hours present in a capped fetch."""
+    name = "adde"
+    licence = "Surface observations via Unidata ADDE (adde.ucar.edu); public, no registration"
+    PARAMS = ["ID", "LAT", "LON", "T", "TD", "TIME", "DAY"]
+    def __init__(self, group, descr, host=None, maxrec=12000):
+        self.group, self.descr = group, descr
+        self.maxrec = maxrec
+        self.host = host or os.environ.get("NCT_WB_ADDE_HOST", "adde.ucar.edu")
+        self._avail = None
+        self._avail_at = 0.0
+        self._cache = {}
+        self._cache_at = {}
+    @property
+    def available(self):
+        if self._avail is not None and time.time() - self._avail_at < 60:
+            return self._avail
+        try:
+            AddeClient(self.host).request(
+                b"lwpr", f"ALM.{self.group} VERSION=1", timeout=15)
+            self._avail = True
+        except Exception:
+            self._avail = False
+        self._avail_at = time.time()
+        return self._avail
+    @staticmethod
+    def _rec_time(rec):
+        day, tod = rec.get("DAY"), rec.get("TIME")
+        if day is None or tod is None:
+            return None
+        year, doy = int(day) // 1000, int(day) % 1000
+        base = datetime(year, 1, 1, tzinfo=timezone.utc) + timedelta(days=doy - 1)
+        tod = int(tod)
+        return base.replace(hour=tod // 10000, minute=(tod // 100) % 100,
+                            second=tod % 100)
+    def _hour_records(self, hour_dt):
+        """Records for one synoptic hour, via SELECT — the MD file
+        holds the whole day in append order, so an unfiltered fetch
+        only reaches the early hours. SELECT wants colon times
+        ('TIME 13:00:00'); the returned records are still filtered
+        in Python by exact (DAY, TIME). Cached 5 minutes."""
+        key = hour_dt.isoformat()
+        if key in self._cache and time.time() - self._cache_at[key] < 300:
+            return self._cache[key]
+        sel = f"TIME {hour_dt:%H}:00:00"
+        meta, records = AddeClient(self.host).mdks(
+            self.group, self.descr, self.PARAMS, select=sel,
+            maxrec=self.maxrec)
+        records = [r for r in records if self._rec_time(r) == hour_dt]
+        self._cache[key] = (meta, records)
+        self._cache_at[key] = time.time()
+        return self._cache[key]
+    def _recent_hours(self, count=6):
+        now = datetime.now(timezone.utc).replace(minute=0, second=0,
+                                                 microsecond=0)
+        return [now - timedelta(hours=i) for i in range(count)]
+    def times(self, limit=12):
+        out = []
+        for h in self._recent_hours(8):
+            _, records = self._hour_records(h)
+            if records:
+                iso = h.isoformat().replace("+00:00", "Z")
+                out.append({"time": iso, "id": iso})
+            if len(out) >= limit:
+                break
+        return out
+    def obs(self, time_id=None):
+        if time_id:
+            hour = datetime.fromisoformat(time_id.replace("Z", "+00:00"))
+            meta, records = self._hour_records(hour)
+        else:
+            meta, records = [], []
+            for h in self._recent_hours(4):
+                meta, records = self._hour_records(h)
+                if records:
+                    break
+        out = [{"station": r.get("ID"), "lat": r.get("LAT"),
+                "lon": r.get("LON"), "t_k": r.get("T"),
+                "td_k": r.get("TD"),
+                "time": time_id or (self._rec_time(r).isoformat()
+                                    .replace("+00:00", "Z")
+                                    if self._rec_time(r) else None)}
+               for r in records]
+        return {"params": meta, "records": out, "count": len(out)}
 
 # ---------------------------------------------------------------- datasets
 
@@ -465,6 +825,90 @@ DATASETS = {
         "providers": [GibsWmsProvider("VIIRS_NOAA20_CorrectedReflectance_TrueColor",
                                       [-125.0, 24.0, -66.0, 50.0])],
     },
+    "sat.goes-east.wv": {
+        "title": "GOES-East (GOES-19) ABI band 8 water vapour, CONUS, via ADDE",
+        "coverage": [-125.0, 24.0, -66.0, 50.0], "cadence": "5 min",
+        "providers": [AddeProvider("RTIMAGES", "GECNC08", 8)],
+    },
+    "sat.goes-west.wv": {
+        "title": "GOES-West (GOES-18) ABI band 8 water vapour, CONUS, via ADDE",
+        "coverage": [-125.0, 24.0, -66.0, 50.0], "cadence": "5 min",
+        "providers": [AddeProvider("RTIMAGES", "GWCNC08", 8)],
+    },
+    "sat.goes-east.fulldisk-ir": {
+        "title": "GOES-East (GOES-19) ABI band 13 clean IR, full disk, via ADDE",
+        "coverage": [-156.0, -81.0, 6.0, 81.0], "cadence": "10 min",
+        "providers": [AddeProvider("RTIMAGES", "GEFDC13", 13, max_lines=900)],
+    },
+    "sat.goes-west.fulldisk-ir": {
+        "title": "GOES-West (GOES-18) ABI band 13 clean IR, full disk, via ADDE",
+        "coverage": [157.0, -81.0, -43.0, 81.0], "cadence": "10 min",
+        "providers": [AddeProvider("RTIMAGES", "GWFDC13", 13, max_lines=900)],
+    },
+    "sat.goes-east.meso1-ir": {
+        "title": "GOES-East (GOES-19) ABI band 13 clean IR, mesoscale 1, via ADDE",
+        "coverage": [-110.0, 25.0, -75.0, 50.0], "cadence": "1 min",
+        "providers": [AddeProvider("RTIMAGES", "GEM1C13", 13)],
+    },
+    "sat.goes-west.meso1-ir": {
+        "title": "GOES-West (GOES-18) ABI band 13 clean IR, mesoscale 1, via ADDE",
+        "coverage": [-135.0, 25.0, -100.0, 50.0], "cadence": "1 min",
+        "providers": [AddeProvider("RTIMAGES", "GWM1C13", 13)],
+    },
+    "sat.goes-east.pw": {
+        "title": "GOES-East (GOES-19) derived precipitable water, CONUS, via ADDE",
+        "coverage": [-125.0, 24.0, -66.0, 50.0], "cadence": "hourly",
+        "providers": [AddeProvider("RTIMAGES", "GECNPW")],
+    },
+    "sat.goes-east.ctp": {
+        "title": "GOES-East (GOES-19) derived cloud-top pressure, CONUS, via ADDE",
+        "coverage": [-125.0, 24.0, -66.0, 50.0], "cadence": "hourly",
+        "providers": [AddeProvider("RTIMAGES", "GECNCTP")],
+    },
+    "sat.composite.global-ir": {
+        "title": "Global composite IR (geostationary ring), via ADDE",
+        "coverage": [-180.0, -60.0, 180.0, 60.0], "cadence": "hourly",
+        "providers": [AddeProvider("RTIMAGES", "GLOBAL-IR")],
+    },
+    "sat.composite.mollweide-ir": {
+        "title": "Mollweide composite IR, via ADDE",
+        "coverage": [-180.0, -60.0, 180.0, 60.0], "cadence": "hourly",
+        "providers": [AddeProvider("RTIMAGES", "MOLL-IR")],
+    },
+    "sat.composite.arctic-ir": {
+        "title": "Arctic composite IR (POES), via ADDE",
+        "coverage": [-180.0, 55.0, 180.0, 90.0], "cadence": "hourly",
+        "providers": [AddeProvider("RTIMAGES", "ARCTIC-IR")],
+    },
+    "sat.composite.antarctic-ir": {
+        "title": "Antarctic composite IR (POES), via ADDE",
+        "coverage": [-180.0, -90.0, 180.0, -55.0], "cadence": "hourly",
+        "providers": [AddeProvider("RTIMAGES", "ANTARCTICIR")],
+    },
+    "radar.nexrad.ncr-dfw": {
+        "title": "NEXRAD composite reflectivity, Dallas/Fort Worth (KFWS), via ADDE",
+        "coverage": [-100.5, 30.5, -94.5, 35.0], "cadence": "5 min",
+        "providers": [AddeProvider("RTNEXRAD", "NCR", station="FWS",
+                                   colormap="radar", unit="X")],
+    },
+    "radar.nexrad.ncr-chi": {
+        "title": "NEXRAD composite reflectivity, Chicago (KLOT), via ADDE",
+        "coverage": [-91.0, 40.0, -85.0, 44.5], "cadence": "5 min",
+        "providers": [AddeProvider("RTNEXRAD", "NCR", station="LOT",
+                                   colormap="radar", unit="X")],
+    },
+    "model.gfs.t850": {
+        "title": "GFS 850 hPa temperature (native grid), via ADDE",
+        "coverage": [-141.0, 18.0, -54.0, 60.0], "cadence": "6-hourly runs",
+        "kind": "grid",
+        "providers": [AddeGridProvider("RTGRIDS", "GFS", "T", 850)],
+    },
+    "obs.surface-hourly": {
+        "title": "Surface hourly observations (METAR), via ADDE",
+        "coverage": [-180.0, -90.0, 180.0, 90.0], "cadence": "hourly",
+        "kind": "obs",
+        "providers": [AddePointProvider("RTPTSRC", "SFCHOURLY")],
+    },
 }
 
 _frame_lock = threading.Lock()
@@ -483,6 +927,9 @@ def get_times(ds_id, limit=12):
 def get_frame(ds_id, time_iso=None):
     """Returns (png_bytes, meta dict). Cached by dataset+time."""
     ds = DATASETS[ds_id]
+    if ds.get("kind") == "obs":
+        raise RuntimeError("observation dataset: use /v1/datasets/"
+                           f"{ds_id}/obs for JSON records")
     times, provider_name, _ = get_times(ds_id, 24)
     if not times: raise RuntimeError("no frames available")
     chosen = times[0]
@@ -523,6 +970,9 @@ OPENAPI = {
             "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}},
                            {"name": "time", "in": "query", "schema": {"type": "string"}}]}},
         "/v1/datasets/{id}/frame.json": {"get": {"summary": "Frame metadata as JSON, no image bytes"}},
+        "/v1/datasets/{id}/obs": {"get": {"summary": "Observation records as JSON (kind=obs datasets); optional ?time=ISO filter",
+            "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}},
+                           {"name": "time", "in": "query", "schema": {"type": "string"}}]}},
         "/v1/health": {"get": {"summary": "Service + provider status"}},
         "/openapi.json": {"get": {"summary": "This schema"}},
         "/docs": {"get": {"summary": "Human documentation (README rendered as text)"}},
@@ -558,9 +1008,22 @@ class Handler(BaseHTTPRequestHandler):
                 cat = []
                 for ds_id, ds in DATASETS.items():
                     cat.append({"id": ds_id, "title": ds["title"], "cadence": ds["cadence"],
+                                "kind": ds.get("kind", "frame"),
                                 "coverage_wsen": ds["coverage"],
                                 "providers": [p.name for p in ds["providers"]]})
                 return self._send(200, {"datasets": cat})
+            m = re.match(r"^/v1/datasets/([a-z0-9.-]+)/obs$", u.path)
+            if m:
+                ds_id = m.group(1)
+                if ds_id not in DATASETS: return self._send(404, {"error": "unknown dataset", "id": ds_id})
+                ds = DATASETS[ds_id]
+                if ds.get("kind") != "obs":
+                    return self._send(400, {"error": "not an observation dataset", "id": ds_id})
+                provider = ds["providers"][0]
+                result = provider.obs(q.get("time", [None])[0])
+                return self._send(200, {"dataset": ds_id, "title": ds["title"],
+                                        "provider": provider.name,
+                                        "source": provider.licence, **result})
             m = re.match(r"^/v1/datasets/([a-z0-9.-]+)/(times|frame|frame\.json)$", u.path)
             if m:
                 ds_id, kind = m.group(1), m.group(2)
