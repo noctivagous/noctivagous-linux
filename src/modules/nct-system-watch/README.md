@@ -9,4 +9,10 @@ Owns:
 
 Hosting / language: Service outside Godot — it must survive the shell failing, so it cannot live in the shell.
 
-Status: STUB — laid out 2026-11-26, not built. Plan: src/plans/SYSTEM-INTERFACE.md §3.
+Status: SLICE B BUILT (2026-11-26, agent-build-log/20) —
+system_watch.py: triage of failed units and coredumps into
+standing Issues (dedupe by cause, living journal-slice
+evidence, Fix/Open/Report actions, severity-ordered Attention
+inbox, JSON persistence, dismissal with reason). Later sources
+(SMART, DKMS, firmware) join the same feed. Plan:
+src/plans/SYSTEM-INTERFACE.md §3, §6.
