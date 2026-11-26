@@ -16,6 +16,9 @@ const DATASETS := [
 	"sat.goes-west.ir-clean",
 	"sat.goes-east.vis",
 	"sat.goes-west.vis",
+	"sat.himawari.geocolor",
+	"sat.himawari.ir-clean",
+	"sat.viirs-noaa20.truecolor",
 ]
 const FRAME_COUNT := 8
 
