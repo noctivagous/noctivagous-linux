@@ -1,0 +1,29 @@
+# Sources read 2026-11-26 (index unless noted verified live)
+
+- selfh.st 2025 survey results page — VERIFIED LIVE via browser_open: https://selfh.st/survey/2025-results/ — 4,081 responses, visualized, Formbricks self-hosted. Charts are images, so percentages come from secondary reporting of same survey.
+- Linuxiac reporting 2025 survey: https://linuxiac.com/self-hosters-confirm-it-again-linux-dominates-the-homelab-os-space/ — 81% Linux, privacy main reason, Proxmox 45%, HAOS 29%, Raspberry Pi OS 24%, Docker ~9/10
+- Independent 2025 survey 850+: https://selfhosted-survey-2025.deployn.de/ — motivations Fun/Hobby 31.3%, Privacy 16.7%, Independence 16.6%, Data control 12.5%; Proxmox top host, Raspberry Pi top SBC 94%, custom NAS 50%, Docker 73.6%
+- selfh.st 2026 survey secondary: https://ettayeb.fr/en/selfhosted/selfhst-2026-survey-results-en/ — 6,221 responses, Docker 5,454, Jellyfin 3,966, Forgejo 1,686 > Gitea 1,057, Portainer 66%->33%, Debian 2,954 Ubuntu 2,584, favourite Jellyfin/Home Assistant/Immich
+- XDA operational nightmares — VERIFIED LIVE: https://www.Xda-developers.Com/i-self-hosted-foss-tools-for-a-year-and-these-are-the-operational-headaches-no-one-warns-you-about/ — updates breaking (Immich port 3001->2283), remote access project, CGNAT, TLS/DNS, storage logs/snapshots, projects disappearing, family depends on you
+- XDA old PC NAS: https://www.xda-developers.com/how-turn-old-pc-into-nas/ — old desktop 40-110W, TrueNAS CE, Unraid pricing
+- XDA old devices > Pi: https://www.xda-developers.com/old-devices-make-better-home-servers-than-a-raspberry-pi/ — mini PCs, NUC, old laptops, Chromebooks
+- XDA old laptop UPS: https://www.xda-developers.com/my-old-laptop-makes-a-better-home-server-and-has-a-built-in-ups/
+- XDA $150 mini PC 12 containers: https://www.xda-developers.com/my-150-mini-pc-runs-12-docker-containers-and-hasnt-broken-a-sweat/ — HA, Immich, Pi-hole, Navidrome, Plex+Jellyfin
+- XDA HA on Pi Zero 2W / DietPi: https://www.xda-developers.com/install-home-assistant-pi-zero-2w/
+- Hackaday thin client repurpose: https://hackaday.com/blog/?s=thin+client and https://hackaday.com/tag/thin-client/ — Dell Wyse 3040 BIOS locked, OpenWrt; thin clients $10-15 vs Pi, Proxmox/IOTstack/HA
+- Hackaday.io ControlPi: https://hackaday.io/project/207185-controlpi — CM5, Docker+Portainer CE dashboard, NAS/firewall/DNS, local LLMs
+- Hackaday.io Solar Pi: https://hackaday.io/project/205403-solar-pi/details — Pi Zero W Alpine diskless, 1-2W, lighttpd
+- Samsung bootloader: https://thecustomrom.com/news/samsung-galaxy-s25-custom-rom-progress and XDA investigation cited there; also https://www.droidrooter.com/blog/unlock-bootloader-android-guide — One UI 8 removed OEM unlock all regions July 2025
+- Plex paywall: https://www.howtogeek.com/plex-keeps-getting-more-expensive-heres-what-people-are-switching-to/ and https://dev.to/jronegit/plex-vs-jellyfin-in-2026-the-paywall-and-the-hardware-4o87 — Apr 2025 remote playback paywalled, lifetime $120->$250->$750
+- Synology lock-in reversal: https://www.guru3d.com/story/synology-reverses-policy-banning-thirdparty-hdds-after-nas-sales-plummet/?print and https://consumerrights.wiki/w/Synology_requiring_proprietary-branded_drives_to_be_used_with_its_NAS — DSM 7.3 Oct 8 2025 reversal, NVMe still restricted
+- CasaOS/YunoHost/Umbrel comparisons: https://www.bigiron.cc/guides/casaos-vs-yunohost-vs-cosmos ; https://de.unstore.io/discover/best-home-server-apps-desktop/ ; https://auberge.espadat.com/about/alternatives/ — YunoHost ~500 apps SSO backup, Umbrel ~300 PolyForm NC, CasaOS ~100 no backup/SSO/LE, maintenance/ZimaOS shift
+- Cockpit: https://linuxdork.com/blog/cockpit-web-console/ and https://www.bigiron.cc/guides/cockpit-on-debian-a-web-console-for-plain-servers — port 9090, socket-activated, no own state, systemd/NetworkManager/udisks/Podman, self-signed cert warning, do not expose
+- Proxmox/TrueNAS/Unraid: https://techfuelhq.com/storage/unraid-vs-truenas-vs-omv-vs-proxmox-2026/ ; https://kextcache.com/best-os-for-home-servers/ — TrueNAS CE rename 25.04, Unraid $49/$109/$249 + $36/yr updates, Proxmox no shares/Docker on host, TrueNAS apps rewrite k3s->Docker Compose 24.10 cutoff Jun 2025
+- Remote access: https://homelabber.info/guides/tailscale-vs-wireguard ; https://www.projecthomelab.org/security/remote-access/ — Tailscale CGNAT/DERP, WireGuard needs public IP, Headscale/NetBird self-host control plane
+- CGNAT/TLS: https://www.ssdnodes.com/learn/how-to-self-host-a-website ; https://lucasbittencourt.dev/blog/self-hosting-at-home
+- Immich breaking: https://github.com/immich-app/immich/releases/tag/v1.133.0 — VectorChord migration, backup DB first, no downgrade; backup-on-same-disk problem https://siops.app/blogs/how-to-self-host-immich-without-losing-a-single-photo
+- Serial/udev: https://bbs.archlinux.org/viewtopic.php?pid=1594592 ; https://umatechnology.org/linux-usb-not-detected-or-not-working-5-common-issues-and-fixes/ — dialout/uucp groups differ, adb no permissions, Arduino/3D printer/SDR
+- Arduino/Qualcomm: https://www.hackster.io/news/arduino-clarifies-terms-and-conditions-following-backlash-anything-that-was-open-stays-open-645e9ee9a51e — reverse-engineering/IP backlash Nov 2025
+- Awesome-Selfhosted definition/categories: https://archive.org/details/github.com-awesome-selfhosted-awesome-selfhosted_-_2023-10-18_00-00-00 (mirror of github.com/awesome-selfhosted/awesome-selfhosted) — 1,266 projects per ecosyste.ms https://awesome.ecosyste.ms/lists?topic=selfhosted
+- r/selfhosted favourites ranking: https://appsgit.com/blog/r-selfhosted-most-recommended-apps — Immich, Jellyfin, Vaultwarden, Pi-hole/AdGuard, Paperless-ngx, HA, Uptime Kuma, Syncthing, Nextcloud (secondary synthesis, not official scrape — flagged in report)
+- USENIX study: https://www.usenix.org/user?destination=conference/usenixsecurity23/presentation/grober — N=994 + 41 interviews, unstructured security, vague firewall/backup concepts

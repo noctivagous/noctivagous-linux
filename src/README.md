@@ -306,7 +306,7 @@ loops, kept in separate parts of the tree so they never blur:
 | Kind | Where | What it is | How it is tested |
 | --- | --- | --- | --- |
 | Core | `core/` | A wlroots-class compositor (stand-in in the foundation), seat and session glue, the session scripts | On real DRM and seat hardware — in the virtual machine |
-| Godot system layer | `godot/` | The greeter, the shell, the kit and the apps: GDScript and scenes on one pinned engine runtime (4.3.stable) | Headless and in a nested Wayland session — most of it never needs the VM |
+| Godot system layer | `godot/` | The greeter, the shell, the kit and the apps: GDScript and scenes on one pinned engine runtime (4.7.2.stable, .NET edition) | Headless and in a nested Wayland session — most of it never needs the VM |
 | Distro plumbing | `distro/`, `system/` | The Debian 13 (trixie) base: package lists, .deb packaging, and an overlay that mirrors the installed filesystem path for path | By booting the installed image |
 
 Foreign programs are not a fourth kind of work. A foreign app is a

@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:,">
+<title>Why People Quit Linux as a Daily Driver</title>
+<style>
+  :root{
+    --bg:#fcfcf9; --surface:#ffffff; --surface2:#f3f1ea; --surface3:#ece9df;
+    --ink:#1a1f1c; --ink2:#3d4741; --muted:#6b756e; --line:#e3ded0; --line2:#d4cfbd;
+    --accent:#b94a1f; --accent-ink:#9a3a14; --teal:#1e5c4a; --teal-bg:#e6efe9;
+    --amber:#8a5a12; --amber-bg:#fdf3d7; --red:#9b2c1d; --red-bg:#fdecea;
+    --green:#245c3f; --green-bg:#e7f0e8;
+    --radius:14px;
+    --serif: "Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    --sans: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#121512; --surface:#1a1e1b; --surface2:#222722; --surface3:#2a2f2a;
+      --ink:#eceee9; --ink2:#c6cdc6; --muted:#9aa69d; --line:#2e352f; --line2:#3a423b;
+      --accent:#e67a4a; --accent-ink:#f09a6d; --teal:#7ec8a8; --teal-bg:#1e2f27;
+      --amber:#e8b85a; --amber-bg:#2e2716; --red:#f08a7a; --red-bg:#2e1e1a;
+      --green:#8fd0a3; --green-bg:#1c2b20;
+    }
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.6;font-size:16.5px;-webkit-font-smoothing:antialiased}
+  a{color:var(--teal);text-decoration:underline;text-underline-offset:2px}
+  a:hover{color:var(--accent)}
+  button,[role="button"],summary{min-height:44px}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+  /* HERO */
+  .hero{padding:44px 0 8px}
+  .hero-eyebrow{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:700}
+  h1{font-family:var(--serif);font-weight:700;font-size:clamp(36px,6vw,62px);line-height:.95;letter-spacing:-.02em;margin:14px 0 18px;max-width:820px}
+  h1 em{font-style:normal;color:var(--accent)}
+  .hero-lede{font-size:19px;line-height:1.55;color:var(--ink2);max-width:720px;margin:0}
+  .hero-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px}
+  .pill{font-size:13px;font-weight:600;padding:7px 11px;border:1px solid var(--line2);border-radius:999px;background:var(--surface);color:var(--ink2)}
+  .thesis{margin:28px 0 0;background:var(--ink);color:#f5f2ea;border-radius:16px;padding:22px 22px 20px;display:grid;grid-template-columns:1.15fr .85fr;gap:22px}
+  @media(max-width:700px){.thesis{grid-template-columns:1fr}}
+  .thesis h2{font-family:var(--serif);font-size:24px;line-height:1.15;margin:0 0 10px;color:#fff}
+  .thesis p{margin:0;color:#d8dcd4;font-size:15.5px;line-height:1.6}
+  .thesis blockquote{margin:0;background:rgba(255,255,255,.08);border-left:3px solid #e67a4a;padding:14px 16px;border-radius:0 10px 10px 0;font-size:15px;line-height:1.55}
+  .thesis blockquote cite{display:block;margin-top:8px;font-style:normal;font-size:13px;color:#b9c0b5}
+  @media(prefers-color-scheme:dark){.thesis{background:#e9e6dc;color:#1a1f1c}.thesis h2{color:#1a1f1c}.thesis p{color:#3d4741}.thesis blockquote{background:rgba(0,0,0,.06);color:#1a1f1c}.thesis blockquote cite{color:#6b756e}}
+  /* TOC */
+  .toc{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 92%, transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);margin-top:28px}
+  .toc-inner{display:flex;gap:4px;overflow-x:auto;padding:10px 0;scrollbar-width:none}
+  .toc-inner::-webkit-scrollbar{display:none}
+  .toc a{white-space:nowrap;font-size:13.5px;font-weight:600;color:var(--ink2);text-decoration:none;padding:9px 12px;border-radius:999px}
+  .toc a:hover{background:var(--surface2);color:var(--ink)}
+  /* SECTIONS */
+  section{padding:36px 0 6px;scroll-margin-top:64px}
+  .sec-head{display:flex;gap:16px;align-items:flex-start;margin-bottom:18px}
+  .sec-num{flex:0 0 auto;width:36px;height:36px;border-radius:50%;background:var(--surface2);border:1px solid var(--line);display:grid;place-items:center;font-weight:800;font-size:14px;color:var(--accent)}
+  h2{font-family:var(--serif);font-size:30px;line-height:1.1;letter-spacing:-.01em;margin:2px 0 6px}
+  .sec-sub{color:var(--muted);font-size:15.5px;line-height:1.55;max-width:700px;margin:0}
+  h3{font-size:17px;line-height:1.3;margin:22px 0 8px}
+  p{margin:0 0 12px}
+  .small{font-size:13.5px;color:var(--muted);line-height:1.55}
+  .src{font-size:12.5px;color:var(--muted)}
+  .src a{color:var(--muted)}
+  /* Ranked blockers */
+  .rank-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:700px){.rank-grid{grid-template-columns:1fr}}
+  .rank-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+  .rank-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+  .rank-n{font-family:var(--serif);font-size:36px;line-height:1;color:var(--line2);font-weight:700}
+  .tag{font-size:11px;letter-spacing:.07em;text-transform:uppercase;font-weight:800;padding:5px 8px;border-radius:999px}
+  .tag-hard{background:var(--red-bg);color:var(--red)}
+  .tag-friction{background:var(--amber-bg);color:var(--amber)}
+  .rank-card h3{margin:0 0 8px;font-size:18px}
+  .rank-card p{font-size:14.5px;color:var(--ink2);line-height:1.6;margin:0}
+  .rank-card ul{margin:10px 0 0;padding-left:18px;font-size:14px;color:var(--ink2);line-height:1.6}
+  /* Two col compare */
+  .compare{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:700px){.compare{grid-template-columns:1fr}}
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+  .panel h3{margin-top:0;display:flex;align-items:center;gap:8px}
+  .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+  .panel ul{margin:0;padding-left:18px;font-size:14.5px;line-height:1.65;color:var(--ink2)}
+  .panel li{margin-bottom:6px}
+  /* Software mechanisms */
+  .mech{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  @media(max-width:900px){.mech{grid-template-columns:1fr 1fr}}
+  @media(max-width:520px){.mech{grid-template-columns:1fr}}
+  .mech-card{background:var(--surface2);border-radius:12px;padding:16px}
+  .mech-card b{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
+  .mech-card h4{margin:8px 0 6px;font-size:16px;line-height:1.3}
+  .mech-card p{font-size:13.5px;color:var(--ink2);line-height:1.6;margin:0}
+  .app-list{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+  .chip{font-size:13px;font-weight:600;background:var(--surface);border:1px solid var(--line);padding:7px 10px;border-radius:999px}
+  .chip.missing{border-color:color-mix(in srgb,var(--red) 30%, var(--line))}
+  .quote{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:16px 0}
+  .quote p{font-family:var(--serif);font-size:17px;line-height:1.5;margin:0 0 8px}
+  .quote cite{font-style:normal;font-size:13px;color:var(--muted)}
+  /* Tables */
+  .table-wrap{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  table{width:100%;border-collapse:collapse;font-size:14.5px}
+  th{text-align:left;font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:12px 14px;border-bottom:1px solid var(--line);background:var(--surface2)}
+  td{padding:13px 14px;border-bottom:1px solid var(--line);vertical-align:top;line-height:1.5}
+  tr:last-child td{border-bottom:none}
+  .status{font-weight:700;font-size:13px;white-space:nowrap}
+  .status.blocked{color:var(--red)}
+  @media(max-width:700px){
+    thead{display:none}
+    table,tbody,tr,td{display:block;width:100%}
+    tr{border-bottom:1px solid var(--line);padding:10px 0}
+    td{border:none;padding:6px 14px}
+    td:first-child{font-weight:700;font-size:15px;padding-top:8px}
+  }
+  /* Hardware grid */
+  .hw-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  @media(max-width:900px){.hw-grid{grid-template-columns:1fr 1fr}}
+  @media(max-width:560px){.hw-grid{grid-template-columns:1fr}}
+  .hw{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:15px}
+  .hw h4{margin:0 0 6px;font-size:15px}
+  .hw p{font-size:13.5px;color:var(--ink2);line-height:1.6;margin:0}
+  .hw .level{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px;display:inline-block;padding:4px 7px;border-radius:999px}
+  .level-high{background:var(--red-bg);color:var(--red)}
+  .level-mid{background:var(--amber-bg);color:var(--amber)}
+  .level-low{background:var(--green-bg);color:var(--green)}
+  /* Filters */
+  .filters{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
+  .filter-btn{appearance:none;border:1px solid var(--line2);background:var(--surface);color:var(--ink2);font-weight:700;font-size:13.5px;padding:10px 14px;border-radius:999px;cursor:pointer;min-height:44px}
+  .filter-btn.active{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+  @media(prefers-color-scheme:dark){.filter-btn.active{background:#eceee9;color:#121512}}
+  .outcome{font-weight:800;font-size:12px;letter-spacing:.05em;text-transform:uppercase;padding:5px 8px;border-radius:999px;white-space:nowrap}
+  .outcome.leaves{background:var(--red-bg);color:var(--red)}
+  .outcome.stays{background:var(--green-bg);color:var(--green)}
+  .outcome.mixed{background:var(--amber-bg);color:var(--amber)}
+  /* Stories */
+  details{background:var(--surface);border:1px solid var(--line);border-radius:12px;margin-bottom:10px;overflow:hidden}
+  details summary{cursor:pointer;padding:16px 18px;list-style:none;display:flex;justify-content:space-between;gap:14px;align-items:center;font-weight:700;line-height:1.35}
+  details summary::-webkit-details-marker{display:none}
+  details summary span:last-child{color:var(--muted);font-weight:600;font-size:13px;white-space:nowrap}
+  details .detail-body{padding:0 18px 16px;color:var(--ink2);font-size:14.5px;line-height:1.65;border-top:1px solid var(--line)}
+  details .detail-body p:first-child{margin-top:12px}
+  .verdict{font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:4px 7px;border-radius:999px}
+  /* Timeline compare */
+  .trajectory{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:700px){.trajectory{grid-template-columns:1fr}}
+  .traj{border-radius:var(--radius);padding:18px;border:1px solid var(--line)}
+  .traj.improved{background:var(--green-bg)}
+  .traj.stuck{background:var(--red-bg)}
+  .traj h3{margin-top:0}
+  .traj ul{margin:0;padding-left:18px;font-size:14.5px;line-height:1.65}
+  .traj li{margin-bottom:7px}
+  /* Callout */
+  .callout{background:var(--amber-bg);border:1px solid color-mix(in srgb,var(--amber) 25%, transparent);border-radius:12px;padding:16px 18px;margin:16px 0}
+  .callout p{margin:0;font-size:14.5px;line-height:1.6}
+  .footer{margin:40px 0 0;border-top:1px solid var(--line);padding:22px 0 36px}
+  .sources{columns:2;column-gap:28px;font-size:13px;line-height:1.7;color:var(--muted)}
+  @media(max-width:700px){.sources{columns:1}}
+  .sources a{color:var(--muted);word-break:break-all}
+  .sources li{break-inside:avoid;margin-bottom:6px}
+  ul.sources{padding-left:18px;margin:10px 0 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- HERO -->
+  <header class="hero">
+    <div class="hero-eyebrow">First-person trials · Challenge videos · Forum reports</div>
+    <h1>One deal-breaker,<br><em>plus a pile-up.</em></h1>
+    <p class="hero-lede">People rarely quit Linux because of a single catastrophic failure. Across daily-driver challenges and return stories, the pattern is consistent: <strong>one hard blocker they can't work around</strong> — an app, a game, an exam, a piece of hardware — plus a slow accumulation of small friction that costs time until they stop.</p>
+    <div class="hero-meta">
+      <span class="pill">Ranking is by recurrence across sources, not a survey</span>
+      <span class="pill">Covers 2020–2026 accounts, emphasis 2024–25</span>
+      <span class="pill">Sources linked throughout</span>
+    </div>
+    <div class="thesis">
+      <div>
+        <h2>The quitting mechanism, in one line</h2>
+        <p>XDA's synthesis of beginners puts it plainly: most people don't leave after one disaster. They leave after fingerprint readers, Bluetooth, sleep drain, monitor order and a dozen other small things add up — on top of the one thing that already forced them to keep Windows around.</p>
+      </div>
+      <blockquote>
+        “Most beginners don't leave after a single catastrophic failure. They leave because of a slow accumulation of small frustrations.”
+        <cite>— XDA, Jan 2026 · <a href="https://www.xda-developers.com/5-reasons-why-linux-beginners-always-end-up-going-back-to-windows/" style="color:inherit">5 reasons beginners go back to Windows</a></cite>
+      </blockquote>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="Contents">
+    <div class="toc-inner">
+      <a href="#blockers">Hard blockers</a>
+      <a href="#software">Software gaps</a>
+      <a href="#gaming">Gaming</a>
+      <a href="#hardware">Hardware</a>
+      <a href="#friction">Everyday friction</a>
+      <a href="#lockin">Work &amp; school</a>
+      <a href="#who">Who stays</a>
+      <a href="#stories">Stories</a>
+      <a href="#change">What changed</a>
+      <a href="#limits">Limits</a>
+    </div>
+  </nav>
+
+  <!-- 1 HARD BLOCKERS -->
+  <section id="blockers">
+    <div class="sec-head"><div class="sec-num">1</div><div><h2>The four hard blockers</h2><p class="sec-sub">These appear in almost every source and are sufficient on their own to force a dual-boot or a return. Everything else is friction — these are walls.</p></div></div>
+    <div class="rank-grid">
+      <article class="rank-card">
+        <div class="rank-top"><span class="rank-n">01</span><span class="tag tag-hard">Hard blocker</span></div>
+        <h3>A specific app that isn't there</h3>
+        <p>Above all Adobe Creative Cloud and Microsoft Office 365 desktop, then Fusion 360 and other CAD, Ableton Live / FL Studio / Pro Tools, and employer- or school-mandated tools. No native version, and the substitute doesn't carry the workflow.</p>
+        <ul><li>Cited in nearly every source — XDA, MakeUseOf, How-To Geek</li><li>Often it's not the app alone, but its files, plugins and collaborators</li></ul>
+      </article>
+      <article class="rank-card">
+        <div class="rank-top"><span class="rank-n">02</span><span class="tag tag-hard">Hard blocker</span></div>
+        <h3>Kernel anti-cheat in multiplayer games</h3>
+        <p>Valorant / League of Legends, Fortnite, Apex Legends, Destiny 2, GTA Online, Call of Duty, Battlefield / EA titles, Escape from Tarkov. The anti-cheat can support Linux — the publisher hasn't enabled it.</p>
+        <ul><li>Apex is a regression: support was withdrawn 31 Oct 2024</li><li>Destiny 2 bypass attempts are, per Bungie, “met with a game ban”</li></ul>
+      </article>
+      <article class="rank-card">
+        <div class="rank-top"><span class="rank-n">03</span><span class="tag tag-hard">Hard blocker</span></div>
+        <h3>Work or school lock-in you don't choose</h3>
+        <p>Proctoring software that explicitly bans Linux, narrow MDM / Intune support, and employer VPN / endpoint tools. Often the employer simply issues a Windows or Mac laptop and forbids alternatives.</p>
+        <ul><li>Pearson VUE OnVUE: “All Linux/Unix Operating Systems are strictly prohibited”</li><li>Intune on Linux: only Ubuntu 22.04/24.04 LTS and RHEL 8/9, GNOME, x86_64, corporate-owned only</li></ul>
+      </article>
+      <article class="rank-card">
+        <div class="rank-top"><span class="rank-n">04</span><span class="tag tag-hard">Hard blocker</span></div>
+        <h3>Hardware that doesn't work — or works without its software</h3>
+        <p>Especially on laptops: fingerprint readers, Wi-Fi, Bluetooth audio, sleep drain, hybrid / Nvidia GPUs, and fan / RGB / peripheral apps. Desktops and ThinkPad / Framework-class machines are usually fine; brand-new and hybrid-GPU laptops are where accounts break down.</p>
+        <ul><li>One 2020 Pop!_OS trial found no Wi-Fi driver at all — and fixing it required internet access <span class="src">(<a href="http://upthrust.co/2020/10/i-tried-linux-and-changed-back-to-windows/amp">UpThrust, 2020</a> — single anecdote)</span></li></ul>
+      </article>
+    </div>
+
+    <div class="compare" style="margin-top:14px">
+      <div class="panel">
+        <h3><span class="dot" style="background:var(--red)"></span> Concrete — no workaround accepted</h3>
+        <ul>
+          <li>Missing app (Adobe, Office, CAD, DAW)</li>
+          <li>Blocked game (anti-cheat)</li>
+          <li>Blocked exam or job access (proctoring, MDM)</li>
+          <li>Hardware function absent (e.g. no Wi-Fi driver)</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3><span class="dot" style="background:var(--amber)"></span> Friction — works, at a time cost</h3>
+        <ul>
+          <li><strong>Pile-up:</strong> fingerprint, function keys, Bluetooth reconnects, sleep draining overnight, monitors waking in the wrong order — individually ignorable, collectively the reason people leave (XDA, Jan 2026)</li>
+          <li><strong>Time as the price:</strong> “Linux is only ‘free’ to an extent — the cost is your time” — XDA, “I regret switching to Linux” (2026)</li>
+          <li><strong>Unpredictability:</strong> XDA's 30-day gaming trial (Oct 2025) returned mainly because games that <em>did</em> work crashed randomly — distinct from the anti-cheat titles he was willing to dual-boot for</li>
+        </ul>
+        <p class="small" style="margin-top:10px">The pile-up, time-cost and unpredictability themes each appear in at least 4 independent sources (XDA ×3, MakeUseOf, LTT 2021 &amp; 2026, The Verge).</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 SOFTWARE -->
+  <section id="software">
+    <div class="sec-head"><div class="sec-num">2</div><div><h2>Software gaps — the #1 category</h2><p class="sec-sub">Four different mechanisms get conflated as “the app is missing.” They have different fixes — and different reasons people won't accept them.</p></div></div>
+
+    <div class="mech">
+      <div class="mech-card"><b>a · Missing</b><h4>The app itself has no Linux version</h4><p>Adobe CC, Office 365 desktop, Fusion 360 / SolidWorks / AutoCAD, Ableton / FL Studio / Pro Tools, Final Cut Pro, CapCut desktop, Descript.</p></div>
+      <div class="mech-card"><b>b · Files &amp; collaborators</b><h4>An alternative exists, the ecosystem doesn't travel</h4><p>Premiere .prproj files shared with clients, .docx/.xlsx fidelity, fonts, macros and advanced Excel features. If deliverables depend on them, dual-boot is described as “your only option.”</p></div>
+      <div class="mech-card"><b>c · Plugins</b><h4>The library you paid for doesn't transfer</h4><p>Premiere / After Effects commercial plugins, VST/AU and iLok-licensed music plugins, Photoshop plugins. iLok is not available for Linux at all.</p></div>
+      <div class="mech-card"><b>d · Retraining</b><h4>Alternative exists but lags — or means relearning</h4><p>Sometimes stated honestly as unwillingness to relearn. DaVinci Resolve is the major exception — native and genuinely pro — but its free Linux version lacks the H.264/H.265 support the Windows/Mac free versions have.</p></div>
+    </div>
+
+    <h3>Named most often</h3>
+    <div class="app-list">
+      <span class="chip missing">Adobe Photoshop / Premiere / After Effects / Lightroom</span>
+      <span class="chip missing">Microsoft Office 365 desktop</span>
+      <span class="chip missing">Fusion 360 · SolidWorks · AutoCAD · CNC software</span>
+      <span class="chip missing">Ableton Live · FL Studio · Cubase · Pro Tools · Logic Pro</span>
+      <span class="chip missing">Final Cut Pro · CapCut desktop · Descript</span>
+    </div>
+    <p>MakeUseOf (May 2026) notes Adobe CC and Office 365 “are not natively available… Wine… tied to Windows-specific services like DRM, cloud syncing… won't work or will randomly crash.” Autodesk staff on Autodesk's own forum: “Fusion is not supported on Linux and there are no plans to do so… no major CAD players… [have] a current version natively on Linux.” <span class="src">Sources: <a href="https://www.makeuseof.com/linux-tempting-but-these-windows-features-keep-pulling-me-back/">MakeUseOf</a> · <a href="https://www.howtogeek.com/why-i-dont-use-linux-on-my-desktop/">How-To Geek, Apr 2026</a> · <a href="https://forums.autodesk.com/t5/fusion-design-validate-document/does-autodesk-fusion-360-support-linux-os/m-p/10769576">Autodesk Forums</a> · <a href="https://www.linuxaudio.dev/frequently-asked-questions">LinuxAudio.dev FAQ</a></span></p>
+
+    <div class="quote">
+      <p>“Only three things hold me back from using Linux for my daily driver: Lack of Office, Ableton Live and Fusion 360… there are good alternatives there, if I'm willing to trash my substantial license investment and know-how, which I'm not yet.”</p>
+      <cite>— Autodesk forum user, noting a Windows VM also fails for Fusion/Ableton because of inadequate GPU passthrough</cite>
+    </div>
+
+    <p><strong>What is <em>not</em> a gap:</strong> software development (often described as <em>better</em> on Linux), web / light office work, 3D (Blender is native and first-class), streaming/recording (OBS native). Browsers, VS Code, Slack/Zoom web and dev tools are praised across sources. XDA (Jun 2025) is candid about the retraining part: “I'm just not willing to learn another application at the moment… if this were the only thing holding me back, I might just bite the bullet.” <span class="src"><a href="https://www.xda-developers.com/3-things-linux-needs-to-have-before-i-can-make-the-swap/">XDA, Jun 2025</a> · Creator gaps also in <a href="https://yarygintech.com/articles/linux-for-content-creators-edit-record-publish/">Linux for Content Creators</a></span></p>
+    <div class="callout"><p><strong>Evidence note on Office fidelity:</strong> LibreOffice / OnlyOffice open .docx/.xlsx, but formatting, fonts, macros and advanced Excel features are the recurring complaint. In the research this is mostly a <em>pattern of repeated claims</em> in forums and articles, not controlled side-by-side testing — treat it as widely reported, not measured.</p></div>
+  </section>
+
+  <!-- 3 GAMING -->
+  <section id="gaming">
+    <div class="sec-head"><div class="sec-num">3</div><div><h2>Gaming: most of it works — the biggest titles don't</h2><p class="sec-sub">Even people who quit concede the shift: most single-player Steam libraries run via Proton, sometimes better than on Windows. The block is publisher anti-cheat decisions, not a technical limit.</p></div></div>
+    <p>XDA's Oct 2025 trial: “shocked at just how many games in my library supported Linux… they ran just as well, or even better.” The Verge's year-long user: “Everything in my Steam library runs great with Proton.” Easy Anti-Cheat and BattlEye <em>can</em> support Linux/Proton — the developer must opt in. The table below is the current status from anti-cheat tracking summaries checked Nov 2026 in the research. <span class="src"><a href="https://www.fosslinux.com/164288/moving-from-windows-to-linux-gaming.htm">FOSSLinux gaming summary</a></span></p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Game</th><th>Anti-cheat / publisher position</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Valorant, League of Legends</td><td>Riot Vanguard, kernel-mode, no Linux build; Riot says Linux can't attest boot/kernel state</td><td><span class="status blocked">Blocked — no plan</span></td></tr>
+          <tr><td>Fortnite</td><td>Epic has not enabled Easy Anti-Cheat Proton mode</td><td><span class="status blocked">Blocked</span></td></tr>
+          <tr><td>Apex Legends</td><td>EA withdrew Linux / Steam Deck access 31 Oct 2024 (“no reliable way to differentiate a legitimate Steam Deck from a malicious cheat”); later moved to EA Javelin</td><td><span class="status blocked">Blocked — a regression: it used to work</span></td></tr>
+          <tr><td>Destiny 2</td><td>Bungie does not support Proton; bypass attempts “met with a game ban”</td><td><span class="status blocked">Blocked — ban risk</span></td></tr>
+          <tr><td>GTA Online</td><td>BattlEye added Sep 2024, Rockstar hasn't enabled Linux mode (Story Mode runs)</td><td><span class="status blocked">Online blocked</span></td></tr>
+          <tr><td>Call of Duty / Warzone</td><td>Ricochet, no Linux version</td><td><span class="status blocked">Blocked</span></td></tr>
+          <tr><td>Battlefield 6 / EA FC online</td><td>EA Javelin kernel anti-cheat</td><td><span class="status blocked">Blocked</span></td></tr>
+          <tr><td>Escape from Tarkov</td><td>BattlEye implementation doesn't support Linux</td><td><span class="status blocked">Blocked</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>Other gaming friction people cite</h3>
+    <div class="compare">
+      <div class="panel"><h3>Unpredictability in games that do run</h3><ul><li>War Thunder and Arma Reforger crashing randomly with unhelpful errors in XDA's 30-day Ubuntu trial (Radeon RX 9070 XT; Mesa drivers didn't fix it) — the author's actual deal-breaker <span class="src">(<a href="https://www.xda-developers.com/gaming-on-linux-still-isnt-perfect-heres-why-i-switched-off-of-it/">XDA, Oct 2025</a>)</span></li><li>Competitive players reporting titles that run (e.g. Counter-Strike 2, native) still “feel” less responsive — single-source claim (Mem's Tech Tips), treat as anecdote</li><li>Day-one releases and mods / mod managers recur in forums; evidence thinner</li></ul></div>
+      <div class="panel"><h3>Launchers, peripherals &amp; VR</h3><ul><li>Non-Steam launchers (EA App — reported broken / installer not finishing in tracker summaries; Battle.net, Epic, Ubisoft) need workarounds via Lutris / Heroic / non-Steam Proton entries. The Verge user got WoW working only by adding Battle.net as a non-Steam game</li><li>Meta Quest PC Link app is Windows-only (ALVR + SteamVR is the workaround)</li><li>Racing wheels, capture cards and vendor RGB/peripheral software have partial community coverage (OpenRazer, Oversteer) rather than vendor tools</li></ul></div>
+    </div>
+  </section>
+
+  <!-- 4 HARDWARE -->
+  <section id="hardware">
+    <div class="sec-head"><div class="sec-num">4</div><div><h2>Hardware &amp; drivers: laptops are the fault line</h2><p class="sec-sub">Pattern across accounts: desktops and ThinkPad / Framework-class laptops are usually fine. Brand-new laptops, hybrid-GPU laptops, and peripherals that depend on Windows vendor software are where things break.</p></div></div>
+    <div class="hw-grid">
+      <div class="hw"><span class="level level-high">Most named</span><h4>Nvidia GPUs</h4><p>The single most-named hardware villain in older and many recent accounts: kernel updates breaking drivers, repeated fixing, closed drivers described as “delayed and generally just broken” (MakeUseOf). Improving with open kernel modules from RTX 20/40-series onward. Counterpoint: Pop!_OS Nvidia edition / distro-packaged drivers make this a non-event for many 2024–25 users — hardware- and distro-dependent, not universal.</p></div>
+      <div class="hw"><span class="level level-high">Laptop-specific</span><h4>Sleep, suspend &amp; battery</h4><p>s2idle / Modern Standby-only laptops draining in a bag (“hot bag”), battery shorter than Windows because power tuning and vendor optimisations are Windows-side, sleep draining overnight (XDA pile-up list). One of the most consistent laptop complaints in 2024–25 accounts.</p></div>
+      <div class="hw"><span class="level level-mid">Common</span><h4>Hybrid graphics (iGPU + dGPU)</h4><p>No automatic GPU switching, high idle temps, worse battery (UpThrust, 2020); still cited in 2025–26 guides: PRIME offload incantations, HDMI ports wired to the dGPU, black screen after driver install / Secure Boot MOK enrolment.</p></div>
+      <div class="hw"><span class="level level-mid">Chipset-dependent</span><h4>Wi-Fi &amp; Bluetooth</h4><p>Wi-Fi is chipset-dependent — Broadcom and some newer MediaTek/Realtek historically worst; most Intel Wi-Fi is fine out of the box. The catch-22 (no driver, fix needs internet) recurs. Bluetooth: inconsistent audio reconnect / pairing in the XDA pile-up list; LTT 2026 cited Xbox controller pairing friction.</p></div>
+      <div class="hw"><span class="level level-mid">Often absent</span><h4>Fingerprint &amp; peripheral software</h4><p>Fingerprint readers frequently simply unsupported — some ThinkPads work via libfprint, many don't. Razer Synapse, Logitech G Hub, Corsair iCUE, fan-curve / RGB / battery utilities: hardware works at a basic level, full features need the Windows app or community replacements (OpenRazer, Piper, Solaar). <span class="src">MakeUseOf</span></p></div>
+      <div class="hw"><span class="level level-low">Improving</span><h4>Displays, docks, printers, webcams</h4><p>Wayland (GNOME/KDE) now handles per-monitor and fractional scaling much better, but XWayland apps still blur and MakeUseOf (2026) notes they “don't do well with fractional scaling,” plus mixed-refresh inconsistency. Thunderbolt docks mostly work in recent accounts. CUPS often works well (sometimes better than Windows for old printers); multifunction scanner/vendor software still lags. Webcams/mics usually work (UVC); vendor noise-cancellation / effects software does not.</p></div>
+    </div>
+  </section>
+
+  <!-- 5 FRICTION -->
+  <section id="friction">
+    <div class="sec-head"><div class="sec-num">5</div><div><h2>Everyday friction: the system itself</h2><p class="sec-sub">None of these alone ends a trial. Together they are the “cost is your time” complaint — and for a long-time user in 2026, the choice burden alone was enough.</p></div></div>
+    <div class="rank-grid">
+      <article class="rank-card"><h3>Choice overload comes first</h3><p>Before anything breaks, a newcomer must choose: distro, desktop (GNOME vs KDE vs Cinnamon — “materially different” daily), update philosophy (rolling vs stable — which determines “when a Wi-Fi chip starts working or when a GPU regression is resolved”), packaging (Snap vs Flatpak vs native — none “universally right”), and display server (X11 vs Wayland, mid-transition). MakeUseOf's Mar 2026 piece is a <em>decade-long</em> Linux user quitting over exactly this fragmentation — evidence attrition isn't only beginners. XDA adds “choosing the wrong distro / wrong desktop” (e.g. starting on Arch and drowning) as a top beginner-quitting cause. <span class="src"><a href="https://www.makeuseof.com/i-cant-use-linux-as-my-daily-driver-anymore/">MakeUseOf, Mar 2026</a></span></p></article>
+      <article class="rank-card"><h3>When it breaks, the fix is a terminal command</h3><p>Modern Mint / Ubuntu / KDE users can do most daily tasks in a GUI. The complaint is specific: <em>when something goes wrong</em>, forum answers arrive as terminal commands. The Verge stayer: the terminal is “an unavoidable part of the Linux experience, even with… Snap Store and Flathub.” LTT 2021 is the canonical demonstration (see Stories).</p></article>
+      <article class="rank-card"><h3>Updates breaking things — and the fear of it</h3><p>Kernel updates breaking Nvidia / out-of-tree drivers (XDA); rolling-release (Arch-family) breakage cited by multiple returners. Conversely, LTS / Mint users report boring stability. Distro-dependent — but the <em>fear</em> is widely cited even where the breakage isn't.</p></article>
+      <article class="rank-card"><h3>Streaming, HDR, files &amp; fonts</h3><p>No native Netflix / Prime / Disney+ apps; browser playback capped by Widevine L3 on Linux. Sources disagree on the exact cap — reported here as <strong>720p–1080p depending on service/browser, no 4K/HDR</strong> — the consistent point is it's worse than Windows/Edge or a native app. HDR is Wayland-only with inconsistent washed-out/gamma issues; HDMI 2.1 VRR is broken on AMD Linux (HDMI Forum licensing). Plus .docx/.xlsx rendering differences, missing Microsoft fonts (Calibri etc.) changing pagination, and Excel macros/VBA not working in LibreOffice. <span class="src"><a href="https://daily.dev/posts/linux-finally-has-working-hdr-but-you-still-can-t-use-it-for-most-streaming-services-5kvkjhtdt">Daily.dev HDR/Widevine summary</a> · MakeUseOf</span></p></article>
+    </div>
+    <div class="quote"><p>“I was too tired of fiddling with settings to even enjoy a game.”</p><cite>— XDA, “I regret switching to Linux, even though I wanted to love it” (2026) — the same piece that frames the cost as time: “Linux is only ‘free’ to an extent.” <a href="https://www.XDA-Developers.com/i-regret-switching-to-linux-even-though-i-wanted-to-love-it/">Read at XDA</a></cite></div>
+    <p><strong>Support burden:</strong> there is no vendor to call — support is forums / Discord / Reddit. Experiences split sharply: stayers praise community help; returners cite “RTFM” / hostile replies and contradictory advice (“you chose the wrong distro” in response to any problem — noted even by XDA's sympathetic gaming returner). LTT 2026 cited “inconsistent community responses.” Workflow differences add to it: in LTT Pt.3's timed simple-tasks test (2021), digitally signing PDFs, adding fonts, and compressing/uploading files proved unexpectedly hard — some genuine missing polish, some unfamiliarity, as LTT's own community critics pointed out.</p>
+  </section>
+
+  <!-- 6 LOCK-IN -->
+  <section id="lockin">
+    <div class="sec-head"><div class="sec-num">6</div><div><h2>Work &amp; school lock-in: often absolute</h2><p class="sec-sub">This blocker is not the user's choice, and it's the least documented in public posts — people don't blog about IT policy.</p></div></div>
+    <div class="rank-grid">
+      <article class="rank-card"><span class="tag tag-hard">Explicit ban</span><h3 style="margin-top:10px">Proctoring &amp; exam software</h3><p>Pearson VUE OnVUE (used by NICET and many cert bodies): “All Linux/Unix Operating Systems are strictly prohibited.” Examity: “does not support Linux or Chrome OS.” ProctorU / Guardian Browser lists Linux as unsupported. Respondus LockDown Browser and similar school tools are likewise Windows/Mac-only (widely reported; not separately verified in the research). The irony is documented by the Linux Professional Institute itself: OnVUE supports only Windows/macOS, so Linux-certification candidates must find a Windows/Mac machine or test in person; LPI has lobbied Pearson since OnVUE launched.</p><p class="src" style="margin-top:8px"><a href="https://www.nicet.org/exams/remote/">NICET / OnVUE requirements</a> · <a href="https://www.queensu.ca/registrar/academic-info/exams/remote-proctoring/examity">Queen's — Examity</a> · <a href="https://www.lpi.org/onvue_linux_support/">LPI on OnVUE</a></p></article>
+      <article class="rank-card"><span class="tag tag-hard">Narrow support</span><h3 style="margin-top:10px">MDM, compliance &amp; employer tools</h3><p>Microsoft Intune <em>does</em> enrol Linux — but only Ubuntu Desktop 22.04/24.04 LTS and RHEL 8/9, GNOME, x86_64, corporate-owned devices only; personal-device enrolment is not supported. Any other distro, or Conditional Access requiring full Intune compliance / endpoint agents (CrowdStrike, GlobalProtect, Zscaler, Cisco Secure Client — Linux clients exist for some, with reduced features / parity lags), can lock a Linux user out of email, VPN and internal apps. In practice the most common form is simplest: the employer issues a Windows/Mac laptop and forbids alternatives.</p><p class="src" style="margin-top:8px"><a href="https://LEARN.MICROSOFT.COM/en-us/intune/intune-service/user-help/enroll-device-linux">Microsoft Learn — Enrol a Linux device in Intune</a></p></article>
+    </div>
+    <p style="margin-top:14px"><strong>Not blockers by themselves:</strong> Teams and Zoom <em>do</em> work on Linux (native/web), and mainstream VPNs (WireGuard/OpenVPN native; major commercial clients) generally work. What pulls office workers back is the combination — Teams feature lag and Wayland screen-share quirks, mandated Office desktop for shared documents, and proprietary corporate VPN / zero-trust agents. Evidence here is moderate, mostly forum-level.</p>
+  </section>
+
+  <!-- 7 WHO -->
+  <section id="who">
+    <div class="sec-head"><div class="sec-num">7</div><div><h2>Who gives up, who stays</h2><p class="sec-sub">Outcome tracks the job, the game library and the hardware far more than enthusiasm. Filter the table — the pattern is the point.</p></div></div>
+    <div class="filters" role="group" aria-label="Filter by outcome">
+      <button class="filter-btn active" data-filter="all">Everyone</button>
+      <button class="filter-btn" data-filter="leaves">Tends to leave / dual-boot</button>
+      <button class="filter-btn" data-filter="stays">Tends to stay</button>
+    </div>
+    <div class="table-wrap">
+      <table id="whoTable">
+        <thead><tr><th>User type</th><th>Typical outcome</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr data-outcome="leaves"><td>Competitive multiplayer gamer (Valorant / Fortnite / Apex / CoD, with friends)</td><td><span class="outcome leaves">Gives up / dual-boots</span></td><td>Anti-cheat hard block; social lock-in — friends are on those titles</td></tr>
+          <tr data-outcome="leaves"><td>Creator in the Adobe ecosystem / client work</td><td><span class="outcome leaves">Gives up / dual-boots</span></td><td>Premiere / Photoshop files, plugins, collaborators; alternatives don't read the workflow</td></tr>
+          <tr data-outcome="leaves"><td>Engineer / CAD, CNC, specialised Windows business software</td><td><span class="outcome leaves">Gives up</span></td><td>Fusion / SolidWorks / CNC / industry apps are Windows-only; VM GPU passthrough inadequate</td></tr>
+          <tr data-outcome="leaves"><td>Office worker in a Microsoft 365 org / student with proctored exams</td><td><span class="outcome leaves">Gives up or never allowed</span></td><td>Employer / school mandates; Office fidelity</td></tr>
+          <tr data-outcome="stays"><td>Developer / sysadmin / data (Python etc.)</td><td><span class="outcome stays">Stays — highest success rate</span></td><td>Toolchain is native / better on Linux; the terminal is a plus, not friction</td></tr>
+          <tr data-outcome="stays"><td>Casual / web-centric user (browser, media, light office)</td><td><span class="outcome stays">Stays if hardware cooperates</span></td><td>Almost everything is a web app; LibreOffice suffices; failure mode is a laptop hardware pile-up, not software</td></tr>
+          <tr data-outcome="stays"><td>Single-player / indie gamer</td><td><span class="outcome stays">Stays</span></td><td>Proton covers the library; may accept losing 1–2 titles</td></tr>
+          <tr data-outcome="stays"><td>Privacy- / tinker-motivated switcher (incl. PewDiePie-type)</td><td><span class="outcome stays">Stays</span></td><td>Motivated by leaving Windows/Google; willing to pay the time cost; customisation is the reward</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>What stayers say they accepted</h3>
+    <div class="compare">
+      <div class="panel"><ul>
+        <li><strong>Replaced, not replicated, apps:</strong> LibreOffice for Office, RawTherapee for Lightroom, GIMP/Krita, DaVinci/Kdenlive — and accepted relearning</li>
+        <li><strong>Accepted losing anti-cheat titles:</strong> “I don't play these types of games, so that didn't matter to me” — The Verge</li>
+        <li><strong>Chose boring, stable setups</strong> (Mint, Fedora, Ubuntu LTS, Bazzite for gaming) and Linux-friendly hardware (AMD GPU, ThinkPad / Framework) rather than fighting hostile hardware</li>
+      </ul></div>
+      <div class="panel"><ul>
+        <li><strong>Accepted self-support as the model:</strong> “dozens of hours combing through Reddit threads, analyzing old Stack Overflow solutions” in a year (The Verge); learning fstab, Flatpak permissions, Proton launch options</li>
+        <li><strong>Often kept an escape hatch:</strong> dual-boot, a second Windows/Mac machine, or a work-issued laptop — “pure” single-OS switchers are the minority even among success stories</li>
+      </ul>
+      <div class="quote" style="margin:12px 0 0"><p style="font-size:16px">“Linux isn't especially complicated on a daily basis, but you have to be willing to solve your own problems.”</p><cite>— The Verge, year-long switcher · <a href="https://copyinvisible.com/i-spent-a-year-on-linux-and-forgot-to-miss-windows/">I spent a year on Linux and forgot to miss Windows</a></cite></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8 STORIES -->
+  <section id="stories">
+    <div class="sec-head"><div class="sec-num">8</div><div><h2>The stories people point to</h2><p class="sec-sub">The strongest first-person artefacts in the record. Tap to expand — verdict, setup and deal-breakers for each.</p></div></div>
+
+    <details open>
+      <summary><span>Linus Tech Tips — “Linux HATES Me – Daily Driver Challenge” Pt.1–4</span><span>Nov–Dec 2021 · Gave up (cumulative)</span></summary>
+      <div class="detail-body"><p>Linus Sebastian (Pop!_OS) and Luke Lafreniere (Linux Mint), about a month. Pt.1 (9 Nov 2021, ~4.5M views in the index): installing Steam via apt on Pop!_OS prompted removal of essential packages <code>pop-desktop</code> / <code>pop-session</code>; Linus typed “Yes, do as I say!” at the warning and deleted his desktop environment, booting to a shell. It prompted an actual apt fix (apt 2.3.12 no longer removes Essential packages). Pt.3 (4 Dec 2021): timed simple tasks — signing PDFs, adding fonts, compressing/uploading — proved unexpectedly difficult. Deal-breakers were cumulative UX / terminal / gaming friction, not one app.</p><p><strong>Caveat in the record:</strong> heavily criticised within the Linux community for ignoring warnings / copy-pasting commands — both readings are in the record. <span class="src"><a href="https://hacker-tube.org/watch/0506yDSgU7M">Watch reference (index)</a></span></p></div>
+    </details>
+
+    <details>
+      <summary><span>Linus Tech Tips — the 2026 revisit: “FINE! I'll Try Linux ONE MORE TIME…”</span><span>Mar–Jun 2026 · Split verdict</span></summary>
+      <div class="detail-body"><p>The direct sequel — note it falls <em>after</em> the 2024–25 window, and is included for that reason. Linus (Bazzite), Luke and Elijah (CachyOS), over a month. Luke and Elijah stayed primarily on Linux; Linus praised speed and Proton game compatibility but stayed on Windows for his reviewer workflow and unsupported anti-cheat games. Remaining friction named: Wayland display capture, Xbox controller pairing, middle-mouse / search behaviour, inconsistent community help. The contrast with 2021 is itself the best evidence of what improved (see §9). <span class="src"><a href="https://rosetta.to/u/linustechtips/2026">LTT 2026 summaries (index)</a></span></p></div>
+    </details>
+
+    <details>
+      <summary><span>The Verge — Stevie Bonifield, “I spent a year on Linux and forgot to miss Windows”</span><span>Switched Jan 2025 · Stayed</span></summary>
+      <div class="detail-body"><p>Ubuntu → Fedora/KDE, a full year across work, gaming and photo/video. <strong>Stayed.</strong> Explicitly names Fortnite / Valorant anti-cheat and terminal aversion as legitimate deal-breakers for others, while accepting them personally. The cost, quantified from the staying side: dozens of hours in Reddit threads and old Stack Overflow solutions.</p></div>
+    </details>
+
+    <details>
+      <summary><span>XDA — Ty, “Gaming on Linux still isn't perfect — here's why I switched off of it”</span><span>1 Oct 2025 · Gave up</span></summary>
+      <div class="detail-body"><p>Ubuntu, 30 days dual-boot, Radeon RX 9070 XT. <strong>Gave up on unpredictability</strong> (War Thunder, Arma Reforger crashes), not primarily anti-cheat — he was willing to keep a Windows drive for Battlefield 6 / Tarkov. <span class="src"><a href="https://www.xda-developers.com/gaming-on-linux-still-isnt-perfect-heres-why-i-switched-off-of-it/">Read at XDA</a></span></p></div>
+    </details>
+
+    <details>
+      <summary><span>XDA — “I regret switching to Linux, even though I wanted to love it”</span><span>2026 · Gave up</span></summary>
+      <div class="detail-body"><p>Reasons stacked: Apex anti-cheat withdrawal, Nvidia drivers breaking on kernel updates, proprietary accessories never working, and the time cost overall. <span class="src"><a href="https://www.XDA-Developers.com/i-regret-switching-to-linux-even-though-i-wanted-to-love-it/">Read at XDA (index)</a></span></p></div>
+    </details>
+
+    <details>
+      <summary><span>PewDiePie — “I switched to Linux” / ricing videos</span><span>Apr 2025 · Stayed</span></summary>
+      <div class="detail-body"><p>Linux Mint → Arch + Hyprland. <strong>Stayed</strong> — the highest-profile successful creator switch; motivated by leaving Windows/Google and de-Googling (Nextcloud etc.). Not a failure case: the counter-example showing motivation and hardware choice predict success.</p></div>
+    </details>
+
+    <details>
+      <summary><span>MakeUseOf — “I can't use Linux as my daily driver anymore”</span><span>Mar 2026 · Gave up after a decade</span></summary>
+      <div class="detail-body"><p>A decade-long Linux user quitting, not a beginner: reasons are fragmentation / choice burden and changed form-factor needs — evidence attrition isn't only newbies. <span class="src"><a href="https://www.makeuseof.com/i-cant-use-linux-as-my-daily-driver-anymore/">Read at MakeUseOf (index)</a></span></p></div>
+    </details>
+
+    <p class="small">Forum pattern (no single canonical thread verified in the research): r/linux, r/linux_gaming, distro subreddits and Lemmy recur on the same short list — Adobe, anti-cheat, Office, “one program” (e.g. Arturia music software, FL Studio in a 4chan /g/ “why did you go back” thread) — plus the Autodesk Fusion thread in §2 as a representative first-person artefact. Treat forum evidence as pattern-confirming, not quantified.</p>
+  </section>
+
+  <!-- 9 CHANGE -->
+  <section id="change">
+    <div class="sec-head"><div class="sec-num">9</div><div><h2>What got better, what didn't move</h2><p class="sec-sub">The net trajectory in the sources: the floor rose dramatically — the ceiling blockers did not, because they are publisher and vendor business decisions, not Linux engineering gaps.</p></div></div>
+    <div class="trajectory">
+      <div class="traj improved">
+        <h3>✓ Materially improved by 2024–25</h3>
+        <ul>
+          <li><strong>“Games don't run on Linux” (in general):</strong> Proton / Steam Deck (2022 onward) flipped the default — most single-player libraries now work. The LTT 2021 → 2026 contrast is the emblem</li>
+          <li><strong>Installing Nvidia / basic drivers:</strong> distro-packaged drivers and gaming images (Pop!_OS, Bazzite, Nobara, CachyOS) mean the 2015-era compile-your-driver story is now a minority, new-hardware experience</li>
+          <li><strong>Wayland basics:</strong> fractional scaling, multi-monitor mixed DPI, screen sharing via PipeWire portals, Nvidia-on-Wayland (driver 555+) — substantially matured 2023–25. Remaining complaints are edge cases, not “Wayland is unusable”</li>
+          <li><strong>Everyday app availability:</strong> Flatpak / Flathub made Slack / Discord / Spotify / Zoom one-click; browsers, OBS, Blender, DaVinci, VS Code native. The old “can't even install normal apps / MP3 codecs” class has largely vanished</li>
+          <li><strong>Wi-Fi / printers out of the box</strong> on mainstream (especially Intel-based) hardware: improved, fewer reports</li>
+        </ul>
+      </div>
+      <div class="traj stuck">
+        <h3>✕ Persisting — essentially unchanged</h3>
+        <ul>
+          <li><strong>Adobe Creative Cloud and Office desktop:</strong> still no native Linux versions, no announced plans. The #1 blocker in 2020 is the #1 blocker in 2025</li>
+          <li><strong>Kernel anti-cheat:</strong> if anything <em>regressed</em> — Apex withdrew (Oct 2024), GTA Online added BattlEye (Sep 2024), EA moved to kernel Javelin. The EAC/BattlEye opt-in exists; top publishers don't opt in</li>
+          <li><strong>Proctoring / MDM lock-in:</strong> OnVUE still Windows/Mac only despite years of LPI lobbying; Intune Linux support exists but is narrow (Ubuntu/RHEL only)</li>
+          <li><strong>Laptop power / sleep:</strong> s2idle drain and shorter battery vs Windows still routinely reported; no structural fix because tuning is vendor / Windows-centric</li>
+          <li><strong>Peripheral vendor software, fingerprint readers, CAD/DAW niches</strong> (Fusion, Ableton, iLok/plugins), <strong>streaming DRM caps</strong> (no 4K/HDR)</li>
+          <li><strong>The meta-complaint:</strong> “free as in time” — self-support burden and fragmentation choice, present in LTT 2021, present in 2026 quitters</li>
+        </ul>
+      </div>
+    </div>
+    <div class="quote"><p>A web + Steam + dev user in 2025 has a genuinely good experience. The people who quit are mostly hitting the ceiling — and the ceiling is held up by decisions made in Adobe, Microsoft, Riot, EA and Pearson boardrooms, not in kernel changelogs.</p><cite>— Synthesis of the trajectory across sources in the research (paraphrase of its net assessment, not a direct quote)</cite></div>
+  </section>
+
+  <!-- 10 LIMITS -->
+  <section id="limits">
+    <div class="sec-head"><div class="sec-num">10</div><div><h2>What this evidence can't tell you</h2><p class="sec-sub">Read the ranking as recurrence, not incidence. The research is explicit about its skews — they matter for how far to push any conclusion.</p></div></div>
+    <div class="panel">
+      <ul>
+        <li><strong>The public record is skewed.</strong> First-person accounts over-represent (a) tech-press listicles — XDA / MakeUseOf / How-To Geek publish many near-identical “dealbreakers” pieces, and several cited are <em>prospective</em> (“keeps me from switching,” notably MakeUseOf May 2026) rather than reports of an actual trial; (b) enthusiasts who succeeded; and (c) gamers/creators. Ordinary office workers who quietly fail rarely publish.</li>
+        <li><strong>No reliable survey quantifying blocker frequency was found.</strong> The ranking on this page is by how often and how strongly items recur across sources — not measured incidence in the population of switchers.</li>
+        <li><strong>Dates:</strong> several sources are dated 2026; they were used to check whether 2024–25 complaints persist, and are flagged where used (notably the LTT sequel). A few search-index dates/attributions (e.g. a “Proton 11 / Steam 3.95% Oct 2026” tracker article) could not be independently corroborated and were not relied on for core claims.</li>
+        <li><strong>Streaming cap discrepancy:</strong> 720p (Widevine L3 summary) vs 1080p (MakeUseOf) — reported on this page as a range.</li>
+        <li><strong>Reddit:</strong> direct Reddit threads were not opened in the research; forum-pattern claims rest on Lemmy / Autodesk / 4chan mirrors and secondary citations — thinner than the video/article evidence.</li>
+        <li><strong>Open questions the research leaves open:</strong> how often each blocker is decisive in the general population (vs among people who publish); controlled measurements of Office file fidelity; and current, representative rates for docking and printer/scanner failures, where recent evidence is thin either way.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <h3 style="margin:0 0 4px">Sources</h3>
+    <p class="small" style="margin:0">Index = found/read via web search index in the research; Open = full page opened and read. All links below are carried verbatim from the research report.</p>
+    <ul class="sources">
+      <li>XDA, Gaming on Linux still isn't perfect, Oct 1 2025 — Open — <a href="https://www.xda-developers.com/gaming-on-linux-still-isnt-perfect-heres-why-i-switched-off-of-it/">xda-developers.com</a></li>
+      <li>MakeUseOf, Linux is tempting but these 6 dealbreakers…, May 13 2026 — Open — <a href="https://www.makeuseof.com/linux-tempting-but-these-windows-features-keep-pulling-me-back/">makeuseof.com</a></li>
+      <li>The Verge / Bonifield, I spent a year on Linux…, Jan 2025–26 — Open (mirror) — <a href="https://copyinvisible.com/i-spent-a-year-on-linux-and-forgot-to-miss-windows/">copyinvisible.com</a></li>
+      <li>XDA, 5 harsh realities…, Jan 2026 — Index — <a href="https://www.xda-developers.com/5-reasons-why-linux-beginners-always-end-up-going-back-to-windows/">xda-developers.com</a></li>
+      <li>XDA, I regret switching to Linux… — Index — <a href="https://www.XDA-Developers.com/i-regret-switching-to-linux-even-though-i-wanted-to-love-it/">XDA-Developers.com</a></li>
+      <li>XDA, 3 things Linux needs…, Jun 25 2025 — Index — <a href="https://www.xda-developers.com/3-things-linux-needs-to-have-before-i-can-make-the-swap/">xda-developers.com</a></li>
+      <li>MakeUseOf, I can't use Linux as my daily driver anymore, Mar 2026 — Index — <a href="https://www.makeuseof.com/i-cant-use-linux-as-my-daily-driver-anymore/">makeuseof.com</a></li>
+      <li>How-To Geek, Why I don't use Linux on my desktop, Apr 2026 — Index — <a href="https://www.howtogeek.com/why-i-dont-use-linux-on-my-desktop/">howtogeek.com</a></li>
+      <li>LTT Daily Driver Challenge Pt.1, 2021-11-09 — Index — <a href="https://hacker-tube.org/watch/0506yDSgU7M">hacker-tube.org</a></li>
+      <li>LTT 2026 challenge summaries — Index — <a href="https://rosetta.to/u/linustechtips/2026">rosetta.to</a></li>
+      <li>Autodesk Forums, Fusion 360 Linux support — Index — <a href="https://forums.autodesk.com/t5/fusion-design-validate-document/does-autodesk-fusion-360-support-linux-os/m-p/10769576">forums.autodesk.com</a></li>
+      <li>LinuxAudio.dev FAQ — Index — <a href="https://www.linuxaudio.dev/frequently-asked-questions">linuxaudio.dev</a></li>
+      <li>Linux for Content Creators, 2026 — Index — <a href="https://yarygintech.com/articles/linux-for-content-creators-edit-record-publish/">yarygintech.com</a></li>
+      <li>FOSSLinux, Moving to Linux for Gaming — Index — <a href="https://www.fosslinux.com/164288/moving-from-windows-to-linux-gaming.htm">fosslinux.com</a></li>
+      <li>NICET OnVUE requirements (Linux prohibited) — Index — <a href="https://www.nicet.org/exams/remote/">nicet.org</a></li>
+      <li>Queen's Examity (Linux unsupported) — Index — <a href="https://www.queensu.ca/registrar/academic-info/exams/remote-proctoring/examity">queensu.ca</a></li>
+      <li>LPI, OnVUE Linux Support — Index — <a href="https://www.lpi.org/onvue_linux_support/">lpi.org</a></li>
+      <li>Microsoft Intune, Enrol a Linux device — Index — <a href="https://LEARN.MICROSOFT.COM/en-us/intune/intune-service/user-help/enroll-device-linux">learn.microsoft.com</a></li>
+      <li>Daily.dev summary, Linux HDR / Widevine L3 — Index — <a href="https://daily.dev/posts/linux-finally-has-working-hdr-but-you-still-can-t-use-it-for-most-streaming-services-5kvkjhtdt">daily.dev</a></li>
+      <li>UpThrust, I Tried Linux For A Week, 2020 — Index — <a href="http://upthrust.co/2020/10/i-tried-linux-and-changed-back-to-windows/amp">upthrust.co</a></li>
+    </ul>
+    <p class="small" style="margin-top:16px">Built from a sourced research synthesis of first-person trials, challenge videos and forum reports. Quotes are as carried in that research; where a claim rests on a single anecdote or a pattern of assertions rather than measurement, the page says so.</p>
+  </footer>
+</div>
+<script>
+(function(){
+  var btns=document.querySelectorAll('.filter-btn');
+  var rows=document.querySelectorAll('#whoTable tbody tr');
+  btns.forEach(function(b){
+    b.addEventListener('click',function(){
+      btns.forEach(function(x){x.classList.remove('active')});
+      b.classList.add('active');
+      var f=b.getAttribute('data-filter');
+      rows.forEach(function(r){
+        r.style.display=(f==='all'||r.getAttribute('data-outcome')===f)?'':'none';
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>

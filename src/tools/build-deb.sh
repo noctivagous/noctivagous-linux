@@ -21,11 +21,19 @@ trap 'rm -rf "$WORK"' EXIT
 URL=$(grep -o 'https://[^ ]*Godot[^ ]*\.zip' "$SRC/godot/runtime/PIN.md" | head -1)
 SHA=$(grep -oE '[0-9a-f]{64}' "$SRC/godot/runtime/PIN.md" | head -1)
 CACHE="${NCT_CACHE:-$HOME/.cache/nct-build}"; mkdir -p "$CACHE"
-if [ ! -f "$CACHE/godot.zip" ]; then curl -sL -o "$CACHE/godot.zip" "$URL"; fi
-echo "$SHA  $CACHE/godot.zip" | sha256sum -c -
+# The cache is keyed by artefact name, not a fixed godot.zip: a pin
+# bump must never be silently served the previous pin's zip from
+# cache (the sha check would catch it, but as a confusing failure
+# far from its cause).
+ZIP="$CACHE/$(basename "$URL")"
+if [ ! -f "$ZIP" ]; then curl -sL -o "$ZIP" "$URL"; fi
+echo "$SHA  $ZIP" | sha256sum -c -
 mkdir -p "$WORK/godot-bin"
-(cd "$WORK/godot-bin" && unzip -o -q "$CACHE/godot.zip")
-PACK_GODOT=$(echo "$WORK"/godot-bin/Godot_v*-stable_linux.x86_64)
+(cd "$WORK/godot-bin" && unzip -o -q "$ZIP")
+# The standard edition unpacks to a single binary file; the .NET
+# (mono) edition — the current pin — unpacks to a DIRECTORY holding
+# the binary plus GodotSharp/. Resolve the binary either way.
+PACK_GODOT=$(find "$WORK/godot-bin" -type f -name 'Godot_v*' | head -1)
 
 # ---------- nct-foundation ----------
 PKG="$WORK/nct-foundation"
@@ -92,6 +100,13 @@ dpkg-deb --build --root-owner-group "$PKG" "$OUT/nct-foundation_${VERSION}_all.d
 PKG2="$WORK/nct-godot-runtime"
 mkdir -p "$PKG2/DEBIAN" "$PKG2/usr/lib/nct/godot"
 install -m755 "$PACK_GODOT" "$PKG2/usr/lib/nct/godot/godot"
+# The .NET edition must ship GodotSharp beside the binary, or C#
+# projects cannot resolve the Godot API assemblies (PIN.md). The
+# standard edition has no GodotSharp directory; the test is the
+# merge point between the two zip shapes.
+if [ -d "$(dirname "$PACK_GODOT")/GodotSharp" ]; then
+  cp -r "$(dirname "$PACK_GODOT")/GodotSharp" "$PKG2/usr/lib/nct/godot/GodotSharp"
+fi
 cp "$SRC/godot/runtime/PIN.md" "$PKG2/usr/lib/nct/godot/PIN.md"
 # Same mode normalization as the foundation package (see above).
 find "$PKG2" -type d -exec chmod 755 {} +

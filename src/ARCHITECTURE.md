@@ -30,6 +30,11 @@ Foreign programs are NOT a fourth kind of work in src/. A foreign app is a
 Wayland surface hosted by the core, plus — only if it wants NCT citizenship —
 a bundle under src/ext-fwks/ rules. Its source never lives here.
 
+The desktop module family (plans/ENVIRONMENT-MANAGER.md) has its homes in
+src/modules/ — one directory per module, README stubs only for now;
+the modules span the kinds above (services and Godot-layer code) and
+are built slice by slice under the plan, not under this document.
+
 ## Layers and the hosting rule
 
     apps (ours: Godot; foreign: Firefox, Qt, GTK…)

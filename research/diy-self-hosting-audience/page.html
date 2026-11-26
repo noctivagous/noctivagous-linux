@@ -1,0 +1,891 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="data:," />
+    <title>DIY Self-Hosting Audience Research</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+    <style>
+      button, [role="button"], select, summary, input:not([type="checkbox"], [type="radio"]) { min-height: 2rem; }
+    </style>
+    <style>
+      :root {
+        --bg: #f2f3f1;
+        --surface: #ffffff;
+        --surface-2: #e9ebe7;
+        --ink: #171a17;
+        --ink-2: #454b45;
+        --ink-3: #6d746d;
+        --line: #d3d7d1;
+        --line-strong: #b9beb6;
+        --accent: #c2410c;
+        --accent-ink: #9a3409;
+        --accent-soft: #fbe9dd;
+        --good: #1c7a3d;
+        --good-soft: #e0f0e4;
+        --warn: #96660a;
+        --warn-soft: #f7ecd2;
+        --bad: #b3261e;
+        --bad-soft: #f9e3e1;
+        --shadow: 0 1px 2px rgba(20, 25, 20, .06), 0 8px 24px -18px rgba(20, 25, 20, .35);
+        --radius: 10px;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #101211;
+          --surface: #181b19;
+          --surface-2: #212623;
+          --ink: #e8eae6;
+          --ink-2: #b6bbb4;
+          --ink-3: #8b918a;
+          --line: #2e332f;
+          --line-strong: #454b45;
+          --accent: #f0763a;
+          --accent-ink: #ffab7d;
+          --accent-soft: #3a2417;
+          --good: #5cc47e;
+          --good-soft: #1d2f23;
+          --warn: #e0b34e;
+          --warn-soft: #332a14;
+          --bad: #f08079;
+          --bad-soft: #3a1d1b;
+          --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.8);
+        }
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+        font-size: 16px;
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+      }
+      a { color: var(--accent-ink); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+      a:hover { text-decoration-thickness: 2px; }
+      code, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+      code {
+        font-size: .86em;
+        background: var(--surface-2);
+        padding: .08em .35em;
+        border-radius: 4px;
+        overflow-wrap: anywhere;
+      }
+      .wrap { max-width: 1180px; margin: 0 auto; padding: 0 20px 80px; }
+
+      /* ---------- header ---------- */
+      header.masthead { padding: 44px 0 8px; }
+      .kicker {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+        color: var(--accent-ink); margin: 0 0 14px;
+        display: flex; flex-wrap: wrap; gap: 6px 18px;
+      }
+      h1 {
+        font-size: clamp(30px, 5.4vw, 46px);
+        line-height: 1.08; letter-spacing: -.015em;
+        margin: 0 0 16px; font-weight: 700; max-width: 20ch;
+      }
+      .lede { font-size: clamp(16.5px, 2.2vw, 19px); color: var(--ink-2); max-width: 68ch; margin: 0 0 10px; }
+      .lede strong { color: var(--ink); }
+      .meta-line { font-family: "IBM Plex Mono", monospace; font-size: 12.5px; color: var(--ink-3); margin: 14px 0 0; }
+
+      /* ---------- layout ---------- */
+      .layout { display: grid; grid-template-columns: 1fr; gap: 28px; margin-top: 30px; }
+      @media (min-width: 1020px) {
+        .layout { grid-template-columns: 218px minmax(0, 1fr); gap: 44px; }
+      }
+      nav.toc {
+        font-size: 14px;
+      }
+      @media (min-width: 1020px) {
+        nav.toc { position: sticky; top: 22px; align-self: start; }
+      }
+      nav.toc .toc-label {
+        font-family: "IBM Plex Mono", monospace; font-size: 11px;
+        letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 10px;
+      }
+      nav.toc ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+      @media (min-width: 1020px) { nav.toc ul { display: block; } }
+      nav.toc a {
+        display: inline-flex; align-items: center; min-height: 36px;
+        padding: 6px 10px; border-radius: 7px; color: var(--ink-2);
+        text-decoration: none; border: 1px solid var(--line);
+        background: var(--surface);
+      }
+      @media (min-width: 1020px) {
+        nav.toc a { display: flex; border: none; background: transparent; border-left: 2px solid var(--line); border-radius: 0 7px 7px 0; }
+      }
+      nav.toc a.active { color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+      @media (min-width: 1020px) { nav.toc a.active { border-left-color: var(--accent); background: var(--accent-soft); } }
+
+      main { min-width: 0; }
+      section { margin: 0 0 56px; scroll-margin-top: 18px; }
+      section > h2 {
+        font-size: clamp(23px, 3.4vw, 30px); letter-spacing: -.01em;
+        margin: 0 0 6px; line-height: 1.15;
+        display: flex; align-items: baseline; gap: 12px;
+      }
+      section > h2 .no {
+        font-family: "IBM Plex Mono", monospace; font-size: 14px;
+        color: var(--accent-ink); font-weight: 600;
+      }
+      section > .sub { color: var(--ink-2); margin: 0 0 22px; max-width: 70ch; }
+      h3 { font-size: 18px; margin: 30px 0 10px; letter-spacing: -.005em; }
+      h3:first-of-type { margin-top: 8px; }
+      p { margin: 0 0 14px; max-width: 72ch; }
+      ul.tight { margin: 0 0 14px; padding-left: 20px; max-width: 72ch; }
+      ul.tight li { margin-bottom: 7px; }
+      .src { font-size: 12.5px; color: var(--ink-3); }
+      .src a { color: var(--ink-3); }
+
+      /* ---------- stat strip ---------- */
+      .stats {
+        display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 26px 0 8px;
+      }
+      @media (min-width: 720px) { .stats { grid-template-columns: repeat(4, 1fr); } }
+      .stat {
+        background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+        padding: 16px 16px 13px; box-shadow: var(--shadow);
+      }
+      .stat .num { font-family: "IBM Plex Mono", monospace; font-size: clamp(24px, 3.4vw, 32px); font-weight: 600; letter-spacing: -.02em; line-height: 1.05; }
+      .stat .num em { font-style: normal; color: var(--accent-ink); }
+      .stat .cap { font-size: 13px; color: var(--ink-2); margin-top: 6px; line-height: 1.4; }
+
+      /* ---------- cards & grids ---------- */
+      .grid2 { display: grid; grid-template-columns: 1fr; gap: 12px; }
+      @media (min-width: 700px) { .grid2 { grid-template-columns: 1fr 1fr; } }
+      .card {
+        background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+        padding: 18px 20px; box-shadow: var(--shadow);
+      }
+      .card h4 { margin: 0 0 4px; font-size: 16.5px; }
+      .card .who { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-ink); margin: 0 0 8px; }
+      .card p { font-size: 14.5px; color: var(--ink-2); margin: 0 0 10px; }
+      .card p:last-child { margin-bottom: 0; }
+      .card p strong { color: var(--ink); }
+      .callout {
+        border: 1px solid var(--line-strong); border-radius: var(--radius);
+        background: var(--surface); padding: 18px 20px; margin: 18px 0;
+      }
+      .callout .tag {
+        font-family: "IBM Plex Mono", monospace; font-size: 11px; letter-spacing: .12em;
+        text-transform: uppercase; color: var(--accent-ink); display: block; margin-bottom: 8px;
+      }
+      .callout p { margin: 0; font-size: 15.5px; }
+      .callout p + p { margin-top: 10px; }
+
+      /* ---------- charts ---------- */
+      .chart-card {
+        background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+        padding: 20px 20px 14px; box-shadow: var(--shadow); margin: 0 0 14px;
+      }
+      .chart-card h4 { margin: 0 0 2px; font-size: 16px; }
+      .chart-card .chart-sub { font-size: 13px; color: var(--ink-3); margin: 0 0 16px; }
+      .bars { display: flex; flex-direction: column; gap: 9px; }
+      .bar-row { display: grid; grid-template-columns: minmax(96px, 168px) 1fr 64px; align-items: center; gap: 10px; font-size: 13.5px; }
+      .bar-row .lbl { color: var(--ink); overflow-wrap: anywhere; }
+      .bar-row .lbl small { display: block; color: var(--ink-3); font-size: 11.5px; }
+      .bar-track { height: 14px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+      .bar-fill { height: 100%; background: var(--accent); border-radius: 3px; min-width: 2px; }
+      .bar-fill.dim { background: var(--ink-3); }
+      .bar-fill.good { background: var(--good); }
+      .bar-row .val { font-family: "IBM Plex Mono", monospace; font-size: 13px; text-align: right; color: var(--ink); }
+      .chart-note { font-size: 12.5px; color: var(--ink-3); margin: 14px 0 4px; border-top: 1px dashed var(--line); padding-top: 10px; }
+
+      /* ---------- tables ---------- */
+      .tbl-wrap { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+      table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+      th, td { text-align: left; padding: 12px 16px; vertical-align: top; }
+      thead th {
+        font-family: "IBM Plex Mono", monospace; font-size: 11.5px; letter-spacing: .1em;
+        text-transform: uppercase; color: var(--ink-3); border-bottom: 1px solid var(--line-strong);
+        background: var(--surface-2);
+      }
+      tbody tr + tr td { border-top: 1px solid var(--line); }
+      td .sub2 { display: block; color: var(--ink-3); font-size: 12.5px; margin-top: 3px; }
+      @media (max-width: 680px) {
+        table, thead, tbody, tr, td { display: block; }
+        thead { display: none; }
+        tbody tr { padding: 8px 0; }
+        tbody tr + tr { border-top: 1px solid var(--line-strong); }
+        td { border: none !important; padding: 4px 16px; }
+        td:first-child { padding-top: 10px; font-weight: 600; }
+        td:last-child { padding-bottom: 12px; }
+        td[data-h]::before {
+          content: attr(data-h); display: block;
+          font-family: "IBM Plex Mono", monospace; font-size: 10.5px; letter-spacing: .1em;
+          text-transform: uppercase; color: var(--ink-3); margin-bottom: 2px;
+        }
+      }
+
+      /* ---------- filter chips ---------- */
+      .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+      .chip {
+        font-family: inherit; font-size: 13.5px; cursor: pointer;
+        padding: 7px 14px; min-height: 36px; border-radius: 999px;
+        border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-2);
+      }
+      .chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); font-weight: 600; }
+      .chip:focus-visible, a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+      /* ---------- friction list ---------- */
+      .friction { display: flex; flex-direction: column; gap: 12px; }
+      .fric {
+        background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+        padding: 18px 20px; box-shadow: var(--shadow);
+      }
+      .fric h4 { margin: 0 0 6px; font-size: 16.5px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+      .sev {
+        font-family: "IBM Plex Mono", monospace; font-size: 10.5px; letter-spacing: .1em;
+        text-transform: uppercase; padding: 3px 8px; border-radius: 999px; font-weight: 600;
+      }
+      .sev.top { background: var(--bad-soft); color: var(--bad); }
+      .sev.high { background: var(--warn-soft); color: var(--warn); }
+      .fric p { font-size: 14.5px; color: var(--ink-2); margin: 0 0 8px; }
+      .fric p:last-child { margin-bottom: 0; }
+      .fric p strong { color: var(--ink); }
+      blockquote {
+        margin: 12px 0; padding: 4px 0 4px 16px; border-left: 3px solid var(--accent);
+        color: var(--ink); font-size: 15px;
+      }
+      blockquote .attrib { display: block; font-size: 12.5px; color: var(--ink-3); margin-top: 6px; font-style: normal; }
+
+      /* ---------- numbered build list ---------- */
+      ol.build { list-style: none; margin: 0; padding: 0; counter-reset: b; display: flex; flex-direction: column; gap: 12px; }
+      ol.build li {
+        counter-increment: b; background: var(--surface); border: 1px solid var(--line);
+        border-radius: var(--radius); padding: 16px 18px 14px 58px; position: relative; box-shadow: var(--shadow);
+      }
+      ol.build li::before {
+        content: counter(b, decimal-leading-zero);
+        position: absolute; left: 16px; top: 15px;
+        font-family: "IBM Plex Mono", monospace; font-size: 15px; font-weight: 600; color: var(--accent-ink);
+      }
+      ol.build h4 { margin: 0 0 4px; font-size: 16px; }
+      ol.build p { font-size: 14.5px; color: var(--ink-2); margin: 0; }
+      ol.build p strong { color: var(--ink); }
+
+      /* ---------- priority list ---------- */
+      .prio-item {
+        display: grid; grid-template-columns: 52px 1fr; gap: 14px;
+        background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+        padding: 15px 18px; margin-bottom: 10px; box-shadow: var(--shadow); align-items: start;
+      }
+      .prio-badge {
+        font-family: "IBM Plex Mono", monospace; font-weight: 600; font-size: 14px;
+        text-align: center; padding: 7px 0; border-radius: 7px;
+      }
+      .p0 { background: var(--accent-soft); color: var(--accent-ink); }
+      .p1 { background: var(--warn-soft); color: var(--warn); }
+      .p2 { background: var(--surface-2); color: var(--ink-2); }
+      .pol { background: var(--good-soft); color: var(--good); font-size: 11px; letter-spacing: .04em; }
+      .prio-item h4 { margin: 0 0 3px; font-size: 15.5px; }
+      .prio-item p { font-size: 14px; color: var(--ink-2); margin: 0; }
+      [hidden] { display: none !important; }
+
+      /* ---------- exposure mock ---------- */
+      .mock-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+      @media (min-width: 760px) { .mock-grid { grid-template-columns: 1fr 1fr; } }
+      .mock {
+        border: 1px solid var(--line-strong); border-radius: 14px; background: var(--surface);
+        padding: 18px; box-shadow: var(--shadow);
+      }
+      .mock .mock-tag { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 12px; }
+      .mock .app-line { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+      .mock .app-ic {
+        width: 40px; height: 40px; border-radius: 9px; background: var(--accent-soft);
+        display: flex; align-items: center; justify-content: center;
+        font-family: "IBM Plex Mono", monospace; font-weight: 600; color: var(--accent-ink); font-size: 17px; flex: none;
+      }
+      .mock .app-line strong { display: block; font-size: 16px; }
+      .mock .app-line span { font-size: 12.5px; color: var(--ink-3); font-family: "IBM Plex Mono", monospace; }
+      .mock p.q { font-size: 16.5px; font-weight: 600; margin: 0 0 6px; }
+      .mock p.risk { font-size: 13.5px; color: var(--ink-2); margin: 0 0 14px; }
+      .mock .opt {
+        display: block; width: 100%; text-align: left; font-family: inherit; font-size: 14.5px;
+        padding: 11px 14px; margin-bottom: 8px; border-radius: 9px; cursor: pointer;
+        border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); min-height: 44px;
+      }
+      .mock .opt small { display: block; color: var(--ink-3); font-size: 12.5px; margin-top: 2px; }
+      .mock .opt.rec { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+      .mock .opt.ghost { border-color: transparent; color: var(--ink-3); text-align: center; }
+      .mock .verdict { font-size: 13px; font-family: "IBM Plex Mono", monospace; color: var(--good); min-height: 20px; margin: 6px 0 0; }
+      .exposed-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 14px; }
+      .exposed-row:first-of-type { border-top: none; }
+      .exposed-row .where { font-family: "IBM Plex Mono", monospace; font-size: 12.5px; color: var(--ink-3); text-align: right; }
+      .pill { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; padding: 2px 7px; border-radius: 999px; letter-spacing: .05em; }
+      .pill.pub { background: var(--bad-soft); color: var(--bad); }
+      .pill.vpn { background: var(--warn-soft); color: var(--warn); }
+      .pill.lan { background: var(--good-soft); color: var(--good); }
+
+      /* ---------- caveats / sources ---------- */
+      .caveat-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+      .caveat-list li {
+        background: var(--warn-soft); border: 1px solid var(--line); border-radius: var(--radius);
+        padding: 13px 16px; font-size: 14.5px;
+      }
+      .caveat-list li strong { display: block; margin-bottom: 2px; }
+      .sources { columns: 1; font-size: 13.5px; }
+      @media (min-width: 760px) { .sources { columns: 2; column-gap: 36px; } }
+      .sources li { margin-bottom: 9px; break-inside: avoid; }
+      .sources ul { list-style: none; margin: 0; padding: 0; }
+      footer { border-top: 1px solid var(--line); padding-top: 18px; color: var(--ink-3); font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="masthead">
+        <p class="kicker"><span>Audience research</span><span>Noctivagous Linux</span><span>Hackaday · XDA · self-hosting community</span></p>
+        <h1>The desktop that is also a home server</h1>
+        <p class="lede">DIYers — the Hackaday and XDA crowd — increasingly run real infrastructure at home: media, photos, passwords, home automation, on a repurposed mini-PC or an old laptop. <strong>The stack has converged, the pain is operational, and no mainstream desktop treats hosting as a first-class job.</strong> This report maps who they are, what they run, where it hurts, what existing systems teach us, and the concrete system and UI moves Noctivagous can make.</p>
+        <p class="meta-line">Compiled 26 Nov 2026 from community surveys (selfh.st 2025 &amp; 2026, an independent 850+ respondent survey), project documentation, and Hackaday / XDA reporting. Figures carry their source and hedges inline; the Open questions section lists what could not be verified.</p>
+      </header>
+
+      <div class="stats" aria-label="Headline figures">
+        <div class="stat"><div class="num">6,221</div><div class="cap">responses to the selfh.st 2026 survey — up from 4,081 in 2025. Self-hosting is growing, and getting serious.</div></div>
+        <div class="stat"><div class="num"><em>84%</em></div><div class="cap">of 2026 respondents self-host sensitive data; 86% use a custom domain, 66% run a NAS, 62% their own firewall.</div></div>
+        <div class="stat"><div class="num">~9<em>/10</em></div><div class="cap">run Docker (selfh.st 2025). In 2026, Docker drew 5,454 responses — the substrate everything else sits on.</div></div>
+        <div class="stat"><div class="num">45%</div><div class="cap">run Proxmox VE as the hypervisor underneath (selfh.st 2025) — on Debian, the same base this audience trusts.</div></div>
+      </div>
+
+      <div class="layout">
+        <nav class="toc" aria-label="Contents">
+          <p class="toc-label">Contents</p>
+          <ul>
+            <li><a href="#summary">Summary</a></li>
+            <li><a href="#audience">1 · Who they are</a></li>
+            <li><a href="#stack">2 · What they host</a></li>
+            <li><a href="#friction">3 · Where it hurts</a></li>
+            <li><a href="#precedents">4 · Precedents</a></li>
+            <li><a href="#design">5 · What we build</a></li>
+            <li><a href="#priorities">Priorities</a></li>
+            <li><a href="#caveats">Open questions</a></li>
+            <li><a href="#sources">Sources</a></li>
+          </ul>
+        </nav>
+
+        <main>
+          <!-- ================= SUMMARY ================= -->
+          <section id="summary">
+            <h2><span class="no">§</span> Executive summary</h2>
+            <p class="sub">This is not a niche that wants a prettier desktop. It is a large, maturing, production-like home-infrastructure audience — and its frustrations are specific enough to design against.</p>
+
+            <div class="callout">
+              <span class="tag">The opportunity</span>
+              <p>No mainstream desktop does the thing these users cobble together from Proxmox + Cockpit + CasaOS/YunoHost + Tailscale + Uptime Kuma: <strong>a desktop that is also a first-class, inspectable home server</strong> — a services centre, one-click installs that stay transparent to the underlying Compose file, private-by-default remote access, explicit consent before anything is internet-facing, pre-update snapshots with one-click rollback, tested backups, and power/headless modes for always-on use. That gap, not another launcher, is the product.</p>
+            </div>
+
+            <div class="grid2">
+              <div class="card">
+                <h4>Motivation is control, not just thrift</h4>
+                <p>In an independent 850+ respondent 2025 survey, the primary motivation was Fun/Hobby (31.3%), then Privacy (16.7%), Independence from third parties (16.6%) and Data control (12.5%). Linuxiac's reporting of selfh.st 2025 likewise found that aside from the hobby aspect, most respondents named privacy — and 81% run Linux.</p>
+                <p class="src">Sources: <a href="https://selfhosted-survey-2025.deployn.de/">selfhosted-survey-2025.deployn.de</a> · <a href="https://linuxiac.com/self-hosters-confirm-it-again-linux-dominates-the-homelab-os-space/">Linuxiac</a></p>
+              </div>
+              <div class="card">
+                <h4>The pain is operational, not installational</h4>
+                <p>XDA's year-in review names it plainly: non-automatic, sometimes-breaking updates; remote access as “its own project” (CGNAT, TLS, DNS); storage silently filling with logs, snapshots and caches; projects disappearing; and becoming unpaid IT for family who now depend on your server.</p>
+                <p class="src">Source: <a href="https://www.Xda-developers.Com/i-self-hosted-foss-tools-for-a-year-and-these-are-the-operational-headaches-no-one-warns-you-about/">XDA — operational headaches no one warns you about</a> (read in full)</p>
+              </div>
+              <div class="card">
+                <h4>Lock-in is the unforgivable sin — proven twice in 2025</h4>
+                <p>Plex paywalled remote playback of your own files (April 2025) and kept raising its lifetime pass; Synology restricted its 2025 Plus NAS line to its own branded drives, then reversed the policy in DSM 7.3 (8 Oct 2025) after sales fell. Samsung removing OEM unlocking in One UI 8 is the Android equivalent. A forced account, paywalled remote access, a hardware whitelist or a non-open app-store gate will be read by this audience as the same move.</p>
+                <p class="src">Sources: <a href="https://www.howtogeek.com/plex-keeps-getting-more-expensive-heres-what-people-are-switching-to/">How-To Geek on Plex pricing</a> · <a href="https://consumerrights.wiki/w/Synology_requiring_proprietary-branded_drives_to_be_used_with_its_NAS">Consumer Rights Wiki on Synology</a></p>
+              </div>
+              <div class="card">
+                <h4>Confidence</h4>
+                <p><strong>High</strong> for the stack, motivations and precedents — multiple surveys and project/community sources agree. <strong>Medium</strong> for exact 2026 percentages: selfh.st's own 2026 results page is chart images, so those figures come from secondary analysis of it. XDA and Hackaday are editorial/project communities, not random samples — they show what this audience <em>does and celebrates</em>, not population prevalence.</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- ================= 1 AUDIENCE ================= -->
+          <section id="audience">
+            <h2><span class="no">1</span> Who they are and what they actually do</h2>
+            <p class="sub">Four overlapping sub-groups — most real people are two or three at once. The XDA writer whose $150 mini-PC runs 12 containers is also the person flashing a ROM on a phone the OEM abandoned.</p>
+
+            <div class="grid2">
+              <div class="card">
+                <p class="who">Sub-group A</p>
+                <h4>Homelabbers</h4>
+                <p>Run Proxmox clusters, VMs/LXC, firewalls and NAS; often learning skills they use at work. <strong>Motivation: learning, fun, control.</strong></p>
+                <p>But scale is modest: in selfh.st 2026, clusters were a minority fringe (736 of 6,221) against 3,841 on consumer hardware — most people run one discreet or repurposed box.</p>
+              </div>
+              <div class="card">
+                <p class="who">Sub-group B</p>
+                <h4>Privacy / cost / control self-hosters</h4>
+                <p>Replace Google Photos, Drive, Netflix, 1Password and Google Home with their own services, for themselves and their family. <strong>Motivation: privacy, data control, independence, subscription fatigue.</strong></p>
+                <p>Docker's own survey summary lists the same drivers: privacy and data sovereignty, escaping subscription fatigue, avoiding lock-in, and the joy of customisation.</p>
+                <p class="src">Source: <a href="https://www.docker.com/blog/self-hosted-alternatives-control-your-data/?ref=dailydev">Docker blog</a></p>
+              </div>
+              <div class="card">
+                <p class="who">Sub-group C</p>
+                <h4>Android modders — the XDA core</h4>
+                <p>Unlock bootloaders, root (Magisk/KernelSU), flash LineageOS, GrapheneOS, crDroid; de-Google with microG; keep old phones alive past OEM support. <strong>Motivation: control of their own hardware, privacy, longevity.</strong></p>
+                <p>The workflow is unchanged for a decade: Developer Options → OEM unlocking + USB debugging → <code>adb reboot bootloader</code> → <code>fastboot flashing unlock</code> → custom recovery → ROM. A desktop that makes ADB/fastboot painful — drivers, udev, stale platform-tools — breaks this group's core workflow directly.</p>
+                <p class="src">Evidence: XDA forums are organised per-device into ROMs/Kernels/Recoveries; LineageOS builds for the 2014 OnePlus One were still updated in June 2025. <a href="https://forum.xda-developers.com/t/rom-q-unofficial-optimized-lineageos-18-1-jan-6th-lineageos-17-1-jan-8th.3693223/">XDA thread</a></p>
+              </div>
+              <div class="card">
+                <p class="who">Sub-group D</p>
+                <h4>Hardware hackers / makers — the Hackaday core</h4>
+                <p>ESP32, Arduino, RP2040, 3D printing, soldering, salvaged panels and thin clients, custom PCBs, cyberdecks. <strong>Motivation: building itself; repurposing; learning.</strong></p>
+                <p>The Hackaday front-page pattern: a Dell Wyse thin client becomes an OpenWrt router after defeating a BIOS lock; salvaged laptop panels become monitors; a VTech toy becomes an Arch Linux “PinkPad” laptop.</p>
+                <p class="src">Sources: <a href="https://hackaday.com/blog/?s=thin+client">Hackaday — thin client projects</a> · <a href="https://hackaday.com/category/laptops-hacks/">Hackaday — laptop hacks</a></p>
+              </div>
+            </div>
+
+            <h3>Why they do it — primary motivation</h3>
+            <div class="chart-card">
+              <h4>Primary motivation for self-hosting</h4>
+              <p class="chart-sub">Independent survey, 850+ respondents, 2025. Shares naming each as their primary motivation.</p>
+              <div class="bars" id="chart-motivation"></div>
+              <p class="chart-note">Source: <a href="https://selfhosted-survey-2025.deployn.de/">selfhosted-survey-2025.deployn.de</a>. Remaining respondents named other primary motivations not itemised here.</p>
+            </div>
+
+            <h3>The hardware reality</h3>
+            <ul class="tight">
+              <li><strong>The server is usually repurposed.</strong> An old desktop, an old laptop, a used mini-PC (OptiPlex Micro / ThinkCentre Tiny / ProDesk Mini), a NUC, a NAS, or a Pi. XDA argues in 2026 that old devices now beat a new Raspberry Pi on price/performance after Pi price hikes — except on power. An old laptop adds a built-in “UPS” (its battery) plus a screen and keyboard for rescue. <span class="src"><a href="https://www.xda-developers.com/old-devices-make-better-home-servers-than-a-raspberry-pi/">XDA</a> · <a href="https://www.xda-developers.com/my-old-laptop-makes-a-better-home-server-and-has-a-built-in-ups/">XDA</a></span></li>
+              <li><strong>The Pi is the on-ramp, with known limits.</strong> Raspberry Pi is the top SBC (94% among SBC users in the independent survey) for Pi-hole, Home Assistant and single-purpose servers. Its limits are openly discussed: SD-card wear, CPU/IO ceiling when stacking services, rising kit price. At the extreme low-power end, Hackaday.io's Solar Pi runs a Pi Zero W on Alpine in diskless RAM mode at 1–2&nbsp;W idle, for months unattended. <span class="src"><a href="https://hackaday.io/project/205403-solar-pi/details">Hackaday.io — Solar Pi</a></span></li>
+              <li><strong>NAS is near-universal.</strong> About two-thirds of selfh.st respondents deploy one; in the independent survey, custom-built is the top NAS type (50%) — ahead of Synology/QNAP appliances. XDA's old-PC-to-NAS guide pairs an old gaming rig and IronWolf drives with TrueNAS Community Edition, and warns an old desktop pulls 40–110&nbsp;W. <span class="src"><a href="https://www.xda-developers.com/how-turn-old-pc-into-nas/">XDA</a></span></li>
+              <li><strong>Electronics work is mundane and specific.</strong> Arduino/ESP32/RP2040 flashing via USB-serial, esptool, Arduino IDE/PlatformIO. The needs are unglamorous: serial permission without sudo, stable device names, nothing stealing the adapter, working toolchains (§3).</li>
+            </ul>
+
+            <div class="callout">
+              <span class="tag">Who they are not</span>
+              <p>Not enterprise sysadmins: in selfh.st 2025 discussion, nearly all respondents self-host for personal use (only ~8 of 4,000+ indicated enterprise). Not non-technical consumers either: they read release notes, edit YAML, and accept being “sysadmin, network engineer, and on-call all at once” — but increasingly resent it. That resentment is the design opening.</p>
+            </div>
+          </section>
+
+          <!-- ================= 2 STACK ================= -->
+          <section id="stack">
+            <h2><span class="no">2</span> What they host, and with what stack</h2>
+            <p class="sub">Convergence across selfh.st 2025/2026, recurring r/selfhosted recommendations and Awesome-Selfhosted (~1,266 listed projects) is unusually strong. Treat the canon below as the minimum viable catalogue for any services centre.</p>
+
+            <h3>The canon — most commonly self-hosted services</h3>
+            <div class="chips" id="canon-chips" role="group" aria-label="Filter services by category"></div>
+            <div class="tbl-wrap">
+              <table id="canon-table">
+                <thead><tr><th>Category</th><th>Winners, 2024–2026</th><th>Replaces</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <p class="src" style="margin-top:10px;">Counts are selfh.st 2026 users per service, via secondary analysis (see Open questions). “Favourite” counts are the same survey's favourite-app votes.</p>
+
+            <h3>The substrate: Docker won, Compose is the unit of sharing</h3>
+            <div class="chart-card">
+              <h4>What the stack is made of — selfh.st 2026</h4>
+              <p class="chart-sub">Responses per technology/service, out of 6,221 survey responses. Mixed categories shown together because that is how a homelab actually stacks: hypervisor → base OS → containers → apps.</p>
+              <div class="bars" id="chart-stack"></div>
+              <p class="chart-note">Source: secondary analysis of selfh.st 2026 results (<a href="https://ettayeb.fr/en/selfhosted/selfhst-2026-survey-results-en/">ettayeb.fr</a>); selfh.st's own results page renders as chart images — see Open questions. Kubernetes at home is a minority taste: 9.6% in the independent survey. 82% of 2026 respondents run a separate containerised database per app rather than a shared instance — learned the hard way that shared DBs make upgrades brittle.</p>
+            </div>
+
+            <div class="grid2">
+              <div class="chart-card" style="margin:0;">
+                <h4>The favourites</h4>
+                <p class="chart-sub">Favourite-app votes, selfh.st 2026.</p>
+                <div class="bars" id="chart-favourites"></div>
+                <p class="chart-note">Jellyfin is also the most-run media server (3,966 users) and Forgejo (1,686) overtook Gitea (1,057) in 2026 — driven, per selfh.st analysis, by distrust of Gitea's commercial footprint.</p>
+              </div>
+              <div class="chart-card" style="margin:0;">
+                <h4>“Less a hobby, more a small production environment”</h4>
+                <p class="chart-sub">Share of selfh.st 2026 respondents who…</p>
+                <div class="bars" id="chart-prod"></div>
+                <p class="chart-note">Also new in 2025–26: local AI (Ollama + Open WebUI), and 60% report using AI <em>to help self-host</em> — troubleshooting (3,249) and configuration (2,919) — separate from hosting LLMs.</p>
+              </div>
+            </div>
+
+            <h3>Patterns they expect</h3>
+            <ul class="tight">
+              <li><strong>Install:</strong> official Docker image + official Compose file, or one-click from a catalogue that <em>shows</em> that Compose file. Data in a named, visible directory they can copy. No curl-pipe-to-bash as the only path.</li>
+              <li><strong>Update:</strong> <code>pull</code> + <code>up -d</code>, pinned or at least visible image tags (not blind <code>latest</code> for stateful apps), release notes <em>before</em> updating, and a backup/snapshot taken first. Watchtower-style blind auto-update is controversial for stateful services.</li>
+              <li><strong>Backup:</strong> 3-2-1, with Borg/Restic as the respected engines; app-level DB dump + files, in that order, with a copy <em>off the box</em>. Zerobyte (Restic + web UI) being spotlighted by selfh.st in Nov 2025 is a signal of unmet demand for backup UX. <span class="src"><a href="https://selfh.st/weekly/2025-11-21/">selfh.st weekly</a></span></li>
+              <li><strong>Rebuildability is the new uptime:</strong> mature users keep Compose/Ansible in Git, secrets outside the repo, and judge a setup by “can I rebuild it from scratch on a fresh Debian install?” Base OS reflects this: Debian (2,954) and Ubuntu (2,584) dominate 2026 responses, well ahead of Arch/Fedora/Alpine.</li>
+              <li><strong>Panel loyalty is fragile:</strong> Portainer fell from 66% to 33% share among panel users in one year (selfh.st 2026), after it announced the end of Community Edition feature development — users fled to Dockge, Dockhand, Komodo, Arcane. This audience punishes rug-pulls instantly and migrates in months.</li>
+            </ul>
+          </section>
+
+          <!-- ================= 3 FRICTION ================= -->
+          <section id="friction">
+            <h2><span class="no">3</span> Where it hurts</h2>
+            <p class="sub">Two layers of friction: self-hosting itself, and what mainstream Linux desktops add on top. Both are documented in the community's own words.</p>
+
+            <h3>Self-hosting itself</h3>
+            <div class="friction">
+              <div class="fric">
+                <h4>Updates break things <span class="sev top">#1 complaint</span></h4>
+                <blockquote>“Self-hosted projects ship changes on their own schedule, so the chances that something breaks when you update is really high… Immich recently moved the server's internal port from 3001 to 2283, which would break your setup unless you made edits to your Compose file and the reverse proxy.”<span class="attrib">— XDA, after a year of self-hosting FOSS tools</span></blockquote>
+                <p>Immich's own releases repeat the pattern at scale: v1.133.0 required a database vector-extension migration (pgvecto.rs → VectorChord), a DB backup first, matching mobile/server versions, and warned “you should not downgrade below 1.133.0.” TrueNAS rewrote its entire apps stack (k3s → Docker Compose in 24.10) with a hard 1 June 2025 auto-migration cutoff.</p>
+                <p class="src">Sources: <a href="https://github.com/immich-app/immich/releases/tag/v1.133.0">Immich v1.133.0 release notes</a> · <a href="https://github.com/laoujin/atlas/blob/HEAD/research/2026-04-28-replacing-a-synology-nas-in-2026-hardware-os-migration-and-remote-access/os-and-storage-stack-without-lock-in/index.md">TrueNAS migration research</a></p>
+              </div>
+              <div class="fric">
+                <h4>Remote access is a second project <span class="sev top">#1 complaint</span></h4>
+                <p>Choosing between port-forward + reverse proxy, overlay VPN, VPS relay or tunnel — “none of those are obviously correct for a beginner, and it compounds if you're behind CGNAT… you've now taken on the burden of TLS certs, DNS records, and other configurations that accumulate” (XDA).</p>
+                <p><strong>CGNAT:</strong> a router port-forward rule does nothing when the ISP shares one public IPv4 among customers (WAN in 100.64.0.0/10); detection alone requires comparing router WAN vs public IP. <strong>Dynamic IP/DDNS, ISP-blocked 80/443 and double NAT</strong> are separate failure modes in the same chain: DNS → router → firewall → proxy → app; if one link fails, everything fails. <strong>TLS:</strong> Caddy automates Let's Encrypt; nginx+certbot and Traefik label-config fail silently — a renewal failure “breaks TLS silently until certificate expires,” and a missing Caddy <code>/data</code> volume loses ACME keys and hits Let's Encrypt rate limits for up to 7 days.</p>
+                <p><strong>The workaround became a dependency:</strong> Tailscale and Cloudflare Tunnel solve CGNAT by outbound connection, which is why they won — but self-hosters then worry about the hosted control plane, default connection logging and outages (selfh.st noted Cloudflare/GitHub/Tailscale outages “impacting self-hosted infrastructure across the globe” in a single week, Nov 2025). Headscale, NetBird and Pangolin exist purely to self-host that control plane.</p>
+                <p class="src">Sources: <a href="https://www.ssdnodes.com/learn/how-to-self-host-a-website">SSD Nodes — CGNAT</a> · <a href="https://lucasbittencourt.dev/blog/self-hosting-at-home">The DNS→proxy→app failure chain</a> · <a href="https://umbrel.sbs/en/posts/caddy-reverse-proxy-in-docker-auto-https-and-clean-config/">Caddy in Docker</a> · <a href="https://homelabber.info/guides/tailscale-vs-wireguard">Tailscale vs WireGuard</a> · <a href="https://www.projecthomelab.org/security/remote-access/">Project Homelab — remote access</a></p>
+              </div>
+              <div class="fric">
+                <h4>Backup/restore is where data is actually lost <span class="sev high">High</span></h4>
+                <p>Immich's automatic DB dumps write to the <em>same disk</em> as the photos and contain <em>no photos</em> — “a dead drive takes out your photos and the backup of their metadata in one go.” A USENIX study of 994 self-hosters plus 41 interviews found security approached “in an unstructured way,” with “vague catch-all concepts such as firewalls and backups” dominating, without reflection on the threat mitigated. Restores are rarely tested until they fail.</p>
+                <p class="src">Sources: <a href="https://siops.app/blogs/how-to-self-host-immich-without-losing-a-single-photo">Self-hosting Immich without losing a photo</a> · <a href="https://www.usenix.org/user?destination=conference/usenixsecurity23/presentation/grober">USENIX Security '23 study</a></p>
+              </div>
+              <div class="fric">
+                <h4>Failures are silent; storage fills invisibly <span class="sev high">High</span></h4>
+                <p>Services fail <em>silently</em> — Immich's web UI loads while its ML container OOM-crashes repeatedly; phone uploads stop and “the server never noticed anything was missing.” Hence Uptime Kuma's ubiquity, and the mature-lab pattern of alerting <em>when a backup doesn't run</em>, not just when a service is down. And: “Logs are the classic killer, but snapshots, local backups, preview files, caches, indexes… can pile up fast” (XDA). No mainstream desktop warns a hoster that a disk is 90% full of Docker overlays and thumbnails.</p>
+              </div>
+              <div class="fric">
+                <h4>Power, noise, heat — and responsibility <span class="sev high">High</span></h4>
+                <p>An old desktop NAS idles at 40–110&nbsp;W; a rack server ~150&nbsp;W and loud; a Pi at 1–5&nbsp;W; a mini-PC/NUC is the accepted compromise. Always-on also means power cuts: no UPS means an unreachable password vault and photo library exactly when needed. And once family depend on your Jellyfin, Immich and Vaultwarden, downtime is not deferrable — “you're now responsible for getting things back online” (XDA). The community norm has also flipped on exposure: from “forward 80/443 to Traefik” to “open no ports; VPN/tunnel + SSO in front” — exposing admin UIs (Portainer, Cockpit :9090, Proxmox :8006) to the internet is warned against everywhere.</p>
+              </div>
+              <div class="fric">
+                <h4>Projects disappear, get acquired, change terms <span class="sev high">High</span></h4>
+                <p>Booklore (10k+ stars) vanished overnight — repo, Discord, site — and users discovered it via a 404 on <code>docker pull</code>; it survived only because it could be forked (as Grimmory). Portainer CE, Plex, Synology drives, the Gitea→Forgejo flight and Arduino/Qualcomm (below) are the same pattern.</p>
+              </div>
+            </div>
+
+            <h3>What mainstream Linux desktops add</h3>
+            <div class="friction">
+              <div class="fric">
+                <h4>No server mode</h4>
+                <p>Desktop distros assume a person at a screen who sleeps and suspends the machine, uses NetworkManager Wi-Fi, and reboots for updates. Homelab use needs the opposite defaults: no suspend, lid-close = keep serving, wired/static IP, wake-on-LAN, services surviving logout, headless rescue via SSH/web. Users currently bolt this on with <code>systemctl mask sleep.target</code>, logind.conf edits and luck.</p>
+              </div>
+              <div class="fric">
+                <h4>Permissions and file sharing</h4>
+                <p>Samba sharing from GNOME/KDE still routinely requires editing <code>smb.conf</code>, installing plugins, or fixing fstab/CIFS “permission denied” errors. Containers add a second permission universe (PUID/PGID, rootful Docker socket, bind-mount ownership) that no desktop UI explains. A service that can't read the media folder is the most common first-week failure.</p>
+              </div>
+              <div class="fric">
+                <h4>Hardware-hacking friction — dialout/udev hell</h4>
+                <p>Arduino, ESP32, 3D printers, SDR and ADB all present as <code>/dev/ttyUSB0</code>/<code>ttyACM0</code> owned by <code>root:dialout</code> (Debian) or <code>root:uucp</code> (Arch) — the group name differs by distro, adding yourself requires re-login, and forum answers still include <code>chmod 666</code> and hand-written udev rules with single-vs-double <code>=</code> typos that silently fail. Flatpak sandboxing compounds it: a sandboxed IDE or flashing tool cannot see the serial device at all. ModemManager and brltty can also steal the adapter.</p>
+                <p class="src">Sources: <a href="https://bbs.archlinux.org/viewtopic.php?pid=1594592">Arch forum thread</a> · <a href="https://umatechnology.org/linux-usb-not-detected-or-not-working-5-common-issues-and-fixes/">USB serial issues roundup</a></p>
+              </div>
+              <div class="fric">
+                <h4>Trust violations are read as betrayal, not inconvenience</h4>
+                <p><strong>Plex:</strong> free remote playback removed April 2025; the lifetime pass went $119.99 → $249.99 → $749.99 (July 2026). <strong>Samsung/Android:</strong> One UI 8 (July 2025) removed the OEM-unlocking toggle <em>in every region</em>; without unlock there is “no custom recovery, no ROM, no root.” Xiaomi and OnePlus added server-side permission, waiting periods and quotas; Google's Play Integrity API lets banking apps refuse rooted/ROM devices. <strong>Arduino/Qualcomm (Nov 2025):</strong> new terms perceived as claiming rights over user creations, banning reverse engineering and expanding data collection triggered immediate backlash; Arduino had to publish “anything that was open, stays open.” The lesson is about <em>trust velocity</em>: this audience reads terms changes within hours. Driver/firmware tinkering adds its own friction — Jellyfin transcoding needs Intel Quick Sync with the render group set correctly; Wi-Fi/BT firmware, NVIDIA, and HAT/GPIO support on SBCs are all distro-specific.</p>
+                <p class="src">Sources: <a href="https://www.howtogeek.com/plex-keeps-getting-more-expensive-heres-what-people-are-switching-to/">How-To Geek</a> · <a href="https://thecustomrom.com/news/samsung-galaxy-s25-custom-rom-progress">The Custom Rom — Samsung</a> · <a href="https://beebom.com/best-custom-roms-android-phones/">Beebom — custom ROMs 2025</a> · <a href="https://www.hackster.io/news/arduino-clarifies-terms-and-conditions-following-backlash-anything-that-was-open-stays-open-645e9ee9a51e">Hackster — Arduino clarifies</a></p>
+              </div>
+            </div>
+
+            <div class="chart-card">
+              <h4>Case study in trust velocity — the Plex lifetime pass</h4>
+              <p class="chart-sub">Price of Plex's lifetime pass as it paywalled remote playback of users' own media. The response was migration to Jellyfin, now the clear #1 media server in the surveys above.</p>
+              <div class="bars" id="chart-plex"></div>
+              <p class="chart-note">Source: <a href="https://www.howtogeek.com/plex-keeps-getting-more-expensive-heres-what-people-are-switching-to/">How-To Geek</a>. Free remote playback was removed in April 2025.</p>
+            </div>
+          </section>
+
+          <!-- ================= 4 PRECEDENTS ================= -->
+          <section id="precedents">
+            <h2><span class="no">4</span> Precedents — what existing systems teach</h2>
+            <p class="sub">Every pattern in §5 already exists somewhere. So does every failure mode. The table below is the evidence base: what works, and what drew criticism.</p>
+            <div class="tbl-wrap">
+              <table id="precedent-table">
+                <thead><tr><th>System</th><th>Pattern that works</th><th>What drew criticism / limits</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+
+            <h3>UI patterns that demonstrably work — synthesis</h3>
+            <ol class="build">
+              <li><h4>Tile catalogue, transparent underneath</h4><p>One-click install <em>and</em> the visible underlying Compose file or package.</p></li>
+              <li><h4>One dashboard, two jobs</h4><p>A single home view that is both launchpad (Homepage-style) and health view (Uptime Kuma-style).</p></li>
+              <li><h4>Web admin <em>and</em> native UI</h4><p>Reachable at <code>hostname.local</code> / a stable LAN name, plus a native desktop UI for the machine in front of you — users use both.</p></li>
+              <li><h4>Logs and metrics in place</h4><p>Per service, where the service lives — not in a separate observability stack.</p></li>
+              <li><h4>HTTPS and private remote access as distinct, labelled choices</h4><p>One-click HTTPS; one-click <em>private</em> remote access (VPN) — never conflated.</p></li>
+              <li><h4>Snapshot before update, one-click rollback</h4><p>The Proxmox / TrueNAS / Home Assistant OS pattern.</p></li>
+              <li><h4>Community stores as additional registries</h4><p>Not a single gatekeeper — StartOS/Umbrel community stores, Unraid Community Apps, HACS for Home Assistant.</p></li>
+            </ol>
+          </section>
+
+          <!-- ================= 5 DESIGN ================= -->
+          <section id="design">
+            <h2><span class="no">5</span> Design implications for Noctivagous</h2>
+            <p class="sub">Proven demand first — each item traces to evidence in §1–§4. Speculative items and proven anti-patterns follow, kept separate on purpose.</p>
+
+            <h3>The flagship interaction: exposure as a permission</h3>
+            <p>Every service is <strong>LAN-only by default</strong>. Making anything internet-facing is an explicit, per-service ask, modelled like a phone permission — showing the port, the domain, whether auth/SSO is in front, and a plain-language risk line. Revocable in one place: a single “What's exposed?” screen. This answers the community's #1 safety failure (unstructured exposure, per the USENIX study) without paternalism. Concept sketch of the interaction the report recommends:</p>
+            <div class="mock-grid">
+              <div class="mock" role="group" aria-label="Concept mock of the exposure permission dialog">
+                <p class="mock-tag">Concept — exposure ask</p>
+                <div class="app-line">
+                  <div class="app-ic">Im</div>
+                  <div><strong>Immich</strong><span>photos · port 2283 · photos.home</span></div>
+                </div>
+                <p class="q">Allow access from the internet?</p>
+                <p class="risk">Right now Immich is reachable only on your home network. Anyone with the public link and a login could reach its sign-in page.</p>
+                <button class="opt rec" data-verdict="Kept private. Immich stays reachable through your VPN only — no public port opened.">Via my VPN only <small>Recommended — no public port, works anywhere you are</small></button>
+                <button class="opt" data-verdict="Public access enabled with HTTPS and login in front. This appears on your “What's exposed?” screen and can be revoked there.">Public, with HTTPS + login <small>Anyone on the internet can reach the sign-in page</small></button>
+                <button class="opt ghost" data-verdict="Nothing changed. Immich remains LAN-only.">Cancel</button>
+                <p class="verdict" id="mock-verdict" aria-live="polite"></p>
+              </div>
+              <div class="mock" role="group" aria-label="Concept mock of the What's exposed screen">
+                <p class="mock-tag">Concept — “What's exposed?”</p>
+                <div class="exposed-row"><span>Immich <span class="pill vpn">VPN ONLY</span></span><span class="where">no public port</span></div>
+                <div class="exposed-row"><span>Jellyfin <span class="pill lan">LAN</span></span><span class="where">jellyfin.local</span></div>
+                <div class="exposed-row"><span>Nextcloud <span class="pill pub">PUBLIC</span></span><span class="where">cloud.example.org :443 · HTTPS · SSO on</span></div>
+                <div class="exposed-row"><span>Folder share “Media” <span class="pill lan">LAN</span></span><span class="where">SMB · 1 user</span></div>
+                <div class="exposed-row"><span>Admin console <span class="pill lan">LAN</span></span><span class="where">never internet-facing</span></div>
+                <p class="risk" style="margin-top:14px;">Every public port, tunnel and share in the house, on one screen — each revocable here. Admin interfaces are never offered a public option.</p>
+              </div>
+            </div>
+
+            <h3>Proven demand — build these</h3>
+            <ol class="build">
+              <li><h4>Two host modes, first-class in Settings</h4><p><strong>Host on this machine:</strong> turning the desktop into an always-on host flips a coherent profile — inhibit suspend/sleep, lid-close keeps serving, SSH + web admin on, static/DHCP-reserved IP prompt, server firewall profile, update policy = notify-not-reboot. <strong>Host on another machine at home:</strong> the desktop as <em>console</em> for a headless box in a cupboard — discover it, provision it (Pi Imager-style pre-seeding of user/Wi-Fi/SSH keys), manage its services remotely. This matches how people actually grow: desktop first, second box second.</p></li>
+              <li><h4>Services / Containers Centre — native, with a web twin</h4><p>Docker Compose as the native format: import any <code>compose.yaml</code> from URL/Git/file; export everything back out — no lock-in. Catalogue entries are <em>recipes wrapping the upstream Compose</em>, showing image, ports, volumes, and a diff before update. Start/stop/restart, per-service logs, resource use, “open web UI,” <code>.env</code> editing with secrets masked. Stateless-over-the-system architecture à la Cockpit: the GUI edits the real Compose/systemd state, so terminal and GUI never diverge.</p></li>
+              <li><h4>The exposure permission model</h4><p>As sketched above: LAN-only default, per-service ask before anything is internet-facing, one “What's exposed?” screen. Maps to the distro's existing principle that every exposure is an explicit ask under the security manager.</p></li>
+              <li><h4>Remote-access wizard that handles the ugly chain</h4><p>Detect CGNAT (WAN vs public IP), dynamic IP, blocked ports; then offer, in order: Tailscale/WireGuard VPN (private, recommended), self-hosted control plane (Headscale/NetBird), tunnel (Cloudflare/Pangolin), or classic port-forward + DDNS + reverse proxy + Let's Encrypt via Caddy-style automation. One flow provisions DDNS, proxy route and certificate together — and <em>tests it from outside the LAN</em> before declaring success. YunoHost's diagnosis tool is the precedent.</p></li>
+              <li><h4>Update safety</h4><p>Pre-update snapshot (btrfs/ZFS/timeshift-style for the OS; DB dump + volume snapshot per service), release-notes and breaking-change flagging (parse upstream “BREAKING CHANGE / Action Required” — Immich-style), staged updates (update one service, health-check, proceed), and <strong>one-click rollback — including an honest warning where a data migration can't be downgraded</strong>. Never auto-update stateful services silently; auto-apply OS <em>security</em> updates in a scheduled window.</p></li>
+              <li><h4>Backup that is tested, not just configured</h4><p>Guided 3-2-1 setup (local disk + off-box copy), Borg/Restic engine, per-service “what actually needs backing up” (DB + files, in order — not the vendor's misleading default), encryption, and <strong>scheduled restore drills</strong> with a green/red “last restore test” badge. Alert when a backup <em>doesn't</em> run.</p></li>
+              <li><h4>Health and alerting built in</h4><p>Service-down, disk &gt;85%, container OOM/restart-loop, certificate-expiring, backup-missed and update-available notifications — to the desktop <em>and</em> a phone-reachable channel (ntfy/Gotify/email). A Homepage/Uptime-Kuma-style dashboard as the default “Home” view for host mode, with widgets for other machines and services in the house — a natural fit for the desktop's dashboard-widget window style.</p></li>
+              <li><h4>LAN discovery and sharing without the Samba ritual</h4><p>mDNS/Bonjour advertisement (<code>jellyfin.local</code>, <code>nas.local</code>), one-click folder share (SMB + a browser link) with user/password creation inline, NFS/SFTP toggles, and a “devices &amp; services on my network” browser. Sharing works from the file manager's right-click, with the firewall opened <em>for that share only</em> and shown on the exposure screen.</p></li>
+              <li><h4>Power and always-on controls</h4><p>Idle-watts estimate, per-service wake behaviour, scheduled sleep/wake, WoL send/receive, UPS (NUT) status widget, laptop-battery-as-UPS mode (warn + graceful service shutdown at low battery), fan/noise profile, and “turn the screen off but keep serving.” Old hardware is the target: the whole host stack must idle light — DietPi and Cockpit's socket-activation are the bar: near-zero when nobody is looking.</p></li>
+              <li><h4>Hardware-hacking support out of the box</h4><p>A “Developer / Maker” settings page that (a) offers one-click serial access — adds the user to the correct group, whatever this distro calls it, without re-login pain; (b) ships curated udev rules for Arduino/ESP32/ESP8266, STM32, RP2040, CH340/CP210x/FTDI adapters, 3D printers, SDR, and Android (<code>adb</code>/<code>fastboot</code> with correct permissions, current platform-tools); (c) offers esptool, Arduino IDE/PlatformIO, OpenOCD, <code>picocom</code> — unsandboxed or correctly device-passed-through when installed as Flatpaks; (d) enables GPIO/I2C/SPI on SBC builds; (e) provides a serial monitor and a “what is this USB device?” view (lsusb/udev properties in human form). Plus an Android companion view: detect a plugged phone, offer ADB pairing, scrcpy, file transfer, flashing-tool status.</p></li>
+              <li><h4>Openness guarantees, stated as policy</h4><p>No forced account (an account, if any, is for optional sync only; the server works fully without it). No telemetry by default (opt-in, with a local log of what would be sent). Sideloading and custom catalogue registries/repos as a supported, documented path. Every catalogue app removable, its data exportable. OS and catalogue licences shown per app — flag source-available (Umbrel's PolyForm) as such; never present it as open source. Publish these as commitments: this audience <em>will</em> check after the first controversial update.</p></li>
+              <li><h4>Terminal and scripting openness</h4><p>First-class terminal; a systemd unit viewer/editor in Settings (unit status, journal, enable/disable — Cockpit's services page, natively); a cron/timer UI; and everything the Services Centre does also available as CLI/API, so setups stay in Git and rebuildable.</p></li>
+            </ol>
+
+            <h3>Speculative — validate before building</h3>
+            <ul class="tight">
+              <li><strong>Local-AI centre</strong> (Ollama/Open WebUI one-click, GPU detection) — demand is real in self-hosting generally (2026 growth), but whether users want it <em>from their desktop distro</em> vs a container is unproven.</li>
+              <li><strong>Household user management / family SSO</strong> (authentik-style) bundled — YunoHost proves it for multi-user servers; single-admin homes may not need it. Offer as an optional recipe, not core identity.</li>
+              <li><strong>Phone companion app</strong> for the distro's dashboard — Uptime Kuma/HA apps suggest appetite; building and maintaining mobile apps is a large commitment.</li>
+              <li><strong>One-click public publishing</strong> (blogs/sites/fediverse) — YunoHost territory; most homelab demand is private/family access first.</li>
+              <li><strong>Energy-cost estimation per service</strong> (£/$ per month) — plausible delight, no direct survey evidence.</li>
+            </ul>
+
+            <h3>Anti-recommendations — proven to backfire</h3>
+            <ul class="tight">
+              <li>Forced account, or a cloud relay as the <em>only</em> remote path (Plex).</li>
+              <li>Paywalling remote access or transcoding of the user's own media.</li>
+              <li>Hardware/drive whitelists (Synology).</li>
+              <li>Removing a developer/unlock feature in an update (Samsung).</li>
+              <li>A single curated store with no sideload or Compose import (Umbrel/CasaOS limits).</li>
+              <li>Blind auto-updates of stateful services (Immich/TrueNAS breakage).</li>
+              <li>A web admin that maintains its own divergent config database (the Webmin anti-pattern, vs Cockpit).</li>
+            </ul>
+          </section>
+
+          <!-- ================= PRIORITIES ================= -->
+          <section id="priorities">
+            <h2><span class="no">→</span> Prioritised recommendations</h2>
+            <p class="sub">The report's closing list, in order. P0 is the differentiator — the set that makes this desktop the one this audience recommends to each other.</p>
+            <div class="chips" id="prio-chips" role="group" aria-label="Filter recommendations by priority"></div>
+            <div id="prio-list"></div>
+          </section>
+
+          <!-- ================= CAVEATS ================= -->
+          <section id="caveats">
+            <h2><span class="no">?</span> Open questions — what could not be verified</h2>
+            <p class="sub">Carried from the research report unchanged in substance. These bound how far the numbers above should be pushed.</p>
+            <ul class="caveat-list">
+              <li><strong>selfh.st 2026 percentages are second-hand.</strong> The survey's own results page renders as chart images; the 2026 percentages here come from a secondary analysis (ettayeb.fr) of Ethan Sholly's published results, cross-checked against a second 2026 write-up — not read directly from selfh.st's charts.</li>
+              <li><strong>r/selfhosted has no official app leaderboard.</strong> The ranking cited in §2 is an editorial synthesis ranked by GitHub stars, not an official Reddit scrape; it is used as corroboration, not as a survey.</li>
+              <li><strong>Hackaday coverage is pattern-level.</strong> Hackaday's site search and tag pages were used for project patterns; individual Hackaday <em>article</em> (vs Hackaday.io project) deep-links for every example could not all be opened within the research budget.</li>
+              <li><strong>No demographic split exists.</strong> There is no reliable public data splitting this audience by age, income or geography. The surveys are self-selected, English-speaking, Reddit/newsletter-recruited — do not generalise them to all Linux users.</li>
+            </ul>
+          </section>
+
+          <!-- ================= SOURCES ================= -->
+          <section id="sources">
+            <h2><span class="no">§</span> Sources</h2>
+            <p class="sub">All sources read 26 Nov 2026. Three were verified live in full — the selfh.st 2025 survey results, XDA's operational-headaches review, and selfh.st weekly 2025-11-21; the rest were read via web index on the same date, as flagged per section above.</p>
+            <div class="sources">
+              <ul>
+                <li><a href="https://selfh.st/survey/2025-results/">selfh.st — 2025 survey results</a> (verified live)</li>
+                <li><a href="https://ettayeb.fr/en/selfhosted/selfhst-2026-survey-results-en/">Secondary analysis of selfh.st 2026 results</a></li>
+                <li><a href="https://selfhosted-survey-2025.deployn.de/">Independent self-hosting survey 2025 (850+)</a></li>
+                <li><a href="https://linuxiac.com/self-hosters-confirm-it-again-linux-dominates-the-homelab-os-space/">Linuxiac — self-hosters confirm Linux dominates</a></li>
+                <li><a href="https://www.Xda-developers.Com/i-self-hosted-foss-tools-for-a-year-and-these-are-the-operational-headaches-no-one-warns-you-about/">XDA — operational headaches no one warns you about</a> (verified live)</li>
+                <li><a href="https://www.xda-developers.com/my-150-mini-pc-runs-12-docker-containers-and-hasnt-broken-a-sweat/">XDA — $150 mini-PC, 12 containers</a></li>
+                <li><a href="https://www.xda-developers.com/how-turn-old-pc-into-nas/">XDA — turn an old PC into a NAS</a></li>
+                <li><a href="https://hackaday.io/project/207185-controlpi">Hackaday.io — ControlPi</a></li>
+                <li><a href="https://appsgit.com/blog/r-selfhosted-most-recommended-apps">r/selfhosted favourites synthesis</a> (editorial, not an official scrape)</li>
+                <li><a href="https://awesome.ecosyste.ms/lists?topic=selfhosted">Awesome-Selfhosted via ecosyste.ms</a></li>
+                <li><a href="https://www.bigiron.cc/guides/casaos-vs-yunohost-vs-cosmos">CasaOS vs YunoHost vs Cosmos</a></li>
+                <li><a href="https://linuxdork.com/blog/cockpit-web-console/">Cockpit web console</a></li>
+                <li><a href="https://kextcache.com/best-os-for-home-servers/">Best home server OS — Unraid pricing</a></li>
+                <li><a href="https://selfhosting-sh.pages.dev/hardware/best-home-server-os/">Home server OS notes — TrueNAS apps</a></li>
+                <li><a href="https://www.usenix.org/user?destination=conference/usenixsecurity23/presentation/grober">USENIX Security '23 — self-hoster security study</a></li>
+                <li><a href="https://community.home-assistant.io/t/ha-problem-setting/884968">Home Assistant community — install-type confusion</a></li>
+              </ul>
+            </div>
+          </section>
+
+          <footer>
+            <p>Research compiled for the Noctivagous Linux project, 26 Nov 2026. Every figure on this page is drawn from the underlying research report and carries its source; hedges and unverifiable points are stated in the Open questions section rather than smoothed over. The exposure-dialog sketches in §5 are concept mocks of the recommended interaction, not screenshots of existing software.</p>
+          </footer>
+        </main>
+      </div>
+    </div>
+
+    <script>
+      /* ---------- bar charts ---------- */
+      function bars(id, rows) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        var max = 0;
+        rows.forEach(function (r) { if (r.v > max) max = r.v; });
+        el.innerHTML = rows.map(function (r) {
+          var pct = Math.max(2, (r.v / max) * 100);
+          return '<div class="bar-row">' +
+            '<span class="lbl">' + r.label + (r.sub ? '<small>' + r.sub + '</small>' : '') + '</span>' +
+            '<span class="bar-track"><span class="bar-fill' + (r.cls ? ' ' + r.cls : '') + '" style="display:block;width:' + pct.toFixed(1) + '%"></span></span>' +
+            '<span class="val">' + r.display + '</span></div>';
+        }).join('');
+      }
+      bars('chart-motivation', [
+        { label: 'Fun / Hobby', v: 31.3, display: '31.3%' },
+        { label: 'Privacy', v: 16.7, display: '16.7%' },
+        { label: 'Independence from third parties', v: 16.6, display: '16.6%' },
+        { label: 'Data control', v: 12.5, display: '12.5%' }
+      ]);
+      bars('chart-stack', [
+        { label: 'Docker', sub: 'container runtime', v: 5454, display: '5,454' },
+        { label: 'Jellyfin', sub: 'media server', v: 3966, display: '3,966' },
+        { label: 'Debian', sub: 'base OS', v: 2954, display: '2,954' },
+        { label: 'Ubuntu', sub: 'base OS', v: 2584, display: '2,584' },
+        { label: 'LXC', sub: 'containers', v: 1863, display: '1,863' },
+        { label: 'Forgejo', sub: 'git forge', v: 1686, display: '1,686' },
+        { label: 'authentik', sub: 'SSO / auth', v: 1093, display: '1,093' },
+        { label: 'Gitea', sub: 'git forge', v: 1057, display: '1,057' },
+        { label: 'Pocket ID', sub: 'SSO / auth — up from 310', v: 851, display: '851' },
+        { label: 'Podman', sub: 'container runtime', v: 790, display: '790' }
+      ]);
+      bars('chart-favourites', [
+        { label: 'Jellyfin', v: 765, display: '765' },
+        { label: 'Home Assistant', v: 707, display: '707' },
+        { label: 'Immich', v: 679, display: '679' }
+      ]);
+      bars('chart-prod', [
+        { label: 'Use a custom domain', v: 86, display: '86%' },
+        { label: 'Self-host sensitive data', v: 84, display: '84%' },
+        { label: 'Deploy a NAS', v: 66, display: '66%' },
+        { label: 'Run their own firewall', v: 62, display: '62%' }
+      ]);
+      bars('chart-plex', [
+        { label: 'Before the paywall', v: 119.99, display: '$119.99', cls: 'dim' },
+        { label: 'After remote playback was paywalled', sub: 'April 2025', v: 249.99, display: '$249.99' },
+        { label: 'July 2026', v: 749.99, display: '$749.99' }
+      ]);
+
+      /* ---------- canon table + filter ---------- */
+      var canon = [
+        { cat: 'Media', apps: '<strong>Jellyfin</strong> (3,966 users; #1 favourite, 765 votes), Plex (declining), Navidrome, Audiobookshelf, *arr suite (Sonarr/Radarr/Prowlarr)', rep: 'Netflix / Spotify / Audible + own library' },
+        { cat: 'Photos', apps: '<strong>Immich</strong> (#3 favourite 2026, 679 votes; #1 in the r/selfhosted recommendation synthesis)', rep: 'Google Photos' },
+        { cat: 'Files / cloud', apps: '<strong>Nextcloud</strong>, Syncthing, File Browser / Seafile', rep: 'Google Drive / Dropbox / 365' },
+        { cat: 'Home automation', apps: '<strong>Home Assistant</strong> (#2 favourite, 707 votes; 29% run Home Assistant OS, selfh.st 2025)', rep: 'Google Home / SmartThings' },
+        { cat: 'DNS / ad-blocking', apps: '<strong>Pi-hole</strong>, <strong>AdGuard Home</strong> (gaining, for native DoH + cleaner UI)', rep: '— (network infrastructure)' },
+        { cat: 'Passwords', apps: '<strong>Vaultwarden</strong> (lightweight Rust, Bitwarden-compatible)', rep: '1Password / LastPass / Bitwarden cloud' },
+        { cat: 'Documents', apps: '<strong>Paperless-ngx</strong>', rep: 'Filing cabinet / cloud OCR' },
+        { cat: 'Git', apps: '<strong>Forgejo</strong> (1,686 — overtook <strong>Gitea</strong>, 1,057, in 2026)', rep: 'GitHub' },
+        { cat: 'Monitoring / dashboard', apps: '<strong>Uptime Kuma</strong>, Homepage, Grafana/Prometheus for advanced users', rep: 'UptimeRobot; a start page for all services' },
+        { cat: 'Auth / SSO', apps: 'authentik (2026 leader, 1,093), Authelia, Pocket ID surging (851, up from 310 — “lightness pays”)', rep: 'Per-app logins' },
+        { cat: 'Reverse proxy', apps: '<strong>Nginx Proxy Manager</strong> (beginners, UI), <strong>Traefik</strong>, <strong>Caddy</strong> (auto-HTTPS, advanced)', rep: 'Manual nginx + certbot' },
+        { cat: 'VPN / remote', apps: '<strong>WireGuard</strong>, <strong>Tailscale</strong> (+ Headscale, NetBird), Cloudflare Tunnel, wg-easy', rep: 'Port forwarding' },
+        { cat: 'Local AI', apps: '<strong>Ollama + Open WebUI</strong>, LocalAI — new in 2025–26', rep: 'ChatGPT' },
+        { cat: 'Long tail', apps: 'Stirling-PDF, Mealie, Actual Budget, Linkding, Memos, FreshRSS, n8n, Frigate (NVR), game servers', rep: 'Misc SaaS' }
+      ];
+      var canonCats = ['All'].concat(canon.map(function (c) { return c.cat; }));
+      var canonChips = document.getElementById('canon-chips');
+      var canonBody = document.querySelector('#canon-table tbody');
+      function renderCanon(cat) {
+        canonBody.innerHTML = canon.filter(function (c) { return cat === 'All' || c.cat === cat; }).map(function (c) {
+          return '<tr><td>' + c.cat + '</td><td data-h="Winners">' + c.apps + '</td><td data-h="Replaces">' + c.rep + '</td></tr>';
+        }).join('');
+        Array.prototype.forEach.call(canonChips.children, function (b) {
+          b.setAttribute('aria-pressed', b.textContent === cat ? 'true' : 'false');
+        });
+      }
+      canonCats.forEach(function (cat) {
+        var b = document.createElement('button');
+        b.className = 'chip'; b.type = 'button'; b.textContent = cat;
+        b.setAttribute('aria-pressed', cat === 'All' ? 'true' : 'false');
+        b.addEventListener('click', function () { renderCanon(cat); });
+        canonChips.appendChild(b);
+      });
+      renderCanon('All');
+
+      /* ---------- precedents table ---------- */
+      var precedents = [
+        { name: 'Synology DSM / QNAP QTS', works: 'Polished web desktop metaphor, Package Center, snapshots, QuickConnect relay (no port-forward), drive health in UI. The usability bar for NAS.', bad: '<strong>2025 drive lock-in:</strong> Plus models (DS925+ etc.) refused storage pools on non-Synology drives; health/dedup/firmware gated. Reversed in DSM 7.3 (8 Oct 2025) after sales “plummeted” — but M.2 NVMe pools <em>still</em> require listed drives. QNAP\'s history: ransomware exposure of internet-facing NAS. Lesson: polish wins users, lock-in loses them permanently.' },
+        { name: 'TrueNAS (SCALE → Community Edition)', works: 'Best-in-class ZFS UI: pools, snapshots, replication, SMB/NFS, GPU passthrough for transcode. Free.', bad: 'Opinionated and heavy (8 GB RAM floor, ZFS-only); <strong>apps stack rewritten twice</strong> (k3s → Docker Compose), breaking user apps; “Docker Apps can be finicky compared to raw Docker Compose.”' },
+        { name: 'Unraid', works: 'Mixed-size drive array (each disk independently readable on any Linux box), huge Community Apps store (2,000+ Docker templates), VM + GPU passthrough, friendly WebGUI, onboarding wizard (7.3).', bad: 'Proprietary, paid: Starter $49 / Unleashed $109 / Lifetime $249, + optional $36/yr for further feature updates. Proves users <em>will</em> pay once for polish — and argue endlessly about anything that smells like subscription.' },
+        { name: 'Proxmox VE', works: 'Free (AGPL), Debian base, excellent web UI for VMs/LXC/ZFS/backup, clustering, snapshot/rollback. The homelab default (45%, selfh.st 2025).', bad: 'No Docker, no file shares on the host (by design); networking (bridges/VLANs) learning curve; subscription nag screen. Users run Docker <em>inside</em> a VM to work around it.' },
+        { name: 'CasaOS (IceWhale)', works: 'A layer (not an OS) on Debian/Ubuntu/Pi OS: friendly dashboard, file/drive widgets, one-click curated store (Nextcloud/Jellyfin/Vaultwarden/HA), custom Docker import for off-catalogue apps. Lowest-friction start.', bad: 'No built-in reverse proxy/HTTPS, no SSO/auth gateway, <strong>no built-in backup</strong> — “you fill in security/reverse-proxy/backup yourself.” Company focus shifted to commercial ZimaOS; CasaOS described as in maintenance mode as of Sept 2026.' },
+        { name: 'UmbrelOS', works: 'Most polished personal-server UX; curated store (~300 apps, strong Bitcoin/Lightning + media), one-click installs, 2FA.', bad: '<strong>PolyForm Noncommercial “source-available” licence — not open source;</strong> cannot be freely forked/redistributed; curated store means obscure apps are added by hand; less fun “once you start changing defaults.” Polish + non-open licence is exactly the trade this audience debates.' },
+        { name: 'YunoHost', works: 'The most <em>complete</em> open precedent: Debian, webadmin + user portal, <strong>~500 packaged apps</strong>, LDAP <strong>SSO for all apps</strong>, built-in email (Postfix/Dovecot + DKIM/SPF/DMARC guidance), one-click Let\'s Encrypt, multi-domain, a <strong>diagnosis tool</strong> (DNS/ports/email/certs), built-in backup/restore. AGPL, non-profit/community.', bad: 'Opinionated, single-server, package (not Docker) model, plainer UI; email deliverability still hard. But architecturally it is the closest existing answer to §5 — study its diagnosis + SSO + backup integration hardest.' },
+        { name: 'Home Assistant OS', works: 'Appliance model done right: a minimal OS whose only job is HA + Supervisor + <strong>Add-ons</strong> (curated Docker with config UI, ingress, backups), OTA OS updates with rollback, restore-on-fresh-install flow.', bad: 'Single-purpose; add-on store is HA-gated; not a general server. Non-HAOS installs (Core/DietPi) <em>lose add-ons</em> — a constant beginner trap in its forums. Lesson: users choose the appliance install <em>for</em> the managed add-on/backup/update system, not for HA itself.' },
+        { name: 'OpenMediaVault / DietPi / Raspberry Pi OS', works: 'OMV: thin Debian veneer + web UI + full <code>apt</code> escape hatch, runs on 1 GB. DietPi: 30–40 MB RAM idle, <code>dietpi-software</code> curated pre-configured installs, fully headless from first boot. Pi OS: Lite/Desktop split; Imager with pre-seeded Wi-Fi/SSH/user — the best first-boot headless provisioning UX in the field.', bad: 'OMV/DietPi UIs are functional, not polished; plugin layers can lag the base. Pi OS is Pi-specific. Lesson: <em>lightweight + curated installer + escape hatch</em> beats a monolith on old hardware.' },
+        { name: 'FreedomBox / StartOS', works: 'FreedomBox (Debian, web UI for privacy services) proved demand for appliance-on-Debian a decade ago. StartOS (MIT, Start9): sovereignty-first, encrypted backups + WireGuard built in, Tor optional, multiple registries + sideloading allowed.', bad: 'Smaller catalogues, more to learn (StartOS); FreedomBox\'s pace and audience stayed niche. Lesson: sovereignty features are differentiators; catalogue breadth is table stakes.' },
+        { name: 'Cockpit (Red Hat)', works: 'The most instructive <em>desktop-distro</em> precedent: web console at :9090, <strong>socket-activated (zero cost when idle)</strong>, <strong>no own state/database</strong> — it calls systemd/NetworkManager/udisks/Podman via the same APIs as the CLI, so GUI and terminal never disagree. Services + inline journal, logs, storage (LVM/RAID/SMART), networking/firewall, updates, Podman containers, libvirt VMs, in-browser terminal; log in with the <em>system</em> account (PAM).', bad: 'Self-signed cert warning on first visit; must never be exposed to the internet; Podman-not-Docker focus mismatches the homelab Docker norm; no app catalogue. Lesson: adopt its <em>architecture</em> (stateless view over real system APIs) even if you ship a native UI.' },
+        { name: 'Webmin / terminal-first', works: 'Webmin: breadth — everything configurable in a browser — for 25+ years. Terminal-first (plain Debian + Compose in Git) remains the power-user gold standard for rebuildability.', bad: 'Webmin: dated UX, huge attack surface, its own config layer that can diverge from the system. Terminal-only: excludes the household admin and the “second machine at home” use case.' },
+        { name: 'Android developer model (XDA lens)', works: 'Developer Options hidden behind a deliberate gesture, OEM unlock toggle, <code>adb</code>/<code>fastboot</code> as official tools, unlockable Pixel as reference device, verified-boot <em>warning</em> rather than refusal, relockable bootloader on GrapheneOS with custom keys.', bad: 'The model is being dismantled vendor-by-vendor (§3): greyed-out OEM unlock (carrier), server-side permission + countdowns (Xiaomi), toggle removal (Samsung), Play Integrity punishment after unlock. <strong>An unlock/developer mode that exists on day one and is removed by an update destroys trust more than never offering it.</strong>' }
+      ];
+      document.querySelector('#precedent-table tbody').innerHTML = precedents.map(function (p) {
+        return '<tr><td>' + p.name + '</td><td data-h="Pattern that works">' + p.works + '</td><td data-h="Criticism / limits">' + p.bad + '</td></tr>';
+      }).join('');
+
+      /* ---------- priorities ---------- */
+      var prios = [
+        { p: 'P0', cls: 'p0', t: 'Host Mode profile', d: 'This machine / another machine at home, with always-on, headless and power defaults (§5, item 1).' },
+        { p: 'P0', cls: 'p0', t: 'Services Centre', d: 'Compose-native; catalogue + import-your-own; logs, metrics, update-with-notes (§5, item 2).' },
+        { p: 'P0', cls: 'p0', t: 'Exposure ASK + “What\'s exposed?” screen', d: 'LAN-only default for every service (§5, item 3).' },
+        { p: 'P0', cls: 'p0', t: 'Remote-access wizard', d: 'CGNAT detection → VPN-first → tunnel → port-forward/DDNS/HTTPS, with an external test before declaring success (§5, item 4).' },
+        { p: 'P0', cls: 'p0', t: 'Snapshot-before-update + rollback; tested backup', d: 'Restore-test badge and missed-backup alerts (§5, items 5–6).' },
+        { p: 'P1', cls: 'p1', t: 'Health dashboard + phone-reachable alerts', d: 'Service-down, disk, OOM, certificate and backup alerts beyond the desktop (§5, item 7).' },
+        { p: 'P1', cls: 'p1', t: 'One-click LAN sharing + network browser', d: 'Right-click share, mDNS names, per-share firewall (§5, item 8).' },
+        { p: 'P1', cls: 'p1', t: 'Maker / Developer page', d: 'Serial, udev, ADB/fastboot, esptool done right (§5, item 10).' },
+        { p: 'P1', cls: 'p1', t: 'Power / UPS / WoL controls', d: 'Idle watts, battery-as-UPS, scheduled wake (§5, item 9).' },
+        { p: 'P2', cls: 'p2', t: 'Validate first: local-AI centre', d: 'Ollama/Open WebUI one-click — real demand, unproven as a distro feature (§5, speculative).' },
+        { p: 'P2', cls: 'p2', t: 'Validate first: household SSO', d: 'Family accounts as an optional recipe, not core identity (§5, speculative).' },
+        { p: 'P2', cls: 'p2', t: 'Validate first: phone companion app', d: 'Dashboard on the phone — appetite suggested, large commitment (§5, speculative).' },
+        { p: 'POLICY', cls: 'pol', t: 'Standing policy — costs nothing, worth most', d: 'No forced account; no default telemetry; sideloading and custom registries supported; per-app licence shown; developer features never removed by update (§5, item 11).' }
+      ];
+      var prioList = document.getElementById('prio-list');
+      var prioChips = document.getElementById('prio-chips');
+      function renderPrios(f) {
+        prioList.innerHTML = prios.filter(function (x) { return f === 'All' || x.p === f; }).map(function (x) {
+          return '<div class="prio-item"><div class="prio-badge ' + x.cls + '">' + x.p + '</div><div><h4>' + x.t + '</h4><p>' + x.d + '</p></div></div>';
+        }).join('');
+        Array.prototype.forEach.call(prioChips.children, function (b) {
+          b.setAttribute('aria-pressed', b.dataset.f === f ? 'true' : 'false');
+        });
+      }
+      [['All', 'All'], ['P0', 'P0 — ship with v1'], ['P1', 'P1 — fast follow'], ['P2', 'P2 — validate first'], ['POLICY', 'Standing policy']].forEach(function (pair) {
+        var b = document.createElement('button');
+        b.className = 'chip'; b.type = 'button'; b.textContent = pair[1]; b.dataset.f = pair[0];
+        b.setAttribute('aria-pressed', pair[0] === 'All' ? 'true' : 'false');
+        b.addEventListener('click', function () { renderPrios(pair[0]); });
+        prioChips.appendChild(b);
+      });
+      renderPrios('All');
+
+      /* ---------- exposure mock ---------- */
+      var verdict = document.getElementById('mock-verdict');
+      Array.prototype.forEach.call(document.querySelectorAll('.mock .opt[data-verdict]'), function (btn) {
+        btn.addEventListener('click', function () { verdict.textContent = '→ ' + btn.getAttribute('data-verdict'); });
+      });
+
+      /* ---------- scroll-spy ---------- */
+      var tocLinks = Array.prototype.slice.call(document.querySelectorAll('nav.toc a'));
+      var sections = tocLinks.map(function (a) { return document.querySelector(a.getAttribute('href')); }).filter(Boolean);
+      if ('IntersectionObserver' in window) {
+        var spy = new IntersectionObserver(function (entries) {
+          entries.forEach(function (e) {
+            if (e.isIntersecting) {
+              tocLinks.forEach(function (a) { a.classList.toggle('active', a.getAttribute('href') === '#' + e.target.id); });
+            }
+          });
+        }, { rootMargin: '-12% 0px -70% 0px' });
+        sections.forEach(function (s) { spy.observe(s); });
+      }
+    </script>
+  </body>
+</html>

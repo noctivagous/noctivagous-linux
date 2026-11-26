@@ -86,9 +86,24 @@ else bad "wrong password" "greeter gone or shell present unexpectedly"; fi
 grep -q "AUTH user=nct -> FAIL" "$RES/bridge.log" && ok "bridge rejected the wrong password" || bad "bridge rejected the wrong password" "no AUTH FAIL line in bridge log"
 grep -q "GREETER_FAIL" "$RES/greeter.log" && ok "greeter showed the failure" || bad "greeter showed the failure" "no GREETER_FAIL in greeter log"
 # After a failure the greeter re-focuses the password field, contents
-# selected: typing replaces it. Right password, Enter, same process.
-wtype -d 150 -k Shift_L -k Shift_L "nct-test-2026" -k Return
-if waitfor "NCT Shell" 25; then ok "right password: session shell up"; else bad "right password" "shell not in tree"; fi
+# selected: typing replaces it. Right password, Enter.
+# On Godot 4.7 (not 4.3) the synthesized-keyboard path drops input
+# unpredictably — probe-verified 2026-11-26: whole virtual-keyboard
+# devices silently deliver nothing (in one probe run devices 1, 3, 5
+# landed and 2, 4 did not; in the test environment the pattern
+# shifted), and neither refocus nor waiting changes it. Real
+# keyboards do not vanish and reappear between attempts; this is the
+# synthesized-input path, same family as the A12 pointer finding.
+# So retry, exactly as the shell phase below does: a dropped attempt
+# leaves the field reselected after its FAIL (or unsubmitted), the
+# next attempt types clean, and the check is the shell window, not
+# the keystroke count.
+logged_in=0
+for attempt in 1 2 3 4; do
+  wtype -d 150 -k Shift_L -k Shift_L "nct-test-2026" -k Return
+  if waitfor "NCT Shell" 12; then logged_in=1; break; fi
+done
+if [ $logged_in = 1 ]; then ok "right password: session shell up"; else bad "right password" "shell not in tree"; fi
 if tree | grep -qi "NCT Greeter"; then bad "greeter exited after login" "greeter window still present"; else ok "greeter exited after login"; fi
 sleep 1; grim "$RES/3-session.png" 2>/dev/null
 # Drive the shell by keyboard: focus its window; the bar's first
