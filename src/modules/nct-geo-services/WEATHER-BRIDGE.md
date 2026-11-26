@@ -1,8 +1,9 @@
 # nct-weather-bridge — spec
 
 Status: v1 PROTOTYPE BUILT 2026-11-26, landed on main (ae82b3c).
-v2 (adde provider) BUILT 2026-11-26 on feat/nct-weather-bridge,
-not pushed. Code: src/services/nct-weather-bridge/. First consumer:
+v2 (adde provider) built and landed (eb12d0f). v3 (Himawari +
+VIIRS datasets) BUILT 2026-11-26 on feat/nct-weather-bridge, not
+pushed. Code: src/services/nct-weather-bridge/. First consumer:
 src/godot/apps/nct-weather/ (Godot GOES viewer).
 
 ## What it is
@@ -47,7 +48,8 @@ dataset; every response names the provider that actually served it.
 
 | Provider | Upstream | Protocol | v1 status |
 |---|---|---|---|
-| cira-slider | slider.cira.colostate.edu (RAMMB/CIRA) | HTTPS JSON + PNG tiles | BUILT — GOES-East/West CONUS GeoColor |
+| cira-slider | slider.cira.colostate.edu (RAMMB/CIRA) | HTTPS JSON + PNG tiles | BUILT — GOES-East/West CONUS GeoColor; Himawari full-disk GeoColor + band 13 (v3, provider generalised to sat/sector/product) |
+| nasa-gibs | gibs.earthdata.nasa.gov (NASA EOSDIS) | HTTPS WMS 1.3.0 GetMap | BUILT (v3) — VIIRS NOAA-20 true colour, CONUS, daily composite; first polar-orbiter source |
 | nodd-s3 | noaa-goes19 / noaa-goes18 S3 (NOAA Open Data) | HTTPS S3 listing + netCDF-4 | BUILT — GOES ABI CONUS band 13 (clean IR), rendered locally |
 | adde | adde.ucar.edu (McIDAS ADDE) | TCP 112 binary, built-in client (VisAD port) | BUILT (v2) — GOES CONUS band 2 visible (new datasets), band 13 as fallback for ir-clean; RTIMAGES group |
 | edex | edex-cloud.unidata.ucar.edu (AWIPS II) | python-awips DataAccessLayer | specced, not built |
@@ -77,7 +79,9 @@ Base: http://127.0.0.1:8765 (port is a setting, NCT_WEATHER_BRIDGE_PORT)
 Dataset IDs name the thing, never the provider:
 sat.goes-east.geocolor, sat.goes-west.geocolor,
 sat.goes-east.ir-clean (ABI band 13), sat.goes-west.ir-clean,
-sat.goes-east.vis (ABI band 2), sat.goes-west.vis.
+sat.goes-east.vis (ABI band 2), sat.goes-west.vis,
+sat.himawari.geocolor, sat.himawari.ir-clean (AHI band 13,
+full disk), sat.viirs-noaa20.truecolor (daily).
 
 ## Rules
 
@@ -122,22 +126,26 @@ render one frame, declare licence + cadence).
   SST, rain-rate QPE), the other RTIMAGES composites (Mollweide,
   Antarctic/Arctic POES), and the point/text request types
   (RTPTSRC observations, weather text) when a consumer wants them.
-- Candidate additions (noted 2026-11-26 from a survey of how CIRA
-  itself sources imagery — its own GOES Earth Station direct
+- v3 (built): Himawari + VIIRS, from the candidate survey of how
+  CIRA itself sources imagery (its own GOES Earth Station direct
   broadcast, processed into products like GeoColor and posted from
   the CIRA Satellite Library; the bridge's cira-slider provider is
-  downstream of exactly that pipeline). All three are the nodd-s3
-  pattern — anonymous NODD buckets, verified listable from here on
-  2026-11-26 — so each is a provider entry, not new plumbing:
-  himawari9 / himawari8 (AHI full disk, Asia-Pacific — first
-  non-CONUS coverage), noaa-jpss (VIIRS polar-orbiter imagery —
-  first non-geostationary source). Meteosat via the EUMETSAT Data
-  Store (EUMDAC) is the remaining GEO ring member but needs a free
-  account, so it waits until a consumer wants Europe/Africa
-  coverage. Source page was an AI-generated Brave Ask answer —
-  treat its details (e.g. an S-NPP end-of-data note) as leads, not
-  facts; the bucket checks above are the verified part.
-- v3: edex provider (python-awips; a gridded model field rendered
+  downstream of exactly that pipeline). The survey's bucket-first
+  guess was corrected by probing: the noaa-himawari9/8 buckets
+  hold raw AHI L1b HSD segment files (a real decoder project),
+  and noaa-jpss's public tree is ocean-colour HDF plus SDR/EDR
+  granules needing geolocation rendering — while both satellites
+  already have rendered services. So Himawari rides cira-slider
+  (sat id "himawari", full_disk — CIRA's own processing of JMA
+  data) and VIIRS rides nasa-gibs WMS (NASA's rendering of the
+  JPSS instruments). The buckets remain the raw route if a
+  consumer ever needs pre-product data. Meteosat via the
+  EUMETSAT Data Store (EUMDAC) is the remaining GEO ring member
+  but needs a free account, so it waits until a consumer wants
+  Europe/Africa coverage. (Source page was an AI-generated Brave
+  Ask answer — its details were treated as leads; everything
+  above was verified by direct probing.)
+- v4: edex provider (python-awips; a gridded model field rendered
   server-side) — proves the AWIPS path on the same API.
-- v4: push (WebSocket new-frame notice), place-relative products
+- v5: push (WebSocket new-frame notice), place-relative products
   via geo-services core, Settings → Location provider choice.

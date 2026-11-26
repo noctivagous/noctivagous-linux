@@ -13,7 +13,9 @@ class TestRegistry(unittest.TestCase):
         self.assertEqual(set(b.DATASETS), {
             "sat.goes-east.geocolor", "sat.goes-west.geocolor",
             "sat.goes-east.ir-clean", "sat.goes-west.ir-clean",
-            "sat.goes-east.vis", "sat.goes-west.vis"})
+            "sat.goes-east.vis", "sat.goes-west.vis",
+            "sat.himawari.geocolor", "sat.himawari.ir-clean",
+            "sat.viirs-noaa20.truecolor"})
     def test_ids_name_things_not_providers(self):
         for ds_id in b.DATASETS:
             for p in ("cira", "s3", "adde", "edex"):
@@ -35,6 +37,21 @@ class TestTimes(unittest.TestCase):
         dt = datetime.strptime(m.group(1), "%Y%j%H%M%S")
         self.assertEqual((dt.year, dt.hour, dt.minute, dt.second), (2026, 12, 1, 17))
         self.assertEqual(dt.timetuple().tm_yday, 330)
+
+class TestGibs(unittest.TestCase):
+    def test_wms_url_shape(self):
+        p = b.GibsWmsProvider("VIIRS_NOAA20_CorrectedReflectance_TrueColor",
+                              [-125.0, 24.0, -66.0, 50.0])
+        u = p.build_url("2026-11-25")
+        self.assertIn("LAYERS=VIIRS_NOAA20_CorrectedReflectance_TrueColor", u)
+        self.assertIn("BBOX=24.0,-125.0,50.0,-66.0", u)   # WMS 1.3 lat,lon order
+        self.assertIn("TIME=2026-11-25", u)
+    def test_times_are_daily_descending(self):
+        p = b.GibsWmsProvider("L", [-125.0, 24.0, -66.0, 50.0])
+        ts = p.times(3)
+        self.assertEqual(len(ts), 3)
+        self.assertTrue(all(t["time"].endswith("T19:00:00Z") for t in ts))
+        self.assertTrue(ts[0]["id"] > ts[1]["id"] > ts[2]["id"])
 
 class TestAdde(unittest.TestCase):
     def test_mcidas_datetime_cyyddd(self):

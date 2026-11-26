@@ -26,7 +26,7 @@ from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 CACHE = os.environ.get("NCT_WB_CACHE",
         os.path.expanduser("~/.cache/nct-weather-bridge"))
 os.makedirs(CACHE, exist_ok=True)
@@ -51,14 +51,21 @@ def iso_from_compact(ts):  # 20261126124117 -> ISO
 # ---------------------------------------------------------------- providers
 
 class CiraSliderProvider:
-    """GOES GeoColor from RAMMB/CIRA Slider: JSON times + PNG tiles."""
+    """Satellite imagery from RAMMB/CIRA Slider: JSON times + PNG
+    tiles. Works for any satellite/sector/product Slider carries —
+    GOES conus + full disk, and Himawari (sat id "himawari",
+    sector "full_disk"), whose GeoColor and band products are
+    CIRA-processed from JMA data, the same pipeline whose posts
+    the CIRA Satellite Library carries."""
     name = "cira-slider"
-    licence = "NOAA/NESDIS data via CIRA/RAMMB Slider; public, attribution to CIRA/NOAA"
+    licence = "Data via CIRA/RAMMB Slider; public, attribution to CIRA and the satellite operator (NOAA / JMA)"
     GRID = {1: (2, 2), 2: (4, 4)}   # zoom -> (tiles_x, tiles_y), tile=625px
-    def __init__(self, sat):
-        self.sat = sat              # e.g. goes-19
+    def __init__(self, sat, sector="conus", product="geocolor"):
+        self.sat = sat              # e.g. goes-19, himawari
+        self.sector = sector        # e.g. conus, full_disk
+        self.product = product      # e.g. geocolor, band_13
     def times(self, limit=12):
-        url = f"https://slider.cira.colostate.edu/data/json/{self.sat}/conus/geocolor/latest_times.json"
+        url = f"https://slider.cira.colostate.edu/data/json/{self.sat}/{self.sector}/{self.product}/latest_times.json"
         log_egress(self.name, url)
         d = json.loads(http_get(url, 30))
         out = []
@@ -75,11 +82,50 @@ class CiraSliderProvider:
         for y in range(ty):
             for x in range(tx):
                 u = (f"https://slider.cira.colostate.edu/data/imagery/{date}/"
-                     f"{self.sat}---conus/geocolor/{ts}/{zoom:02d}/{y:03d}_{x:03d}.png")
+                     f"{self.sat}---{self.sector}/{self.product}/{ts}/{zoom:02d}/{y:03d}_{x:03d}.png")
                 log_egress(self.name, u)
                 tile = Image.open(io.BytesIO(http_get(u, 60))).convert("RGB")
                 mosaic.paste(tile, (x * 625, y * 625))
         buf = io.BytesIO(); mosaic.save(buf, "PNG")
+        return buf.getvalue()
+
+class GibsWmsProvider:
+    """Polar-orbiter imagery from NASA GIBS (Global Imagery Browse
+    Services) — the rendered-tile service behind NASA Worldview.
+    One WMS GetMap per frame for a fixed region; the product is a
+    daily composite of that day's overpasses, so times are dates
+    (nominal time 19:00Z, the CONUS afternoon overpass) and the
+    current day fills in as passes complete. The raw route —
+    VIIRS SDR/EDR granules in the noaa-jpss bucket — needs
+    geolocation pairing and bowtie handling to render; GIBS is
+    NASA's own rendering of the same instruments."""
+    name = "nasa-gibs"
+    licence = "NASA GIBS / EOSDIS; public, attribution to NASA"
+    def __init__(self, layer, wsen, width=1180, height=520):
+        self.layer = layer
+        self.wsen = wsen            # [west, south, east, north]
+        self.width = width
+        self.height = height
+    def build_url(self, date_str):
+        w, s, e, n = self.wsen
+        return ("https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi"
+                "?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap"
+                f"&LAYERS={self.layer}&CRS=EPSG:4326"
+                f"&BBOX={s},{w},{n},{e}&WIDTH={self.width}&HEIGHT={self.height}"
+                f"&FORMAT=image/png&TIME={date_str}")
+    def times(self, limit=6):
+        today = datetime.now(timezone.utc).date()
+        out = []
+        for i in range(limit):
+            d = today - timedelta(days=i)
+            out.append({"time": f"{d.isoformat()}T19:00:00Z", "id": d.isoformat()})
+        return out
+    def frame(self, date_id, **kw):
+        from PIL import Image
+        url = self.build_url(date_id)
+        log_egress(self.name, url)
+        img = Image.open(io.BytesIO(http_get(url, 120))).convert("RGB")
+        buf = io.BytesIO(); img.save(buf, "PNG")
         return buf.getvalue()
 
 class NoddS3Provider:
@@ -402,6 +448,22 @@ DATASETS = {
         "title": "GOES-West (GOES-18) ABI band 2 visible (0.64 um), CONUS, via ADDE",
         "coverage": [-125.0, 24.0, -66.0, 50.0], "cadence": "5 min",
         "providers": [AddeProvider("RTIMAGES", "GWCNC02", 2)],
+    },
+    "sat.himawari.geocolor": {
+        "title": "Himawari-9 full disk GeoColor",
+        "coverage": [84.0, -60.0, -163.0, 60.0], "cadence": "10 min",
+        "providers": [CiraSliderProvider("himawari", "full_disk", "geocolor")],
+    },
+    "sat.himawari.ir-clean": {
+        "title": "Himawari-9 AHI band 13 clean IR, full disk",
+        "coverage": [84.0, -60.0, -163.0, 60.0], "cadence": "10 min",
+        "providers": [CiraSliderProvider("himawari", "full_disk", "band_13")],
+    },
+    "sat.viirs-noaa20.truecolor": {
+        "title": "VIIRS (NOAA-20) corrected reflectance true color, CONUS, daily",
+        "coverage": [-125.0, 24.0, -66.0, 50.0], "cadence": "daily",
+        "providers": [GibsWmsProvider("VIIRS_NOAA20_CorrectedReflectance_TrueColor",
+                                      [-125.0, 24.0, -66.0, 50.0])],
     },
 }
 
