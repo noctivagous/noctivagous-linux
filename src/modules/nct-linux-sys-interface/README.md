@@ -9,4 +9,12 @@ Owns:
 
 Hosting / language: Split: daemon half as a system/user service (service stack, bridge pattern); thin GDScript client in the shell.
 
-Status: STUB — laid out 2026-11-26, not built. Plan: src/plans/SYSTEM-INTERFACE.md §1.
+Status: SLICE A BUILT (2026-11-26, agent-build-log/19) —
+system_tree.py (the live object tree), sources.py (fixture
+source + the Gio/GDBus systemd source, which reports its
+availability honestly), sys_interface.py (the bridge: ingest,
+desktop-terms republication, failed-unit derivation), the
+fixture feed, and the Services/Logs NCTXML views with their
+render harness. Proven against the fixture feed; a live
+systemd is a rig proof, owed. Plan:
+src/plans/SYSTEM-INTERFACE.md §1, §6.

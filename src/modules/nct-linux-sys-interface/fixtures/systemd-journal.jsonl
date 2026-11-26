@@ -1,0 +1,9 @@
+{"type": "unit", "id": "greetd.service", "props": {"description": "Greeter daemon", "load": "loaded", "active": "active", "sub": "running"}}
+{"type": "unit", "id": "NetworkManager.service", "props": {"description": "Network Manager", "load": "loaded", "active": "active", "sub": "running"}}
+{"type": "unit", "id": "bluetooth.service", "props": {"description": "Bluetooth service", "load": "loaded", "active": "active", "sub": "running"}}
+{"type": "journal", "unit": "greetd.service", "priority": 6, "message": "greetd started, greeter on tty7"}
+{"type": "journal", "unit": "bluetooth.service", "priority": 6, "message": "bluetoothd 5.72 starting"}
+{"type": "unit", "id": "cups.service", "props": {"description": "CUPS printing service", "load": "loaded", "active": "inactive", "sub": "dead"}}
+{"type": "unit", "id": "bluetooth.service", "props": {"active": "failed", "sub": "failed", "result": "exit-code"}}
+{"type": "journal", "unit": "bluetooth.service", "priority": 3, "message": "bluetoothd: Failed to start: adapter not responding", "message_id": "7d4958e5da555c0f8f09"}
+{"type": "journal", "unit": "NetworkManager.service", "priority": 6, "message": "NetworkManager: wlan0 connected to 'HomeNet'"}

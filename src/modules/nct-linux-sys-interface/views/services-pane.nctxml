@@ -1,0 +1,10 @@
+<pane xmlns:nct="nct">
+  <Stack>
+    <Label Text="Services" />
+    <Label Name="Summary" Text="{Summary}" />
+    <Label Name="U1" Text="{U1}" />
+    <Label Name="U2" Text="{U2}" />
+    <Label Name="U3" Text="{U3}" />
+    <Label Name="U4" Text="{U4}" />
+  </Stack>
+</pane>

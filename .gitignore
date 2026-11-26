@@ -45,3 +45,6 @@ coverage/
 
 # Godot .pck packs are build artefacts (tools/build-pcks.sh)
 *.pck
+
+# Python bytecode from the module services
+__pycache__/
