@@ -122,6 +122,21 @@ render one frame, declare licence + cadence).
   SST, rain-rate QPE), the other RTIMAGES composites (Mollweide,
   Antarctic/Arctic POES), and the point/text request types
   (RTPTSRC observations, weather text) when a consumer wants them.
+- Candidate additions (noted 2026-11-26 from a survey of how CIRA
+  itself sources imagery — its own GOES Earth Station direct
+  broadcast, processed into products like GeoColor and posted from
+  the CIRA Satellite Library; the bridge's cira-slider provider is
+  downstream of exactly that pipeline). All three are the nodd-s3
+  pattern — anonymous NODD buckets, verified listable from here on
+  2026-11-26 — so each is a provider entry, not new plumbing:
+  himawari9 / himawari8 (AHI full disk, Asia-Pacific — first
+  non-CONUS coverage), noaa-jpss (VIIRS polar-orbiter imagery —
+  first non-geostationary source). Meteosat via the EUMETSAT Data
+  Store (EUMDAC) is the remaining GEO ring member but needs a free
+  account, so it waits until a consumer wants Europe/Africa
+  coverage. Source page was an AI-generated Brave Ask answer —
+  treat its details (e.g. an S-NPP end-of-data note) as leads, not
+  facts; the bucket checks above are the verified part.
 - v3: edex provider (python-awips; a gridded model field rendered
   server-side) — proves the AWIPS path on the same API.
 - v4: push (WebSocket new-frame notice), place-relative products
