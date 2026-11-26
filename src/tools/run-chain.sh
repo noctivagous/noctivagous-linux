@@ -107,6 +107,14 @@ if [ -n "$GODOT" ]; then
   else
     bad "t0 attention inbox surface" "context generation failed"
   fi
+  # NCTXML Grid: the system's own grid model (ported from
+  # NCTGraphite), two engines (agent-build-log/28). The
+  # comparison check needs the committed native library
+  # (src/modules/bin/) — present in any Linux checkout.
+  out=$("$GODOT" --headless --path "$SRC/modules" res://nctxml/grid/main.tscn 2>&1)
+  echo "$out" | grep -q "NCTGRID_OK" && ok "t0 nctxml grid solver" || bad "t0 nctxml grid solver" "$out"
+  out=$("$GODOT" --headless --path "$SRC/modules" res://nctxml/grid/compare.tscn 2>&1)
+  echo "$out" | grep -q "GRID_COMPARE_OK" && ok "t0 nctxml grid engines compared" || bad "t0 nctxml grid engines compared" "$out"
   # Launch model 2: the same projects as .pck packs on the shared
   # runtime (the shipped form). Build to the results dir, then run
   # the shell pack through nct-godot-run's --main-pack path.
