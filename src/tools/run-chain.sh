@@ -9,6 +9,24 @@
 set -u
 SRC=$(cd "$(dirname "$0")/.." && pwd)
 RES="$SRC/tests/results-local"; mkdir -p "$RES"
+# A checkout on a VirtualBox shared folder cannot run this chain:
+# while one process executes a script from the share, a second
+# concurrent exec of the same file is refused ("Permission denied")
+# by the host-side lock — and session-apps launches the shell and
+# NCT Hello through the same nct-godot-run a second apart, so the
+# later launch dies before Godot even starts. Stage a local copy
+# and re-exec from it; results are copied back so callers find
+# them in the usual place.
+if [ -z "${NCT_CHAIN_STAGED:-}" ] && [ "$(stat -f -c %T "$SRC" 2>/dev/null)" = "vboxsf" ]; then
+  stage=$(mktemp -d /tmp/nct-chain-stage.XXXXXX)
+  mkdir -p "$stage/src"
+  tar -C "$SRC" --exclude='./vm/qemu-image' --exclude='./tests/results-local' --exclude='*/.godot' -cf - . | tar -C "$stage/src" -xf -
+  NCT_CHAIN_STAGED=1 "$stage/src/tools/run-chain.sh" "$@"; code=$?
+  mkdir -p "$RES"
+  cp -a "$stage/src/tests/results-local/." "$RES/" 2>/dev/null || true
+  rm -rf "$stage"
+  exit "$code"
+fi
 export NCT_SRC="$SRC"
 export NCT_STATE_DIR="$RES/state"; mkdir -p "$NCT_STATE_DIR"
 export NCT_RENDER_DRIVER=${NCT_RENDER_DRIVER:-opengl3}
@@ -202,9 +220,16 @@ fi
 grep -q "GREETER_LOGIN_OK" "$RES/greeter-auto.log" && ok "t1 greeter auto-login via bridge" \
   || bad "t1 greeter auto-login" "see greeter-auto.log"
 grim "$RES/tier1.png" 2>/dev/null && ok "t1 screenshot captured" || bad "t1 screenshot" "grim failed"
-# cleanup
+# cleanup — only what this run started, by PID. A blanket
+# pkill -f nct-greetd-bridge also kills a real greeter session's
+# bridge when the chain runs inside a booted system (the tier-2
+# guest), leaving the greeter up but unanswerable; the nested
+# qterminal is this run's only if it carries this run's runtime
+# dir in its environment.
 kill $GPID $GSESS $SWAYPID 2>/dev/null
-pkill -f "nct-greetd-bridge" 2>/dev/null; pkill qterminal 2>/dev/null
+for p in $(pgrep qterminal 2>/dev/null); do
+  tr '\0' '\n' < "/proc/$p/environ" 2>/dev/null | grep -q "^XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR$" && kill "$p" 2>/dev/null
+done
 sleep 1
 echo "== run-chain: $PASS passed, $FAIL failed ==" | tee -a "$RES/summary.txt"
 [ "$FAIL" = 0 ]
