@@ -14,6 +14,8 @@ const DATASETS := [
 	"sat.goes-west.geocolor",
 	"sat.goes-east.ir-clean",
 	"sat.goes-west.ir-clean",
+	"sat.goes-east.vis",
+	"sat.goes-west.vis",
 ]
 const FRAME_COUNT := 8
 
