@@ -67,7 +67,43 @@ public class ControlRegistry
             (a.TryGetValue("Orientation", out var o) && o == "horizontal")
                 ? new HBoxContainer() : new VBoxContainer() });
         Add(new NctControlEntry { Name = "Grid", Role = "layout", Factory = a =>
-            new GridContainer { Columns = a.TryGetValue("Columns", out var c) && int.TryParse(c, out var n) ? n : 1 } });
+        {
+            // The system's own grid (NCTXML §7 semantics ported
+            // from NCTGraphite's grid model): two engines behind
+            // one surface — the C# solver (default) and the
+            // native GDExtension (Engine="native"), chosen per
+            // document; native falls back to the solver when the
+            // extension is not loaded on this machine.
+            string Str(string k, string dflt) =>
+                a.TryGetValue(k, out var v) ? v : dflt;
+            float Num(string k, float dflt) =>
+                a.TryGetValue(k, out var v) && float.TryParse(v,
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var f) ? f : dflt;
+            var cols = Str("Columns", "1fr");
+            var rows = Str("Rows", "auto");
+            var proportions = Str("Proportions", "");
+            var areas = Str("Areas", "");
+            var breakpoints = Str("Breakpoints", "");
+            float gap = Num("Gap", 0), pad = Num("Padding", 0);
+            float baseline = Num("Baseline", 0), baseOff = Num("BaselineOffset", 0);
+            if (Str("Engine", "solver") == "native"
+                && ClassDB.ClassExists("NctGridNative"))
+            {
+                var native = ClassDB.Instantiate("NctGridNative").As<Container>();
+                native.Call("set_grid_spec", cols, rows, proportions,
+                    areas, breakpoints, gap, pad, baseline, baseOff);
+                return native;
+            }
+            return new NctGridContainer
+            {
+                ColumnsSpec = cols, RowsSpec = rows,
+                ProportionsSpec = proportions, AreasSpec = areas,
+                BreakpointsSpec = breakpoints, Gap = gap, Padding = pad,
+                BaselineUnit = baseline, BaselineOffset = baseOff,
+            };
+        } });
         Add(new NctControlEntry { Name = "Dock", Role = "layout", Factory = _ => new DockContainer() });
         Add(new NctControlEntry { Name = "Free", Role = "layout", Factory = _ => new Control() });
         Add(new NctControlEntry { Name = "Scroll", Role = "scroll", Focusable = true, Factory = _ => new ScrollContainer() });

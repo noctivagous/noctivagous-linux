@@ -1,0 +1,7 @@
+<pane xmlns:nct="nct">
+  <Grid Name="RootGrid" Columns="1fr" Rows="auto" Baseline="24">
+    <Free Name="R1" />
+    <Free Name="R2" />
+    <Free Name="R3" />
+  </Grid>
+</pane>

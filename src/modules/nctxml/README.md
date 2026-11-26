@@ -37,3 +37,17 @@ interpreter v1 with the §12 proofs green in tier 0. Deferred
 per the plan: the compiler/cache, XForms, the designer, Pango,
 annotated-SVG theming (§8 — v1 applies no theme beyond Godot
 defaults), DataTemplates, relative-source binding.
+
+GRID (2026-11-26, agent-build-log/28): <Grid> is now the
+system's own grid — NCTXML §7 semantics ported from
+NCTGraphite's grid model (track strings, Proportions weight
+form, named Areas, Baseline rhythm with snapping, own-width
+Breakpoints with the per-field cascade). Two engines behind
+the one surface, chosen per document with Engine=:
+  solver (default)  nctxml/NctGridContainer.cs
+  native            NctGridNative, a GDExtension
+                    (gdextension/, library in bin/; falls
+                    back to the solver where not loaded)
+Placement (Column/Row/Span/Area) travels as child metadata,
+the Dock channel. grid/ holds the measured-rect proofs and
+the engines-compared harness.

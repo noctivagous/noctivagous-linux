@@ -1,0 +1,8 @@
+<pane xmlns:nct="nct">
+  <Grid Name="RootGrid" Columns="100px 1fr 2fr" Rows="48px 1fr" Gap="10"
+        Areas="'nav head head' 'nav body body'">
+    <Free Name="Nav" Area="nav" />
+    <Free Name="Head" Area="head" />
+    <Free Name="Body" Area="body" />
+  </Grid>
+</pane>

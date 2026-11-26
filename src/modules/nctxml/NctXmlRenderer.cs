@@ -197,6 +197,23 @@ public partial class NctXmlRenderer : RefCounted
         var dock = Attr(childEl, "Dock");
         if (parent is DockContainer && dock != null)
             child.SetMeta("dock", dock);
+        // Grid placement (§7): consumed by the grid engines'
+        // placement pass via child metadata — the same channel
+        // Dock uses, so the solver and native engines read
+        // identical placement facts.
+        if (parent is NctGridContainer || parent.GetClass() == "NctGridNative")
+        {
+            var area = Attr(childEl, "Area");
+            if (area != null) child.SetMeta("grid_area", area);
+            if (int.TryParse(Attr(childEl, "Column"), out var gc))
+                child.SetMeta("grid_col", gc - 1);
+            if (int.TryParse(Attr(childEl, "Row"), out var gr))
+                child.SetMeta("grid_row", gr - 1);
+            if (int.TryParse(Attr(childEl, "ColumnSpan"), out var gcs))
+                child.SetMeta("grid_col_span", gcs);
+            if (int.TryParse(Attr(childEl, "RowSpan"), out var grs))
+                child.SetMeta("grid_row_span", grs);
+        }
         if (parent is TabContainer tc)
         {
             var title = Attr(childEl, "Title");
@@ -217,7 +234,15 @@ public partial class NctXmlRenderer : RefCounted
 
         // Layout attributes are consumed by the parent's placement
         // pass (PostPlaceChild), never set as properties.
-        if (attr is "Dock" or "Expand" or "Title") return;
+        if (attr is "Dock" or "Expand" or "Title"
+            or "Column" or "Row" or "ColumnSpan" or "RowSpan" or "Area") return;
+
+        // A Grid's own spec attributes are consumed by its
+        // registry factory (both engines), never set as properties.
+        if ((control is NctGridContainer || control.GetClass() == "NctGridNative")
+            && (attr is "Columns" or "Rows" or "Proportions" or "Areas"
+                or "Breakpoints" or "Gap" or "Padding" or "Baseline"
+                or "BaselineOffset" or "Engine")) return;
 
         // Handlers: on<Signal>="MethodName" on the host (§6.2).
         if (attr.Length > 2 && attr.StartsWith("on") && char.IsUpper(attr[2]))
