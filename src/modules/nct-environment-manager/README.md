@@ -24,3 +24,15 @@ so tests can see who said what. A real message bus replaces the
 log behind this same interface when a second consumer arrives.
 The modes/ placeholder is unchanged. Plan:
 src/plans/ENVIRONMENT-MANAGER.md §1, §8.
+
+SLICE 3 (2026-11-26, agent-build-log/23): the shell's furniture
+lives here — furniture/top-bar.nctxml and
+furniture/side-tabs.nctxml are shell-kind NCTXML documents,
+rendered by the nctxml interpreter and registered with the
+window manager as panel windows; their buttons launch apps
+through nct-app-registry. The Slice 3 harness
+(harness/Slice3Harness.cs) composes root + window manager +
+app registry + security policy in one scene. The bus is still
+a log — Slice 3's app.launched / app.crashed announcements are
+its second real consumer in embryo; the real bus lands when a
+module must react, not just record.

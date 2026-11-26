@@ -83,6 +83,11 @@ if [ -n "$GODOT" ]; then
   # a tier-2 rig proof, not claimed here (agent-build-log/22).
   out=$(python3 "$SRC/modules/nct-recovery-manager/test_recovery.py" 2>&1)
   echo "$out" | grep -q "SLICED_OK" && ok "t0 recovery sliceD tui+entry" || bad "t0 recovery sliceD tui+entry" "$out"
+  # Slice 3: shell furniture as shell-kind NCTXML under the
+  # window manager, app registry + launch, security profiles +
+  # indicators at specced-not-built scope (agent-build-log/23).
+  out=$("$GODOT" --headless --path "$SRC/modules" res://nct-environment-manager/harness/main.tscn 2>&1)
+  echo "$out" | grep -q "SLICE3_OK" && ok "t0 slice3 shell+registry+security" || bad "t0 slice3 shell+registry+security" "$out"
   # Launch model 2: the same projects as .pck packs on the shared
   # runtime (the shipped form). Build to the results dir, then run
   # the shell pack through nct-godot-run's --main-pack path.
