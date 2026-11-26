@@ -1,0 +1,4 @@
+Pillow>=10
+numpy>=1.26
+netCDF4>=1.6
+requests>=2.31
