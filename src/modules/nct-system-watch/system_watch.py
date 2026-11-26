@@ -17,9 +17,10 @@ Slice B scope: the two loudest silences — failed units and
 coredumps. Later sources (SMART, DKMS, firmware, conflicts)
 join through the same feed as their bridge domains land.
 
-The watch consumes desktop-bus events (the shapes
-nct-linux-sys-interface republishes) plus crash events of the
-shape the bridge's crashes domain will publish:
+The watch consumes desktop-bus events — the shapes
+nct-linux-sys-interface republishes, crashes included (the
+bridge's coredump domain publishes them since the breadth
+work, 2026-11-26):
   {"event": "crash", "binary": "...", "app": "...", "signal": 11}
 """
 
@@ -150,6 +151,28 @@ class SystemWatch:
                        if i["state"] not in ("resolved", "dismissed")]
         return sorted(open_issues,
                       key=lambda i: (SEVERITY_ORDER[i["severity"]], i["since"]))
+
+    def inbox_contexts(self):
+        """The Attention inbox as render contexts (SYSTEM-
+        INTERFACE §3): the bar item's text — persistent in the
+        bar until resolved or dismissed — and one context per
+        open Issue, severity-ordered, with its way out as text.
+        Views render these; they hold no copy of the Issues."""
+        open_issues = self.inbox()
+        bar = {"AttentionText": ("Attention: %d open" % len(open_issues)
+                                 if open_issues else "Attention: clear"),
+               "OpenCount": len(open_issues)}
+        issues = []
+        for issue in open_issues:
+            issues.append({
+                "Key": issue["key"],
+                "Title": issue["title"],
+                "Severity": issue["severity"],
+                "Since": issue["since"],
+                "Occurrences": issue["occurrences"],
+                "Actions": " · ".join(a["label"] for a in issue["actions"]),
+            })
+        return {"bar": bar, "issues": issues}
 
     def acknowledge(self, key):
         issue = self.issues.get(key)

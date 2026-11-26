@@ -16,3 +16,12 @@ evidence, Fix/Open/Report actions, severity-ordered Attention
 inbox, JSON persistence, dismissal with reason). Later sources
 (SMART, DKMS, firmware) join the same feed. Plan:
 src/plans/SYSTEM-INTERFACE.md §3, §6.
+
+BREADTH (2026-11-26, agent-build-log/24): crash Issues now
+arrive from the bridge's crashes domain (the hand-fed event
+shape is retired), and the Attention inbox has its surface:
+inbox_contexts() publishes the bar text and per-Issue contexts;
+views/attention-bar.nctxml (a shell-kind bar item, seated in
+the Top layer) and views/attention-pane.nctxml render them.
+inbox_snapshot.py is the seam: bridge fixtures -> watch ->
+contexts JSON -> shell rendering.

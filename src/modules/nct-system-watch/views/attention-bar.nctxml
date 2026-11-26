@@ -1,0 +1,5 @@
+<shell xmlns:nct="nct" Id="attention-bar" Name="Attention" RequestedStyle="panel">
+  <Stack Orientation="horizontal">
+    <Label Name="AttentionText" Text="{AttentionText}" />
+  </Stack>
+</shell>

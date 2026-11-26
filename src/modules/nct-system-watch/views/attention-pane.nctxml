@@ -1,0 +1,8 @@
+<pane xmlns:nct="nct">
+  <Stack>
+    <Label Name="Title" Text="{Title}" />
+    <Label Name="Severity" Text="{Severity}" />
+    <Label Name="Since" Text="{Since}" />
+    <Label Name="Actions" Text="{Actions}" />
+  </Stack>
+</pane>
