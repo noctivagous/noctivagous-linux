@@ -9,4 +9,11 @@ Owns:
 
 Hosting / language: Shell process — GDScript views over the sys-interface object tree; checks run through sys-interface.
 
-Status: STUB — laid out 2026-11-26, not built. Plan: src/plans/SYSTEM-INTERFACE.md §4.
+Status: SLICE C BUILT (2026-11-26, agent-build-log/21) —
+device_centre.py: the Secure Boot four-state check (built /
+signed / enrolled / loaded as separate checkable states with
+the action for the failing layer), DKMS pre-flight (the update
+waits rather than rebooting into a broken pair), the rollback
+target, power-backend naming with conflicts stated, and the
+view contexts behind device-pane.nctxml. Plan:
+src/plans/SYSTEM-INTERFACE.md §4, §6.

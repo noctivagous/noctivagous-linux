@@ -1,0 +1,10 @@
+<pane xmlns:nct="nct">
+  <Stack>
+    <Label Name="DeviceName" Text="{DeviceName}" />
+    <Label Name="Built" Text="{Built}" />
+    <Label Name="Signed" Text="{Signed}" />
+    <Label Name="Enrolled" Text="{Enrolled}" />
+    <Label Name="Loaded" Text="{Loaded}" />
+    <Label Name="Verdict" Text="{Verdict}" />
+  </Stack>
+</pane>
