@@ -15,7 +15,16 @@ Event shapes (what a source emits):
   {"type": "unit",    "id": "greetd.service", "props": {...}}
   {"type": "journal", "unit": "greetd.service", "priority": 6,
    "message": "...", "message_id": "..." (optional)}
+  {"type": "coredump", "id": "coredump-1042",
+   "binary": "/opt/nct/apps/nct-hello", "app": "NCT Hello",
+   "signal": 11, "pid": 1042, "when": "2026-11-26T05:58:11Z"}
+
+CoredumpSource is the live crashes backend (systemd-coredump,
+via coredumpctl's data). Like SystemdSource it reports its
+availability honestly rather than reflecting nothing.
 """
+
+import shutil
 
 import json
 
@@ -42,6 +51,23 @@ class FixtureSource:
             emit(self.events.pop(0))
             n += 1
         return n
+
+
+class CoredumpSource:
+    name = "systemd-coredump"
+
+    def available(self):
+        if shutil.which("coredumpctl") is None:
+            return False, "coredumpctl not present on this machine"
+        return True, "systemd-coredump via coredumpctl"
+
+    def pump(self, emit, count=None):
+        # The live pump follows coredump arrivals (the daemon
+        # watches the coredump journal fields); like the systemd
+        # source it is driven by the bridge daemon's serve loop,
+        # not by tests.
+        raise NotImplementedError(
+            "live coredump pump runs under the bridge daemon's serve()")
 
 
 class SystemdSource:

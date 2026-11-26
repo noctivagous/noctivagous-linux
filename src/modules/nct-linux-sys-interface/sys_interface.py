@@ -6,13 +6,17 @@ republishes changes on the desktop bus in desktop terms — a unit's
 health, not its D-Bus property bag. Nothing else in the desktop
 opens its own connection to a system service.
 
-Slice A scope: systemd units + journal. Other domains (power,
-network, devices, packages, firmware, crashes, authority) join
-the same tree as their sources land — crashes arrive in Slice B
-through system-watch's own feed, devices in Slice C.
+Slice A scope: systemd units + journal. Breadth (2026-11-26):
+the crashes domain (systemd-coredump) joins the tree at
+/crashes/<id> and is republished in the exact event shape
+nct-system-watch consumes — Slice B's crash feed is now the
+bridge's, not a hand-fed shape. Other domains (power, network,
+devices, packages, firmware, authority) join the same tree as
+their sources land.
 
 Run standalone:
   python3 sys_interface.py --fixture fixtures/systemd-journal.jsonl \
+      --fixture fixtures/crashes.jsonl \
       --snapshot-out tree.json --events-out events.jsonl
 """
 
@@ -83,11 +87,30 @@ class SysInterface:
             self._publish({"event": "journal.entry", "unit": unit,
                            "priority": event.get("priority", 6),
                            "message": event.get("message", "")})
+        elif kind == "coredump":
+            crash_id = event["id"]
+            props = {"binary": event.get("binary", ""),
+                     "app": event.get("app", ""),
+                     "signal": event.get("signal"),
+                     "pid": event.get("pid"),
+                     "when": event.get("when", "")}
+            self.tree.update("/crashes/" + crash_id, props)
+            # Republished in the shape the watch's crash triage
+            # consumes (SYSTEM-INTERFACE §3): the bridge is the
+            # feed now, not a parallel channel.
+            self._publish({"event": "crash", "crash_id": crash_id,
+                           "binary": props["binary"],
+                           "app": props["app"],
+                           "signal": props["signal"]})
 
     # -- views over the tree ----------------------------------------
     def failed_units(self):
         return sorted(u for u, p in self.tree.children("/units").items()
                       if p.get("health") == "failed")
+
+    def crashes(self):
+        """Crash records by id: {id: {binary, app, signal, ...}}."""
+        return self.tree.children("/crashes")
 
     def snapshot(self):
         return {"backend": self.backend, "tree": self.tree.snapshot()}
@@ -96,7 +119,8 @@ class SysInterface:
 def main(argv):
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument("--fixture", required=True)
+    ap.add_argument("--fixture", required=True, action="append",
+                    help="a fixture stream; repeat for several domains")
     ap.add_argument("--snapshot-out")
     ap.add_argument("--events-out")
     args = ap.parse_args(argv)
@@ -105,8 +129,9 @@ def main(argv):
     bridge = SysInterface()
     events = []
     bridge.on_bus(events.append)
-    bridge.attach(FixtureSource(args.fixture))
-    bridge.pump()
+    for fixture in args.fixture:
+        bridge.attach(FixtureSource(fixture))
+        bridge.pump()
     if args.snapshot_out:
         with open(args.snapshot_out, "w", encoding="utf-8") as f:
             json.dump(bridge.snapshot(), f, indent=1, sort_keys=True)
@@ -114,10 +139,11 @@ def main(argv):
         with open(args.events_out, "w", encoding="utf-8") as f:
             for e in events:
                 f.write(json.dumps(e) + "\n")
-    print("sys-interface: backend=%s units=%d failed=%s" % (
+    print("sys-interface: backend=%s units=%d failed=%s crashes=%d" % (
         bridge.backend["name"],
         len(bridge.tree.children("/units")),
-        ",".join(bridge.failed_units()) or "none"))
+        ",".join(bridge.failed_units()) or "none",
+        len(bridge.crashes())))
     return 0
 
 

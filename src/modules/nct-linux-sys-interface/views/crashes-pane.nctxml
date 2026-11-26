@@ -1,0 +1,9 @@
+<pane xmlns:nct="nct">
+  <Stack>
+    <Label Text="Crashes" />
+    <Label Name="Summary" Text="{Summary}" />
+    <Label Name="Cr1" Text="{Cr1}" />
+    <Label Name="Cr2" Text="{Cr2}" />
+    <Label Name="Cr3" Text="{Cr3}" />
+  </Stack>
+</pane>

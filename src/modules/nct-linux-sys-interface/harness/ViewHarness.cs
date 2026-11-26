@@ -69,6 +69,28 @@ public partial class ViewHarness : Control
         for (int i = 0; i < lines.Count && i < 4; i++)
             logs.Set("L" + (i + 1), lines[i]);
 
+        // --- Crashes context from /crashes (breadth: the
+        // coredump domain joins the same tree) ---
+        var crashIds = new List<string>();
+        foreach (var key in tree.Keys)
+            if (key.AsString().StartsWith("/crashes/"))
+                crashIds.Add(key.AsString().Substring("/crashes/".Length));
+        crashIds.Sort();
+        bool hasCrashes = crashIds.Count > 0;
+        var crashCtx = new NctDataObject();
+        if (hasCrashes)
+        {
+            var apps = new HashSet<string>();
+            for (int i = 0; i < crashIds.Count; i++)
+            {
+                var p = tree["/crashes/" + crashIds[i]].AsGodotDictionary();
+                apps.Add(p["app"].AsString());
+                crashCtx.Set("Cr" + (i + 1),
+                    $"{p["app"].AsString()} — signal {p["signal"].AsInt32()} — {p["when"].AsString()}");
+            }
+            crashCtx.Set("Summary", $"{crashIds.Count} crashes · {apps.Count} apps");
+        }
+
         var renderer = new NctXmlRenderer();
         var svcDoc = renderer.Load(
             "res://nct-linux-sys-interface/views/services-pane.nctxml", this, svc);
@@ -76,6 +98,19 @@ public partial class ViewHarness : Control
             "res://nct-linux-sys-interface/views/logs-pane.nctxml", this, logs);
         AddChild(svcDoc.Root);
         AddChild(logDoc.Root);
+        if (hasCrashes)
+        {
+            var crashDoc = renderer.Load(
+                "res://nct-linux-sys-interface/views/crashes-pane.nctxml", this, crashCtx);
+            AddChild(crashDoc.Root);
+            var crashText = AllLabelText(crashDoc.Root);
+            Check(crashText.Contains("NCT Hello — signal 11"),
+                "Crashes view does not show the hello crash: " + crashText);
+            Check(crashText.Contains("Fake Browser — signal 6"),
+                "Crashes view does not show the browser crash: " + crashText);
+            Check(crashText.Contains("3 crashes · 2 apps"),
+                "Crashes summary wrong: " + crashText);
+        }
 
         var svcText = AllLabelText(svcDoc.Root);
         var logText = AllLabelText(logDoc.Root);
@@ -91,6 +126,7 @@ public partial class ViewHarness : Control
         if (_failures.Count == 0)
         {
             GD.Print("SLICEA_VIEWS_OK");
+            if (hasCrashes) GD.Print("CRASHES_VIEW_OK");
             GetTree().Quit(0);
         }
         else

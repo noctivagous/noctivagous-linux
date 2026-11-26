@@ -18,3 +18,12 @@ fixture feed, and the Services/Logs NCTXML views with their
 render harness. Proven against the fixture feed; a live
 systemd is a rig proof, owed. Plan:
 src/plans/SYSTEM-INTERFACE.md §1, §6.
+
+BREADTH (2026-11-26, agent-build-log/24): the crashes domain
+(systemd-coredump) joins the tree at /crashes/<id> and is
+republished on the bus in the exact shape nct-system-watch
+consumes — the bridge is the crash feed now. A third view
+(views/crashes-pane.nctxml) renders the domain from a snapshot.
+CoredumpSource reports its availability honestly (coredumpctl).
+Remaining domains per §1: session/power, network, devices,
+packages, firmware, authority.

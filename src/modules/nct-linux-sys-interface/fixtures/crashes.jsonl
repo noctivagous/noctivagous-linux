@@ -1,0 +1,3 @@
+{"type": "coredump", "id": "coredump-1042", "binary": "/opt/nct/apps/nct-hello", "app": "NCT Hello", "signal": 11, "pid": 1042, "when": "2026-11-26T05:58:11Z"}
+{"type": "coredump", "id": "coredump-1177", "binary": "/usr/bin/fake-browser", "app": "Fake Browser", "signal": 6, "pid": 1177, "when": "2026-11-26T06:01:40Z"}
+{"type": "coredump", "id": "coredump-1203", "binary": "/opt/nct/apps/nct-hello", "app": "NCT Hello", "signal": 11, "pid": 1203, "when": "2026-11-26T06:02:03Z"}
