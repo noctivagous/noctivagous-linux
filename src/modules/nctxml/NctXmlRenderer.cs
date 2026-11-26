@@ -99,6 +99,16 @@ public partial class NctXmlRenderer : RefCounted
         }
         if (kind == "preview")
             doc.Manifest["for"] = Attr(rootEl, "For") ?? "";
+        if (kind == "shell")
+        {
+            // Shell furniture (NCTXML.md §2): identity + the style
+            // it requests from the window manager (panel by
+            // default — a bar or side tab; dashboard for a pinned
+            // widget).
+            doc.Manifest["id"] = Attr(rootEl, "Id") ?? "";
+            doc.Manifest["name"] = Attr(rootEl, "Name") ?? "";
+            doc.Manifest["requested_style"] = Attr(rootEl, "RequestedStyle") ?? "panel";
+        }
         if (kind == "window" && Attr(rootEl, "Title") is string t)
             root.Name = t;
 

@@ -1,0 +1,8 @@
+<shell xmlns:nct="nct" Id="top-bar" Name="Top Bar" RequestedStyle="panel">
+  <Stack Orientation="horizontal">
+    <Label Name="ShellTitle" Text="{ShellTitle}" />
+    <Button Name="LaunchHello" Text="NCT Hello" onPressed="OnLaunchHello" />
+    <Button Name="LaunchNotes" Text="Notes" onPressed="OnLaunchNotes" />
+    <Label Name="Clock" Text="{Clock}" />
+  </Stack>
+</shell>

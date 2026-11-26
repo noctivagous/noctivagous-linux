@@ -1,0 +1,7 @@
+<shell xmlns:nct="nct" Id="side-tabs" Name="Side Tabs" RequestedStyle="panel">
+  <Stack>
+    <Button Name="Workspace1" Text="Workspace 1" onPressed="OnWorkspace1" />
+    <Button Name="Workspace2" Text="Workspace 2" onPressed="OnWorkspace2" />
+    <Label Name="ActiveWorkspace" Text="{ActiveWorkspace}" />
+  </Stack>
+</shell>
