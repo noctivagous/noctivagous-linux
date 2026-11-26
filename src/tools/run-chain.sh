@@ -107,6 +107,13 @@ if [ -n "$GODOT" ]; then
   else
     bad "t0 attention inbox surface" "context generation failed"
   fi
+  # The grid comparison below needs the native engine, which Godot
+  # finds through .godot/extension_list.cfg — an artefact only an
+  # editor import writes. A fresh checkout has none and plain --path
+  # runs do not create it, so import once here. The importer's own
+  # exit code is unreliable on this build (it can crash on exit after
+  # writing the artefact); the comparison remains the judge.
+  "$GODOT" --headless --import --path "$SRC/modules" > "$RES/import-modules.log" 2>&1 || true
   # NCTXML Grid: the system's own grid model (ported from
   # NCTGraphite), two engines (agent-build-log/28). The
   # comparison check needs the committed native library
