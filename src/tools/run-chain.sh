@@ -38,6 +38,51 @@ if [ -n "$GODOT" ]; then
   done
   out=$("$GODOT" --headless --path "$SRC/godot/shell" -- --self-test 2>&1)
   echo "$out" | grep -q "SHELL_SELFTEST_OK" && ok "t0 shell self-test" || bad "t0 shell self-test" "$out"
+  # Modules Slice 1: window + layer manager skeleton, fake windows of
+  # every style, conversion + freeze measured from the scene tree.
+  out=$("$GODOT" --headless --path "$SRC/modules" -- --self-test 2>&1)
+  echo "$out" | grep -q "SLICE1_SELFTEST_OK" && ok "t0 modules slice1 self-test" || bad "t0 modules slice1 self-test" "$out"
+  # Modules Slice 2: the NCTXML interpreter (C#). The assembly must
+  # be built before Godot runs — a .NET SDK on the build machine is
+  # required (agent-build-log/17, finding 2).
+  DOTNET="${DOTNET:-dotnet}"
+  if command -v "$DOTNET" > /dev/null 2>&1 && "$DOTNET" build -v q -nologo "$SRC/modules" > "$RES/nctxml-build.log" 2>&1; then
+    ok "t0 nctxml assembly build"
+    out=$("$GODOT" --headless --path "$SRC/modules" res://nctxml/harness/main.tscn -- --self-test 2>&1)
+    echo "$out" | grep -q "NCTXML_SELFTEST_OK" && ok "t0 nctxml slice2 self-test" || bad "t0 nctxml slice2 self-test" "$out"
+  else
+    bad "t0 nctxml assembly build" "dotnet SDK missing or build failed — see nctxml-build.log"
+  fi
+  # System-interface Slice A: the sys-interface bridge against its
+  # fixture feed, then the Services/Logs views rendered from the
+  # bridge's snapshot by the NCTXML interpreter.
+  out=$(python3 "$SRC/modules/nct-linux-sys-interface/test_sys_interface.py" 2>&1)
+  echo "$out" | grep -q "SLICEA_OK" && ok "t0 sys-interface sliceA bridge" || bad "t0 sys-interface sliceA bridge" "$out"
+  if python3 "$SRC/modules/nct-linux-sys-interface/sys_interface.py" --fixture "$SRC/modules/nct-linux-sys-interface/fixtures/systemd-journal.jsonl" --snapshot-out "$RES/sys-tree.json" > /dev/null 2>&1; then
+    out=$("$GODOT" --headless --path "$SRC/modules" res://nct-linux-sys-interface/harness/main.tscn -- --snapshot "$RES/sys-tree.json" 2>&1)
+    echo "$out" | grep -q "SLICEA_VIEWS_OK" && ok "t0 sys-interface sliceA views" || bad "t0 sys-interface sliceA views" "$out"
+  else
+    bad "t0 sys-interface sliceA views" "snapshot generation failed"
+  fi
+  # System-interface Slice B: system-watch triage on the Slice A
+  # bridge (failed units + coredumps -> standing Issues).
+  out=$(python3 "$SRC/modules/nct-system-watch/test_system_watch.py" 2>&1)
+  echo "$out" | grep -q "SLICEB_OK" && ok "t0 system-watch sliceB triage" || bad "t0 system-watch sliceB triage" "$out"
+  # System-interface Slice C: device-centre logic (Secure Boot
+  # four-state, DKMS pre-flight, power naming) + its NCTXML view.
+  out=$(python3 "$SRC/modules/nct-device-centre/test_device_centre.py" 2>&1)
+  echo "$out" | grep -q "SLICEC_OK" && ok "t0 device-centre sliceC logic" || bad "t0 device-centre sliceC logic" "$out"
+  if python3 "$SRC/modules/nct-device-centre/device_centre.py" --fixture "$SRC/modules/nct-device-centre/fixtures/devices.json" --contexts-out "$RES/device-contexts.json" > /dev/null 2>&1; then
+    out=$("$GODOT" --headless --path "$SRC/modules" res://nct-device-centre/harness/main.tscn -- --contexts "$RES/device-contexts.json" 2>&1)
+    echo "$out" | grep -q "SLICEC_VIEW_OK" && ok "t0 device-centre sliceC view" || bad "t0 device-centre sliceC view" "$out"
+  else
+    bad "t0 device-centre sliceC view" "context generation failed"
+  fi
+  # System-interface Slice D: recovery TUI (menu model + pty
+  # smoke) and boot-entry consistency. Booting into recovery is
+  # a tier-2 rig proof, not claimed here (agent-build-log/22).
+  out=$(python3 "$SRC/modules/nct-recovery-manager/test_recovery.py" 2>&1)
+  echo "$out" | grep -q "SLICED_OK" && ok "t0 recovery sliceD tui+entry" || bad "t0 recovery sliceD tui+entry" "$out"
   # Launch model 2: the same projects as .pck packs on the shared
   # runtime (the shipped form). Build to the results dir, then run
   # the shell pack through nct-godot-run's --main-pack path.
