@@ -48,3 +48,10 @@ coverage/
 
 # Python bytecode from the module services
 __pycache__/
+
+# NCTXML Grid native engine: the godot-cpp clone is a build
+# input, not source (gdextension/build.sh re-clones it). The
+# built library in src/modules/bin/ IS committed on purpose.
+src/modules/gdextension/godot-cpp/
+src/modules/gdextension/.sconsign.dblite
+src/modules/gdextension/src/*.os

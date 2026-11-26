@@ -1,0 +1,14 @@
+#!/usr/bin/env python
+# Builds the NCTXML Grid native engine (NctGridNative) against
+# the vendored godot-cpp (see build.sh — the clone is NOT in
+# git). The library lands in src/modules/bin/ under the stable
+# name the .gdextension file references.
+import os
+
+env = SConscript("godot-cpp/SConstruct")
+env.Append(CPPPATH=["src/"])
+sources = Glob("src/*.cpp")
+
+libpath = "../bin/libnctgrid.linux.x86_64" + env["SHLIBSUFFIX"]
+library = env.SharedLibrary(libpath, source=sources)
+Default(library)
