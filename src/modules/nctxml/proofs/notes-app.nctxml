@@ -1,0 +1,9 @@
+<app xmlns:nct="nct" Id="nct.notes" Name="Notes" RequestedStyle="normal" SingleInstance="true">
+  <settings Src="notes-settings.nctxml" />
+  <Stack>
+    <Label Name="TitleEcho" Text="{NoteTitle}" />
+    <TextField Name="TitleField" Text="{NoteTitle, Mode=TwoWay}" Placeholder="Note title" />
+    <nct:LabelledSlider Name="PrioritySlider" Label="Priority" Value="{Priority, Mode=TwoWay}" Max="5" />
+    <Button Name="NotifyButton" Text="Notify me" onPressed="OnAppNotify" />
+  </Stack>
+</app>

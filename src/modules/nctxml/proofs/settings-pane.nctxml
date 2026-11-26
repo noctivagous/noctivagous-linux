@@ -1,0 +1,9 @@
+<pane xmlns:nct="nct">
+  <Stack>
+    <Label Text="Settings" />
+    <Label Name="NameEcho" Text="{UserName}" />
+    <TextField Name="NameField" Text="{UserName, Mode=TwoWay}" Placeholder="Your name" />
+    <nct:LabelledSlider Name="VolumeSlider" Label="Volume" Value="{Volume, Mode=TwoWay}" />
+    <CheckBox Name="DarkModeBox" Text="Dark mode" ButtonPressed="{DarkMode, Mode=TwoWay}" />
+  </Stack>
+</pane>

@@ -1,0 +1,7 @@
+<window xmlns:nct="nct" Title="Hello Window">
+  <Stack>
+    <Label Text="An isolated window: the window manager only, no services, no registry entry." />
+    <nct:LabelledSlider Name="WinSlider" Label="Level" Value="{Level, Mode=TwoWay}" />
+    <Button Name="PingButton" Text="Ping" onPressed="OnWindowPing" />
+  </Stack>
+</window>

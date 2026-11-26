@@ -1,0 +1,6 @@
+<pane xmlns:nct="nct">
+  <Stack>
+    <Label Text="Notes settings" />
+    <CheckBox Name="AutoSaveBox" Text="Auto-save" ButtonPressed="{AutoSave, Mode=TwoWay}" />
+  </Stack>
+</pane>

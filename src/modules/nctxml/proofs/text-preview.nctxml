@@ -1,0 +1,8 @@
+<preview xmlns:nct="nct" For="txt,md,png">
+  <Stack>
+    <Label Name="Body" Text="{Text}" />
+    <TextField Name="EditField" Text="{Text, Mode=TwoWay}" />
+    <Image Name="Pic" Src="{ImagePath}" />
+    <Button Name="OpenButton" Text="Open externally" onPressed="OnPreviewOpen" />
+  </Stack>
+</preview>

@@ -1,0 +1,13 @@
+<component Name="LabelledSlider" xmlns:nct="nct">
+  <properties>
+    <property Name="Label" Type="string" Default="" />
+    <property Name="Value" Type="float" Default="0" />
+    <property Name="Min" Type="float" Default="0" />
+    <property Name="Max" Type="float" Default="100" />
+  </properties>
+  <Stack Orientation="horizontal">
+    <Label Text="{Label}" />
+    <Slider Name="Slider" Min="{Min}" Max="{Max}" Value="{Value, Mode=TwoWay}" Expand="true" />
+    <Label Name="ValueLabel" Text="{Value, Converter=Round}" />
+  </Stack>
+</component>
