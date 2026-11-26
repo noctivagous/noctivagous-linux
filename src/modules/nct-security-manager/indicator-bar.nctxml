@@ -1,0 +1,9 @@
+<shell xmlns:nct="nct" Id="indicator-bar" Name="Indicator Bar" RequestedStyle="panel">
+  <Stack>
+    <Label Name="AppLine" Text="{AppLine}" />
+    <Label Name="Mic" Text="{MicText}" />
+    <Label Name="Camera" Text="{CameraText}" />
+    <Label Name="Network" Text="{NetworkText}" />
+    <Label Name="Spawn" Text="{SpawnText}" />
+  </Stack>
+</shell>

@@ -12,4 +12,16 @@ Hosting / language: Split: policy evaluation in the shell (C#); the enforcement 
 Mode slices (nct-environment-manager/modes/ — PLACEHOLDER):
 - Computer Use: Host = every service LAN-only by default; internet-facing is a per-service ASK under this module's policy; the single 'What's exposed?' screen is a view over its records. Kiosk = locked down by default, settings unreachable without admin auth.
 
-Status: STUB — laid out 2026-11-26, not built. Plan: src/plans/ENVIRONMENT-MANAGER.md §1; repo-root security/SECURITY-MODEL.md, MATRIX-SPEC.md, MONITOR-APP.md.
+Status: SLICE 3, SPECCED-NOT-BUILT SCOPE (2026-11-26,
+agent-build-log/23) — exactly the plan's line: profiles READ
+(profiles.json, transcribed from security/MATRIX-SPEC.md
+Axes 1+3; SecurityPolicy.cs evaluates any profile x capability
+cell and names the plug a PLUG cell redirects to) and
+indicators RENDERED (IndicatorTracker computes I0-I5 states
+per Axis 5 from the disposition in force; the states are
+carried on the window record and rendered by the shell via
+indicator-bar.nctxml — this module does not draw, §6). NO
+enforcement: nothing is granted, denied, plugged or sandboxed
+by this code; the guard and its plugs are later work. Plan:
+src/plans/ENVIRONMENT-MANAGER.md §7 Slice 3; spec:
+repo-root security/SECURITY-MODEL.md, MATRIX-SPEC.md.
