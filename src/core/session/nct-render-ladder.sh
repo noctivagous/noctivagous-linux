@@ -86,6 +86,10 @@ ladder_run() {
   # A marker from an earlier run must not bless this one.
   rm -f "$_lr_dir/login-started"
   ladder_rotate "$_lr_dir" "$_lr_log"
+  # Per-run header: the ladder logs are append-only across boots and
+  # attempts; this stamp is what separates one run's segment from
+  # every earlier era in the same file.
+  echo "=== ladder run $(date -Is) cmd=$* ===" >> "$_lr_dir/$_lr_log"
   # Attempt order: the pinned/remembered rung first, then down to the
   # bottom, then wrap to the top — each rung at most once.
   if [ -n "${NCT_RENDER_RUNG:-}" ]; then

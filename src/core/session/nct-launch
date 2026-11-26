@@ -18,6 +18,12 @@ if ! cmd=$("$here/nct-resolve-cmd" "$key"); then
   echo "nct-launch: cannot resolve key $key for id $id" >&2
   exit 3
 fi
-echo "$(date -Is) launch $id -> $cmd" >> "$state/launch.log"
+# Stamp the launch with the compositor instance it lands in (socket
+# + PID): when an app later dies or a window never appears, its log
+# segment can be tied to the exact compositor attempt that hosted it
+# instead of guessed from an append-only stream.
+comp_pid=$(pgrep -u "$(id -u)" -f 'labwc|sway' 2>/dev/null | head -1)
+echo "$(date -Is) launch $id -> $cmd (wayland=${WAYLAND_DISPLAY:-none} comp_pid=${comp_pid:-none})" >> "$state/launch.log"
+echo "=== launch $(date -Is) id=$id wayland=${WAYLAND_DISPLAY:-none} comp_pid=${comp_pid:-none} cmd=$cmd ===" >> "$state/$id.log"
 PATH="$here:$PATH" NCT_SRC="$src" nohup sh -c "$cmd" >> "$state/$id.log" 2>&1 &
 echo "launched $id ($cmd)"
