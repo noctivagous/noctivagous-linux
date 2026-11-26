@@ -75,6 +75,20 @@ check05() { # launch the three citizens inside the live session
   local uid_nct; uid_nct=$(id -u nct)
   local disp; disp=$(ls /run/user/$uid_nct/wayland-* 2>/dev/null | grep -v lock | head -1 | xargs -n1 basename 2>/dev/null)
   [ -n "$disp" ] || { bad 05-launch "no wayland socket for nct (session running?)"; return; }
+  # The session's render ladder restarts labwc as it steps down rungs,
+  # and an app launched into an attempt that then dies loses its
+  # compositor and exits (qt.log: "The Wayland connection broke" on
+  # vmwgfx). Wait until the same labwc PID persists across 10 s — the
+  # ladder has settled — before launching (check09's pattern).
+  local pid1="" pid2="" tries=0
+  while [ $tries -lt 15 ]; do
+    pid1=$(pgrep -u nct -f "labwc" | head -1)
+    [ -n "$pid1" ] || { sleep 2; tries=$((tries+1)); continue; }
+    sleep 10
+    pid2=$(pgrep -u nct -f "labwc" | head -1)
+    [ "$pid1" = "$pid2" ] && break
+    tries=$((tries+1))
+  done
   sudo -u nct env XDG_RUNTIME_DIR=/run/user/$uid_nct WAYLAND_DISPLAY=$disp NCT_SRC=/usr/lib/nct \
     PATH=/usr/lib/nct/core/session:$PATH NCT_STATE_DIR=/home/nct/.local/state/nct \
     sh -c 'nct-launch firefox; nct-launch qt; nct-launch hello' > "$RES/05.log" 2>&1 || true
@@ -86,9 +100,16 @@ check05() { # launch the three citizens inside the live session
   if [ -z "$missing" ]; then ok 05-launch; else bad 05-launch "not running:$missing (A1/A8)"; fi
   sudo -u nct ls -la /home/nct/.local/state/nct/ >> "$RES/05.log" 2>&1 || true
 }
-check07() { # rendering: which Godot driver works in this VM?
+check07() { # rendering: the shipped hello pack runs on the pinned runtime
+  # The installed layout ships apps as .pck packs (launch model 2), so
+  # run the pack the way the system runs it — via nct-godot-run — and
+  # require the app's own READY line: an exit code alone would also
+  # pass a pack that failed to load. (The old form probed a project
+  # directory the deb no longer installs.)
   local r=""
-  if timeout 20 /usr/lib/nct/godot/godot --headless --path /usr/lib/nct/godot/apps/nct-hello --quit-after 5 >> "$RES/07.log" 2>&1; then r="headless-ok"; fi
+  : > "$RES/07.log"
+  if NCT_DISPLAY_DRIVER=headless timeout 30 /usr/lib/nct/core/session/nct-godot-run /usr/lib/nct/godot/apps/nct-hello.pck --quit-after 5 >> "$RES/07.log" 2>&1 \
+     && grep -q "NCT_HELLO_READY" "$RES/07.log"; then r="headless-ok"; fi
   if command -v vulkaninfo >/dev/null && vulkaninfo --summary >> "$RES/07.log" 2>&1; then r="$r vulkan-present"; fi
   [ -n "$r" ] && ok 07-rendering || bad 07-rendering "godot headless run failed (A7)"
   echo "rendering: $r" >> "$RES/summary.txt"
