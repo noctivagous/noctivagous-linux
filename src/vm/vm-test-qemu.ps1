@@ -82,8 +82,15 @@ $qemuArgs = @(
 )
 if ($Checks -ne "") { $qemuArgs += @("-display", "none") }
 
-function Start-Qemu([string]$accel) {
-  $args = @("-accel", $accel) + $qemuArgs
+# The CPU model is chosen per accelerator, and it is load-bearing:
+# QEMU's default (qemu64) lacks SSE4.2/POPCNT, and .NET 8's CoreCLR
+# requires that x86-64-v2 baseline — on the default CPU the distro's
+# mono Godot runtime aborts instantly and silently (exit 134), so
+# the greeter never appears and nothing logs why. "host" passes the
+# real CPU through under WHPX; "max" is the TCG equivalent (every
+# feature the emulator can provide).
+function Start-Qemu([string]$accel, [string]$cpu) {
+  $args = @("-accel", $accel, "-cpu", $cpu) + $qemuArgs
   if ($Checks -ne "") {
     $p = Start-Process $qemu -ArgumentList $args -PassThru -WindowStyle Hidden
   } else {
@@ -94,11 +101,11 @@ function Start-Qemu([string]$accel) {
 
 # WHPX first; if QEMU dies within a few seconds the accelerator is the
 # usual cause (feature disabled) — fall back to TCG and say so.
-$proc = Start-Qemu "whpx,kernel-irqchip=off"
+$proc = Start-Qemu "whpx,kernel-irqchip=off" "host"
 Start-Sleep -Seconds 4
 if ($proc.HasExited) {
   Write-Output "WHPX start failed (exit $($proc.ExitCode)) — falling back to TCG emulation (slower)."
-  $proc = Start-Qemu "tcg"
+  $proc = Start-Qemu "tcg" "max"
   Start-Sleep -Seconds 4
   if ($proc.HasExited) { throw "QEMU exited immediately under TCG too (exit $($proc.ExitCode)). Serial log: $serialLog" }
 } else {
