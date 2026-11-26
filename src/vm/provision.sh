@@ -15,6 +15,16 @@ tr -d '\r' < "$SRC/distro/debian/package-list.txt" | grep -v '^#' | grep -v '^$'
 # synced src/ so the guest never runs a hand-copied tree. curl/unzip
 # are build tools for that step only, not part of the distro set.
 apt-get install -y curl unzip
+# Building the .debs runs the mono Godot's pack export, which needs a
+# .NET 8 SDK, ICU and fontconfig on the BUILD host (found on the WSL
+# build host, 2026-11-26). Build-time only: the guest runs the mono
+# runtime without any of this (proven on the QEMU rig).
+# .NET is not packaged in Debian at all, so the SDK comes from
+# Microsoft's own apt repo (the WSL build host's source).
+curl -sSL https://packages.microsoft.com/config/debian/13/packages-microsoft-prod.deb -o /tmp/packages-microsoft-prod.deb
+dpkg -i /tmp/packages-microsoft-prod.deb
+apt-get update
+apt-get install -y dotnet-sdk-8.0 libicu76 fontconfig fonts-dejavu-core
 bash "$SRC/tools/build-deb.sh"
 # --reinstall: the version stays 0.1.0 across rig iterations, so a plain
 # install would be a no-op and the fix under test would never land.
