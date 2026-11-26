@@ -39,6 +39,18 @@
 
 LADDER_MAX=${LADDER_MAX:-3}
 
+# ladder_rotate DIR LOG — bound a ladder log's growth. An
+# error-looping attempt appends without limit (on the rig a 2 GB
+# cage.log filled the greeter's /tmp, breaking apt and logins).
+# Past the cap, keep one previous generation as .old, start fresh.
+LADDER_LOG_CAP=${NCT_LOG_CAP_BYTES:-10485760}
+ladder_rotate() {
+  _lrot_f=$1/$2
+  if [ -f "$_lrot_f" ] && [ "$(wc -c < "$_lrot_f")" -gt "$LADDER_LOG_CAP" ]; then
+    mv -f "$_lrot_f" "$_lrot_f.old" 2>/dev/null || true
+  fi
+}
+
 # ladder_apply RUNG — set the four rendering variables for RUNG.
 ladder_apply() {
   case "$1" in
@@ -73,6 +85,7 @@ ladder_run() {
   _lr_window=${NCT_LADDER_WINDOW:-10}
   # A marker from an earlier run must not bless this one.
   rm -f "$_lr_dir/login-started"
+  ladder_rotate "$_lr_dir" "$_lr_log"
   # Attempt order: the pinned/remembered rung first, then down to the
   # bottom, then wrap to the top — each rung at most once.
   if [ -n "${NCT_RENDER_RUNG:-}" ]; then
@@ -103,6 +116,7 @@ ladder_run() {
   fi
   _lr_code=1
   for _lr_rung in $_lr_order; do
+    ladder_rotate "$_lr_dir" "$_lr_log"
     ladder_apply "$_lr_rung"
     echo "ladder: attempt rung=$_lr_rung cmd=$*" >> "$_lr_dir/$_lr_log"
     _lr_t0=$(date +%s)
