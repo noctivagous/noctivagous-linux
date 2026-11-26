@@ -2,8 +2,10 @@
 
 Status: v1 PROTOTYPE BUILT 2026-11-26, landed on main (ae82b3c).
 v2 (adde provider) built and landed (eb12d0f). v3 (Himawari +
-VIIRS datasets) BUILT 2026-11-26 on feat/nct-weather-bridge, not
-pushed. Code: src/services/nct-weather-bridge/. First consumer:
+VIIRS datasets) built and landed (b0b93a5). v4 (the remaining
+ADDE families: rest of RTIMAGES, NEXRAD, RTGRIDS, RTPTSRC)
+BUILT 2026-11-26 on feat/nct-weather-bridge, not pushed.
+Code: src/services/nct-weather-bridge/. First consumer:
 src/godot/apps/nct-weather/ (Godot GOES viewer).
 
 ## What it is
@@ -51,7 +53,7 @@ dataset; every response names the provider that actually served it.
 | cira-slider | slider.cira.colostate.edu (RAMMB/CIRA) | HTTPS JSON + PNG tiles | BUILT — GOES-East/West CONUS GeoColor; Himawari full-disk GeoColor + band 13 (v3, provider generalised to sat/sector/product) |
 | nasa-gibs | gibs.earthdata.nasa.gov (NASA EOSDIS) | HTTPS WMS 1.3.0 GetMap | BUILT (v3) — VIIRS NOAA-20 true colour, CONUS, daily composite; first polar-orbiter source |
 | nodd-s3 | noaa-goes19 / noaa-goes18 S3 (NOAA Open Data) | HTTPS S3 listing + netCDF-4 | BUILT — GOES ABI CONUS band 13 (clean IR), rendered locally |
-| adde | adde.ucar.edu (McIDAS ADDE) | TCP 112 binary, built-in client (VisAD port) | BUILT (v2) — GOES CONUS band 2 visible (new datasets), band 13 as fallback for ir-clean; RTIMAGES group |
+| adde | adde.ucar.edu (McIDAS ADDE) | TCP 112 binary, built-in client (VisAD port) | BUILT (v2) — GOES CONUS band 2 visible (new datasets), band 13 as fallback for ir-clean; RTIMAGES group. EXTENDED (v4) — all of RTIMAGES, RTNEXRAD radar, RTGRIDS grids (kind `grid`), RTPTSRC point obs (kind `obs`); only RTWXTEXT outstanding |
 | edex | edex-cloud.unidata.ucar.edu (AWIPS II) | python-awips DataAccessLayer | specced, not built |
 | thredds | Unidata / NCEI THREDDS servers | HTTPS OPeNDAP / WMS / file | specced, not built |
 | weather-gov | api.weather.gov | HTTPS JSON | specced (geo-services weather section proper) |
@@ -145,7 +147,18 @@ render one frame, declare licence + cadence).
   Europe/Africa coverage. (Source page was an AI-generated Brave
   Ask answer — its details were treated as leads; everything
   above was verified by direct probing.)
-- v4: edex provider (python-awips; a gridded model field rendered
+- v4 (built): the rest of the McIDAS/ADDE source families on the
+  one built client — the remaining RTIMAGES imagery (band 8 WV,
+  full disk, mesoscale, derived PW/CTP, global/Mollweide/polar
+  composites), NEXRAD Level 3 composite reflectivity for two
+  sites (RTNEXRAD, raw levels + operational palette), RTGRIDS as
+  a new dataset kind `grid` (GFS 850 hPa temperature rendered
+  from the native grid; GDIR/GGET), and RTPTSRC as a new kind
+  `obs` (surface hourly records as JSON via /obs; MDKS). The
+  catalog now carries a per-dataset `kind` (frame/grid/obs).
+  RTWXTEXT is present on the server but its WTXG text dialect
+  is not implemented — the one McIDAS family left.
+- v5: edex provider (python-awips; a gridded model field rendered
   server-side) — proves the AWIPS path on the same API.
-- v5: push (WebSocket new-frame notice), place-relative products
+- v6: push (WebSocket new-frame notice), place-relative products
   via geo-services core, Settings → Location provider choice.
