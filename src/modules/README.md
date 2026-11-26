@@ -42,6 +42,9 @@ The hierarchy (one root, one tree — the unified-design rule):
     ├── nct-notification-centre     notifications
     ├── nct-transfer-service        clipboard, drag & drop
     ├── nct-settings-service        the settings registry
+    ├── nct-ai-gateway              AI resources for services and apps
+    ├── nct-communication-gateway     email, SMS, phone, social
+    ├── nct-geo-services            position, maps, weather
     ├── nct-theme-manager           appearance
     └── nct-accessibility-manager   access as a first-class service
 

@@ -163,6 +163,30 @@ manager's interface.
     │   ├── system pages (Platform Configuration, profiles, plugs, …)
     │   └── change notification to owners (no polling)
     │
+    ├── nct-ai-gateway                  AI resources, brokered
+    │   ├── connections + API keys (keys never handed to consumers),
+    │   │   models by modality, verified-only defaults
+    │   ├── MCP servers, connectors, skills library, CLI harnesses
+    │   └── declared system uses (system-watch troubleshooting,
+    │       monitoring summaries) under security-manager grants
+    │
+    ├── nct-communication-gateway  reaching people, brokered
+    │   ├── channels: email (IMAP/SMTP), SMS, phone (modem / SIP),
+    │   │   open social protocols (ActivityPub, Matrix, RSS)
+    │   ├── identities the user communicates as; sending AS the
+    │   │   user is ASK-class under security-manager
+    │   └── social platforms by tier: native protocol · official
+    │       API connector · the platform's own app (identity,
+    │       notifications and share hand-off only — no scraping)
+    │
+    ├── nct-geo-services                geographic matters, one place
+    │   ├── inbound: position sources (GNSS, WiFi, IP, manual);
+    │   │   exact position ASK-class; portal location asks are
+    │   │   answered here, with who-was-told-what recorded
+    │   └── outbound: maps / geocoding / routing (OpenStreetMap
+    │       first), weather at a place, offline + placeholder
+    │       geographic data badged as placeholder
+    │
     ├── nct-theme-manager               appearance
     │   ├── Theme resources, type variations, dark / light, accent
     │   ├── the annotated-SVG chrome set (<g:patch> 9-slice pipeline)
