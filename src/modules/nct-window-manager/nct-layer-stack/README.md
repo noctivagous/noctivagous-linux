@@ -8,4 +8,10 @@ Owns:
 
 Hosting / language: Shell process — GDScript, inside nct-window-manager.
 
-Status: STUB — laid out 2026-11-26, not built. Plan: src/plans/ENVIRONMENT-MANAGER.md §4.
+Status: SLICE 1 BUILT (2026-11-26, agent-build-log/17) —
+layer_stack.gd holds the frozen table, the style -> default-layer
+mapping (a dialog's layer follows its parent, resolved by the
+window manager), and the CanvasLayer values the shell renders
+with. The compositor-side stacking for foreign surfaces is
+driven from this same table when that link lands. Plan:
+src/plans/ENVIRONMENT-MANAGER.md §4.

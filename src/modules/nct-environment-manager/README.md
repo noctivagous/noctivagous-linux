@@ -17,4 +17,10 @@ Owns:
 
 Hosting / language: Shell process — GDScript (coordination only).
 
-Status: STUB — laid out 2026-11-26, not built. Plan: src/plans/ENVIRONMENT-MANAGER.md §1, §8.
+Status: SLICE 1 SKELETON (2026-11-26, agent-build-log/17) —
+environment_manager.gd: a module registry (register / look up)
+and a bus that is deliberately a log: announcements are recorded
+so tests can see who said what. A real message bus replaces the
+log behind this same interface when a second consumer arrives.
+The modes/ placeholder is unchanged. Plan:
+src/plans/ENVIRONMENT-MANAGER.md §1, §8.
