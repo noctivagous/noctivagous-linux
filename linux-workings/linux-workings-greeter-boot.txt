@@ -1,0 +1,24 @@
+> so greetd is flexible and can allow a single app to host its authentication and then move into its own desktop environment?
+
+Yes — [...], with one precision on who actually does the authenticating.
+The full sequence, as built:
+boot
+ └─ systemd starts greetd            ← the server/daemon (runs as root)
+     └─ greetd starts the GREETER SESSION, as the unprivileged greeter user:
+         cage (single-app compositor)
+          + bridge
+          + godot binary + greeter.pck     ← engine process #1
+     you type username / password
+     └─ on success, greetd starts the USER SESSION, as you:
+         labwc
+          + godot binary + shell.pck       ← engine process #2 (the desktop)
+          + godot binary + nct-hello.pck   ← engine process #3 (an app)
+          + Firefox, QTerminal…            ← not Godot at all
+So your picture is right: the greeter is a separate step before the desktop exists, it runs the engine, it ends — and then the desktop starts the same engine binary file again for the shell, and again per app. Sequential processes of one shared binary, never engine copies, and the greeter process is gone once the session starts (they only overlap briefly during the handoff).
+And yes, greetd is exactly that flexible — that's its whole design. greetd itself:
+- draws nothing, knows nothing about what a login screen looks like
+- just runs whatever command its config names as the greeter session, and later whatever command as the user session
+- speaks a small IPC protocol to the greeter: “start an auth conversation / here's a response / start the session”
+So the greeter can be a terminal prompt (agreety), a GTK app, a Qt app — or, in our case, a Godot app fullscreen under cage. Same on the other side: the “session” it hands over to can be GNOME, sway, or our nct-session. greetd is a turnstile, not a room.
+The one precision: the greeter app doesn't authenticate you — it hosts the conversation. It collects what you type and relays it; greetd, through PAM, decides whether the password is right and tells the greeter the verdict. That's deliberate: the greeter runs unprivileged as the greeter user, so the pretty UI never holds the authority. Our one wrinkle on top: Godot has no Unix-socket API, and greetd's IPC is a Unix socket — so our little bridge sits between them, translating the greeter's TCP lines (AUTH / START) to greetd IPC and back. That bridge is the only NCT-specific plumbing in the whole login step.
+And yes — your “same app, three framings” from the window-bar question is the same principle one level up: the app never changes, the host around it does.
