@@ -37,14 +37,16 @@ Errors are JSON: 404 unknown dataset/path, 502 with the provider
 chain detail when every provider for a dataset failed. Failure is
 data — render it, don't guess around it.
 
-## Datasets (v1)
+## Datasets
 
 | ID | What | Providers |
 |---|---|---|
 | `sat.goes-east.geocolor` | GOES-19 CONUS GeoColor | cira-slider |
 | `sat.goes-west.geocolor` | GOES-18 CONUS GeoColor | cira-slider |
-| `sat.goes-east.ir-clean` | GOES-19 ABI band 13 clean IR, CONUS | nodd-s3 |
-| `sat.goes-west.ir-clean` | GOES-18 ABI band 13 clean IR, CONUS | nodd-s3 |
+| `sat.goes-east.ir-clean` | GOES-19 ABI band 13 clean IR, CONUS | nodd-s3, adde |
+| `sat.goes-west.ir-clean` | GOES-18 ABI band 13 clean IR, CONUS | nodd-s3, adde |
+| `sat.goes-east.vis` | GOES-19 ABI band 2 visible 0.64 um, CONUS | adde |
+| `sat.goes-west.vis` | GOES-18 ABI band 2 visible 0.64 um, CONUS | adde |
 
 Dataset IDs name the thing, never the provider, so a dataset can
 gain or swap providers without any client changing.
@@ -55,7 +57,7 @@ gain or swap providers without any client changing.
 |---|---|---|---|---|---|
 | cira-slider | `slider.cira.colostate.edu` HTTPS — `/data/json/{sat}/conus/geocolor/latest_times.json`, tiles `/data/imagery/{YYYY}/{MM}/{DD}/{sat}---conus/geocolor/{ts}/{zoom:02d}/{y}_{x}.png` (625px tiles; zoom1 = 2×2, zoom2 = 4×4) | none | NOAA data via CIRA/RAMMB; attribute CIRA/NOAA | 5 min | No CORS headers — fetch server-side, never hot-link from a page. Timestamps are 14-digit compact UTC. |
 | nodd-s3 | `noaa-goes19` / `noaa-goes18` S3 HTTPS — anonymous list-type=2 on prefix `ABI-L2-CMIPC/{YYYY}/{DDD}/{HH}/`, objects `OR_ABI-L2-CMIPC-M6C13_*.nc` | none | NOAA Open Data, public domain | 5 min | netCDF-4, CMI = brightness temperature K. Needs the `netCDF4` Python package; without it the provider reports unavailable in `/v1/health`. Raw .nc cached alongside frames. |
-| adde (specced, v2) | `adde.ucar.edu` TCP 112, McIDAS ADDE binary protocol via pyadde | none for public datasets | Unidata/SSEC public ADDE datasets | varies | Binary big-endian + gzip; returns AREA files — the reason this adapter exists. Datasets: RTIMAGES, RTPTSRC, EAST… |
+| adde | `adde.ucar.edu` TCP 112, McIDAS ADDE binary protocol — client built in (`AddeClient`, stdlib socket+gzip; a port of VisAD's `AddeURLConnection`/`AreaFile`, LGPL — SSEC's pyadde is not published in installable form) | none for public datasets | Unidata/SSEC public ADDE datasets | 5 min (RTIMAGES) | Requests: ADIR (directory), AGET (image), LWPR (dataset list). Responses are gzip streams: a byte-count int (0 = error, message in the 92-byte trailer), then AREA data — 64-word big-endian directory, data at the directory's offset. Times are McIDAS CYYDDD + HHMMSS words. Frame ids are nominal-time ISO strings; a fetch re-lists ADIR, selects by relative position and verifies the returned directory time, because positions shift as new images arrive. `UNIT=BRIT` = one brightness byte/pixel; blowdown is server-side via negative MAG. Host override `NCT_WB_ADDE_HOST`; if egress needs an HTTP proxy, `NCT_WB_ADDE_PROXY` (defaults to the `https_proxy` env, `none` = direct) tunnels the TCP connection with CONNECT. GOES descriptors on this host: `RTIMAGES/GECNC02|08|13`, `GWCNC*`, full-disk `GEFD*`/`GWFD*`, mesoscale `GEM1/GEM2/GWM1/GWM2`, plus derived products (CTP, PW, LI, SST, RRQPE) — the full list is one LWPR call away and the server is the authority. |
 | edex (specced, v3) | `edex-cloud.unidata.ucar.edu`, AWIPS II EDEX via python-awips `DataAccessLayer` | none for Unidata public EDEX | NSF Unidata AWIPS | varies | Thrift-serialised requests; grid/geometry objects backed by HDF5. Render server-side to PNG/JSON like every other provider. |
 
 ## The same call, three ways

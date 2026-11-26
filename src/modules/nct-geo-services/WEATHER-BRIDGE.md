@@ -1,7 +1,8 @@
 # nct-weather-bridge — spec
 
-Status: v1 PROTOTYPE BUILT 2026-11-26 (branch feat/nct-weather-bridge,
-not pushed). Code: src/services/nct-weather-bridge/. First consumer:
+Status: v1 PROTOTYPE BUILT 2026-11-26, landed on main (ae82b3c).
+v2 (adde provider) BUILT 2026-11-26 on feat/nct-weather-bridge,
+not pushed. Code: src/services/nct-weather-bridge/. First consumer:
 src/godot/apps/nct-weather/ (Godot GOES viewer).
 
 ## What it is
@@ -28,9 +29,15 @@ The upstream endpoints are not consumable by a UI runtime:
 - The NOAA Open Data buckets return netCDF-4 / GRIB2 science files.
 
 Decoding, reprojection and colour-mapping for all of those already
-exist in Python (satpy, MetPy, cfgrib, pyadde, python-awips). The
+exist in Python (satpy, MetPy, cfgrib, python-awips). The
 adapter is the integration layer over those libraries; it does not
 re-implement decoders. Clients receive only PNG frames and JSON.
+One exception, found while building v2: no installable Python ADDE
+client exists (SSEC's pyadde is not published), so the adde
+provider's client is a minimal port of the solved protocol —
+VisAD's Java AddeURLConnection + AreaFile (LGPL) — covering only
+ADIR/AGET/LWPR and AREA directory + BRIT pixel parsing. Porting the
+classical implementation, not inventing a new one.
 
 ## Providers (pluggable, one module per provider)
 
@@ -42,7 +49,7 @@ dataset; every response names the provider that actually served it.
 |---|---|---|---|
 | cira-slider | slider.cira.colostate.edu (RAMMB/CIRA) | HTTPS JSON + PNG tiles | BUILT — GOES-East/West CONUS GeoColor |
 | nodd-s3 | noaa-goes19 / noaa-goes18 S3 (NOAA Open Data) | HTTPS S3 listing + netCDF-4 | BUILT — GOES ABI CONUS band 13 (clean IR), rendered locally |
-| adde | adde.ucar.edu (McIDAS ADDE) | TCP 112 binary, via pyadde | specced, not built |
+| adde | adde.ucar.edu (McIDAS ADDE) | TCP 112 binary, built-in client (VisAD port) | BUILT (v2) — GOES CONUS band 2 visible (new datasets), band 13 as fallback for ir-clean; RTIMAGES group |
 | edex | edex-cloud.unidata.ucar.edu (AWIPS II) | python-awips DataAccessLayer | specced, not built |
 | thredds | Unidata / NCEI THREDDS servers | HTTPS OPeNDAP / WMS / file | specced, not built |
 | weather-gov | api.weather.gov | HTTPS JSON | specced (geo-services weather section proper) |
@@ -69,7 +76,8 @@ Base: http://127.0.0.1:8765 (port is a setting, NCT_WEATHER_BRIDGE_PORT)
 
 Dataset IDs name the thing, never the provider:
 sat.goes-east.geocolor, sat.goes-west.geocolor,
-sat.goes-east.ir-clean (ABI band 13), sat.goes-west.ir-clean.
+sat.goes-east.ir-clean (ABI band 13), sat.goes-west.ir-clean,
+sat.goes-east.vis (ABI band 2), sat.goes-west.vis.
 
 ## Rules
 
@@ -105,8 +113,15 @@ render one frame, declare licence + cadence).
 - v1 (built): cira-slider + nodd-s3 providers, catalog/times/frame
   API, cache, /docs + /openapi.json, Godot GOES viewer consumer
   (frame loop, dataset switch, provider + staleness readout).
-- v2: adde provider (pyadde; RTIMAGES from adde.ucar.edu) — proves
-  the McIDAS path on the same API.
+- v2 (built): adde provider (built-in VisAD-port client; RTIMAGES
+  from adde.ucar.edu) — proves the McIDAS path on the same API.
+  Visible-band datasets are ADDE-only; band 13 joins ir-clean as a
+  fallback behind nodd-s3. Remaining ADDE headroom, same provider,
+  no new plumbing: full-disk and mesoscale descriptors, the derived
+  products (cloud-top pressure, precipitable water, lifted index,
+  SST, rain-rate QPE), the other RTIMAGES composites (Mollweide,
+  Antarctic/Arctic POES), and the point/text request types
+  (RTPTSRC observations, weather text) when a consumer wants them.
 - v3: edex provider (python-awips; a gridded model field rendered
   server-side) — proves the AWIPS path on the same API.
 - v4: push (WebSocket new-frame notice), place-relative products

@@ -3,17 +3,22 @@
 
 Owned by nct-geo-services (spec: src/modules/nct-geo-services/
 WEATHER-BRIDGE.md). Serves upstream meteorological systems
-(CIRA/RAMMB Slider, NOAA Open Data S3; ADDE and EDEX specced as
-later providers) behind one documented local HTTP API returning
-PNG frames + JSON. Any client can consume it; the Godot GOES
-viewer in src/godot/apps/nct-weather/ is the first.
+(CIRA/RAMMB Slider, NOAA Open Data S3, McIDAS ADDE; EDEX specced
+as a later provider) behind one documented local HTTP API
+returning PNG frames + JSON. Any client can consume it; the Godot
+GOES viewer in src/godot/apps/nct-weather/ is the first.
 
 Stdlib HTTP server. Runtime deps: Pillow, numpy. The nodd-s3
 provider additionally needs netCDF4; without it that provider
-reports itself unavailable instead of failing the service.
+reports itself unavailable instead of failing the service. The
+adde provider is stdlib-only (socket + gzip): a minimal port of
+VisAD's ADDE client, see AddeClient.
 
 Run:  python3 nct_weather_bridge.py [--port 8765]
-Env:  NCT_WEATHER_BRIDGE_PORT, NCT_WB_CACHE (cache directory)
+Env:  NCT_WEATHER_BRIDGE_PORT, NCT_WB_CACHE (cache directory),
+      NCT_WB_ADDE_HOST (default adde.ucar.edu),
+      NCT_WB_ADDE_PROXY (HTTP proxy for the ADDE TCP connection;
+      defaults to the https_proxy env, "none" forces direct)
 """
 import argparse, io, json, os, re, sys, threading, time
 import urllib.request, urllib.error
@@ -21,7 +26,7 @@ from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 CACHE = os.environ.get("NCT_WB_CACHE",
         os.path.expanduser("~/.cache/nct-weather-bridge"))
 os.makedirs(CACHE, exist_ok=True)
@@ -141,6 +146,228 @@ class NoddS3Provider:
         buf = io.BytesIO(); img.save(buf, "PNG")
         return buf.getvalue()
 
+# ---------------------------------------------------------------- ADDE
+
+class AddeError(RuntimeError):
+    pass
+
+def _mcidas_datetime(day_word, time_word):
+    """McIDAS AREA directory date/time words -> aware datetime (UTC).
+
+    Date is CYYDDD (century digit, 2-digit year, day-of-year) or the
+    older YYDDD; time is HHMMSS as an int (no zero padding)."""
+    if day_word >= 100000:                       # CYYDDD
+        year = 1900 + 100 * (day_word // 100000) + (day_word // 1000) % 100
+        doy = day_word % 1000
+    else:                                        # YYDDD
+        year = 1900 + day_word // 1000
+        doy = day_word % 1000
+    base = datetime(year, 1, 1, tzinfo=timezone.utc) + timedelta(days=doy - 1)
+    hh, mm, ss = time_word // 10000, (time_word // 100) % 100, time_word % 100
+    return base.replace(hour=hh, minute=mm, second=ss)
+
+def _parse_area_directory(buf, off=0):
+    """The 64-word big-endian AREA directory at byte offset off."""
+    import struct
+    w = struct.unpack_from(">64i", buf, off)
+    if w[1] != 4:
+        raise AddeError(f"not an AREA directory (version word {w[1]})")
+    return w
+
+def _adir_entries(body):
+    """Scan an ADIR response body for AREA directories.
+
+    Each ADIR record is a marker word, a 64-word directory, then an
+    aux/comment block; record stride varies by server, so scan for
+    the directory pattern (version 4, sane CYYDDD date and HHMMSS
+    time, positive dimensions) instead of assuming a stride."""
+    import struct
+    words = struct.unpack(f">{len(body) // 4}i", body[:len(body) // 4 * 4])
+    out = []
+    for i in range(1, len(words) - 10):
+        if words[i] != 4:
+            continue
+        day, tod = words[i + 2], words[i + 3]
+        lines, elems = words[i + 7], words[i + 8]
+        if 10000 <= day <= 299366 and 0 <= tod <= 235959 and lines > 0 and elems > 0:
+            dt = _mcidas_datetime(day, tod)
+            out.append({"time": dt.isoformat().replace("+00:00", "Z"),
+                        "lines": lines, "elems": elems})
+    # de-duplicate, keep response order (newest first)
+    seen, uniq = set(), []
+    for e in out:
+        if e["time"] not in seen:
+            seen.add(e["time"]); uniq.append(e)
+    return uniq
+
+class AddeClient:
+    """Minimal ADDE client: a Python port of the request packet and
+    AREA parsing in VisAD's edu.wisc.ssec.mcidas.adde.AddeURLConnection
+    and edu.wisc.ssec.mcidas.AreaFile (LGPL; SSEC/Unidata/Bureau of
+    Meteorology authors). SSEC's own pyadde is not published anywhere
+    installable, so this ports the solved protocol instead of
+    inventing one. Supports ADIR (directory), AGET (image data) and
+    LWPR (dataset list) against a public ADDE server, port 112,
+    gzip transfer. If NCT_WB_ADDE_PROXY (or the standard https_proxy
+    env) names an HTTP proxy, the TCP connection is tunnelled with
+    CONNECT — needed in sandboxes whose egress is proxy-only; set
+    NCT_WB_ADDE_PROXY=none to force a direct connection."""
+    def __init__(self, host, port=112):
+        self.host = host
+        self.port = port
+    def _connect(self, timeout):
+        import socket
+        proxy = os.environ.get("NCT_WB_ADDE_PROXY")
+        if proxy is None:
+            proxy = os.environ.get("https_proxy") or os.environ.get("HTTPS_PROXY")
+        if proxy and proxy != "none":
+            import base64, urllib.parse
+            p = urllib.parse.urlparse(proxy)
+            s = socket.create_connection((p.hostname, p.port), timeout=timeout)
+            auth = ""
+            if p.username:
+                cred = urllib.parse.unquote(p.username) + ":" + urllib.parse.unquote(p.password or "")
+                auth = "Proxy-Authorization: Basic " + base64.b64encode(cred.encode()).decode() + "\r\n"
+            s.sendall((f"CONNECT {self.host}:{self.port} HTTP/1.1\r\n"
+                       f"Host: {self.host}:{self.port}\r\n{auth}"
+                       "Proxy-Connection: Keep-Alive\r\n\r\n").encode())
+            resp = b""
+            while b"\r\n\r\n" not in resp:
+                chunk = s.recv(4096)
+                if not chunk:
+                    raise AddeError("proxy closed during CONNECT")
+                resp += chunk
+            if b" 200 " not in resp.split(b"\r\n")[0] + b" ":
+                raise AddeError("proxy CONNECT refused: " +
+                                resp.split(b"\r\n")[0].decode(errors="replace"))
+            return s, resp.split(b"\r\n\r\n", 1)[1]
+        return socket.create_connection((self.host, self.port), timeout=timeout), b""
+    def request(self, svc, request, timeout=120):
+        """One ADDE round trip. Returns the response body after the
+        leading byte-count int; raises AddeError on a server error
+        trailer."""
+        import gzip, socket, struct
+        log_egress("adde", f"adde://{self.host}:{self.port}/{svc.decode()} {request}")
+        s, raw = self._connect(timeout)
+        try:
+            server_ip = socket.inet_aton(socket.gethostbyname(self.host))
+        except Exception:
+            server_ip = b"\x00\x00\x00\x00"
+        out = io.BytesIO()
+        out.write(struct.pack(">i", 1))                    # ADDE version
+        out.write(server_ip); out.write(struct.pack(">i", 112))   # gzip
+        out.write(svc)
+        out.write(server_ip); out.write(struct.pack(">i", 112))
+        out.write(b"\x7f\x00\x00\x01")                     # client address
+        out.write(b"XXXX")                                 # user id
+        out.write(struct.pack(">i", 0))                    # project
+        out.write(b"\x00" * 12)                            # password
+        out.write(svc)                                     # service again
+        ob = request.encode()
+        if len(ob) <= 120:
+            out.write(struct.pack(">i", 0))
+            out.write(ob); out.write(b" " * (120 - len(ob)))
+        else:
+            out.write(struct.pack(">i", len(ob)))
+            out.write(struct.pack(">i", len(ob)))
+            out.write(b"\x00" * 116); out.write(ob)
+        s.sendall(out.getvalue())
+        try:
+            while True:
+                chunk = s.recv(65536)
+                if not chunk:
+                    break
+                raw += chunk
+        finally:
+            s.close()
+        data = gzip.decompress(raw) if raw[:2] == b"\x1f\x8b" else raw
+        if len(data) < 4:
+            raise AddeError("empty ADDE response")
+        n = struct.unpack(">i", data[:4])[0]
+        if n == 0:
+            msg = data[12:84].decode(errors="replace").strip("\x00 ").strip()
+            raise AddeError(f"ADDE server error: {msg or 'unknown'}")
+        return data[4:]
+    def adir(self, group, descr, count=12):
+        """Newest-first list of {time, lines, elems} for a dataset."""
+        req = (f"{group} {descr} {-count + 1} 0 TRACE=0 BAND=ALL X "
+               "AUX=YES TRACKING=0 VERSION=1")
+        return _adir_entries(self.request(b"adir", req, timeout=60))
+    def aget_ir(self, group, descr, band, pos, native_lines, native_elems,
+                max_lines=600):
+        """One frame at position pos, blown down server-side to at
+        most max_lines lines. Returns (png_bytes, valid_iso). UNIT=BRIT
+        gives one brightness byte per pixel."""
+        import math
+        import numpy as np
+        from PIL import Image
+        mag = max(1, math.ceil(native_lines / max_lines))
+        lines = math.ceil(native_lines / mag)
+        elems = math.ceil(native_elems / mag)
+        req = (f"{group} {descr} {pos} X X X -{mag} {lines} {elems} "
+               f"BAND={band} TRACE=0 SPAC=X UNIT=BRIT NAV=X AUX=YES "
+               "TRACKING=0 DOC=NO TIME=X X I CAL=X VERSION=1")
+        body = self.request(b"aget", req)
+        w = _parse_area_directory(body)
+        nlines, nelems, width = w[8], w[9], w[10]
+        pfx, datoff = w[14], w[33]
+        if width != 1:
+            raise AddeError(f"unexpected AREA data width {width}")
+        stride = pfx + nelems * width
+        raw = body[datoff:datoff + nlines * stride]
+        a = np.frombuffer(raw, dtype=np.uint8).reshape(nlines, stride)[:, pfx:]
+        valid = _mcidas_datetime(w[3], w[4]).isoformat().replace("+00:00", "Z")
+        buf = io.BytesIO(); Image.fromarray(a).save(buf, "PNG")
+        return buf.getvalue(), valid
+    def dataset_list(self, group):
+        """LWPR: the server's own catalogue lines for a group."""
+        body = self.request(b"lwpr", f"ALA.{group} VERSION=1", timeout=60)
+        return body.decode("ascii", errors="replace")
+
+class AddeProvider:
+    """GOES imagery from a public McIDAS ADDE server (default
+    adde.ucar.edu, Unidata). Datasets are GROUP/DESCRIPTOR pairs in
+    RTIMAGES; the frame id is the nominal time's ISO string, and a
+    frame fetch re-lists the directory and selects by position, then
+    verifies the returned AREA directory time matches — positions
+    are relative and shift as new images arrive."""
+    name = "adde"
+    licence = "NOAA/NESDIS data via Unidata ADDE (adde.ucar.edu); public, no registration"
+    def __init__(self, group, descr, band, host=None):
+        self.group = group
+        self.descr = descr
+        self.band = band
+        self.host = host or os.environ.get("NCT_WB_ADDE_HOST", "adde.ucar.edu")
+        self._avail = None
+        self._avail_at = 0.0
+    @property
+    def available(self):
+        if self._avail is not None and time.time() - self._avail_at < 60:
+            return self._avail
+        try:
+            AddeClient(self.host).request(
+                b"lwpr", f"ALA.{self.group} VERSION=1", timeout=15)
+            self._avail = True
+        except Exception:
+            self._avail = False
+        self._avail_at = time.time()
+        return self._avail
+    def times(self, limit=12):
+        entries = AddeClient(self.host).adir(self.group, self.descr, limit)
+        return [{"time": e["time"], "id": e["time"]} for e in entries[:limit]]
+    def frame(self, time_id, **kw):
+        client = AddeClient(self.host)
+        entries = client.adir(self.group, self.descr, 24)
+        for i, e in enumerate(entries):
+            if e["time"] == time_id:
+                png, valid = client.aget_ir(self.group, self.descr, self.band,
+                                            -i, e["lines"], e["elems"])
+                if valid != time_id:
+                    raise AddeError(
+                        f"frame time mismatch: asked {time_id}, got {valid}")
+                return png
+        raise AddeError(f"time {time_id} no longer in ADDE directory")
+
 # ---------------------------------------------------------------- datasets
 
 DATASETS = {
@@ -157,12 +384,24 @@ DATASETS = {
     "sat.goes-east.ir-clean": {
         "title": "GOES-East (GOES-19) ABI band 13 clean IR, CONUS",
         "coverage": [-125.0, 24.0, -66.0, 50.0], "cadence": "5 min",
-        "providers": [NoddS3Provider("noaa-goes19", "G19")],
+        "providers": [NoddS3Provider("noaa-goes19", "G19"),
+                      AddeProvider("RTIMAGES", "GECNC13", 13)],
     },
     "sat.goes-west.ir-clean": {
         "title": "GOES-West (GOES-18) ABI band 13 clean IR, CONUS",
         "coverage": [-125.0, 24.0, -66.0, 50.0], "cadence": "5 min",
-        "providers": [NoddS3Provider("noaa-goes18", "G18")],
+        "providers": [NoddS3Provider("noaa-goes18", "G18"),
+                      AddeProvider("RTIMAGES", "GWCNC13", 13)],
+    },
+    "sat.goes-east.vis": {
+        "title": "GOES-East (GOES-19) ABI band 2 visible (0.64 um), CONUS, via ADDE",
+        "coverage": [-125.0, 24.0, -66.0, 50.0], "cadence": "5 min",
+        "providers": [AddeProvider("RTIMAGES", "GECNC02", 2)],
+    },
+    "sat.goes-west.vis": {
+        "title": "GOES-West (GOES-18) ABI band 2 visible (0.64 um), CONUS, via ADDE",
+        "coverage": [-125.0, 24.0, -66.0, 50.0], "cadence": "5 min",
+        "providers": [AddeProvider("RTIMAGES", "GWCNC02", 2)],
     },
 }
 
