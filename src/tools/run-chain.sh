@@ -88,6 +88,25 @@ if [ -n "$GODOT" ]; then
   # indicators at specced-not-built scope (agent-build-log/23).
   out=$("$GODOT" --headless --path "$SRC/modules" res://nct-environment-manager/harness/main.tscn 2>&1)
   echo "$out" | grep -q "SLICE3_OK" && ok "t0 slice3 shell+registry+security" || bad "t0 slice3 shell+registry+security" "$out"
+  # Sys-interface breadth: the crashes domain in the bridge
+  # (tree + republication in the watch's shape + the Crashes
+  # view) and the Attention inbox surface (agent-build-log/24).
+  out=$(python3 "$SRC/modules/nct-linux-sys-interface/test_crashes.py" 2>&1)
+  echo "$out" | grep -q "BRIDGE_CRASHES_OK" && ok "t0 sys-interface crashes domain" || bad "t0 sys-interface crashes domain" "$out"
+  if python3 "$SRC/modules/nct-linux-sys-interface/sys_interface.py" --fixture "$SRC/modules/nct-linux-sys-interface/fixtures/systemd-journal.jsonl" --fixture "$SRC/modules/nct-linux-sys-interface/fixtures/crashes.jsonl" --snapshot-out "$RES/tree-crashes.json" > /dev/null 2>&1; then
+    out=$("$GODOT" --headless --path "$SRC/modules" res://nct-linux-sys-interface/harness/main.tscn -- --snapshot "$RES/tree-crashes.json" 2>&1)
+    echo "$out" | grep -q "CRASHES_VIEW_OK" && ok "t0 sys-interface crashes view" || bad "t0 sys-interface crashes view" "$out"
+  else
+    bad "t0 sys-interface crashes view" "snapshot generation failed"
+  fi
+  out=$(python3 "$SRC/modules/nct-system-watch/test_inbox.py" 2>&1)
+  echo "$out" | grep -q "INBOX_OK" && ok "t0 system-watch inbox end-to-end" || bad "t0 system-watch inbox end-to-end" "$out"
+  if python3 "$SRC/modules/nct-system-watch/inbox_snapshot.py" --contexts-out "$RES/inbox-contexts.json" > /dev/null 2>&1; then
+    out=$("$GODOT" --headless --path "$SRC/modules" res://nct-system-watch/harness/main.tscn -- --contexts "$RES/inbox-contexts.json" 2>&1)
+    echo "$out" | grep -q "ATTENTION_OK" && ok "t0 attention inbox surface" || bad "t0 attention inbox surface" "$out"
+  else
+    bad "t0 attention inbox surface" "context generation failed"
+  fi
   # Launch model 2: the same projects as .pck packs on the shared
   # runtime (the shipped form). Build to the results dir, then run
   # the shell pack through nct-godot-run's --main-pack path.
