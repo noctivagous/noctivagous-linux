@@ -1,0 +1,781 @@
+
+
+<app>
+</app>
+
+<window> types
+   <widget>
+
+<nct-control> types
+
+
+WINDOW class and types
+
+
+STOCK CONTROLS
+
+
+LAYOUT CONTROLS
+
+
+THEME:
+    ICON SET
+
+I18N
+
+ KEYBOARD 
+ 
+ 
+ ----
+ 
+ **Yes.** Apache Royale uses the `.mxml` file format directly — most Royale applications have an MXML file as their main entry point (e.g. `src/MyApp.mxml`), and the compiler tool `mxmlc` is literally named after it. MXML is an XML-based declarative markup language (originally introduced by Macromedia in 2004) that Royale inherited from the Apache Flex SDK; the compiler transpiles `.mxml` files (along with `.as` and CSS) into JavaScript or SWF output.
+
+> if you were making a new runtime renderer, mxml file format forms a readymade system?
+
+
+**Yes, essentially.** MXML is just a declarative XML schema for describing an object graph with a few conventions layered on top. It's not tied to Flash at the format level — you could adopt it as your input language and build an entirely different runtime underneath.
+
+**What you get "for free" from the format:**
+
+- **Elements = object instances**, attributes = properties, nesting = containment. Dead simple to parse (any XML parser works).
+- **Namespaces** for component packages — you can ship component libraries as namespace declarations.
+- **Binding expressions** (`{expression}`) for reactive data flow.
+- **Event handler declarations** on elements.
+- **`<fx:Script>`** blocks for embedded logic.
+- **Root element = class declaration** (the "superclass" pattern), so each `.mxml` file is a self-contained component definition.
+
+**What you'd still have to build yourself:**
+
+- The actual **component set** (visual elements, their properties, their rendering)
+- A **layout engine**
+- A **rendering backend** (DOM, canvas, native, whatever)
+- An **expression evaluator** for bindings
+- An **event system**
+- A **parser/compiler** that maps MXML elements → your component classes
+
+This is exactly what **Apache Royale** and **CoreMedia Jangaroo** both did — took MXML as input and built a new JS-based runtime. The format was the stable part; the runtime was the new part.
+
+So MXML is a solid "readymade" *input format*, but it's really just the declarative front-end. The renderer is still 100% your work.
+
+> and they added updates for mobile to the  XML schema?
+
+**No — the MXML schema itself wasn't modified.** The format stayed the same: elements = objects, attributes = properties, namespaces = packages, `{expressions}` = bindings. No new MXML-level tags or attributes were added specifically for mobile.
+
+What they *did* add for mobile was at other layers:
+
+- **Compiler flag**: `-compiler.mobile` tells the compiler the target is a mobile device (affects codegen, not the input format).
+- **Jewel component set**: New *components* with responsive properties — e.g. `<j:GridCell desktopNumerator="1" desktopDenominator="2" phoneNumerator="1" phoneDenominator="1">`. These are just regular MXML element attributes on new component classes, not schema extensions.
+- **View States**: The `includeIn` attribute for showing/hiding content by state (inherited from Flex, not new to Royale).
+- **Beads**: Composable behavior objects you attach in MXML (e.g. `<j:beads><j:Disabled/></j:beads>`), also just element nesting per the existing schema rules.
+
+So the MXML "readymade system" stayed intact. Mobile support was delivered entirely through **new component classes** (new namespace, new tags, new properties) and a **compiler target flag** — the declarative grammar itself was untouched.
+
+> the component classes.
+
+The MXML grammar stayed frozen; mobile capability was delivered as **new classes in a new namespace** (`xmlns:j="library://jewel"`). From the MXML parser's perspective, a Jewel tag is indistinguishable from any other component tag — it's just an element whose name resolves to a class, and whose attributes map to that class's properties.
+
+So the "readymade system" you'd be reusing is really two things:
+
+1. **The declarative grammar** (elements, attributes, bindings, events, nesting) — unchanged since 2004.
+2. **The component class contract** — a class with typed properties, an event dispatch mechanism, and a render method. Swap out the render target (DOM, canvas, WebGL, native) and the MXML files keep working unchanged.
+
+That's the clean separation that made Royale (and Jangaroo) possible: the format is the stable interface between authoring and runtime.
+
+> did anyone make a desktop environment out of mxml?
+
+**No one built a full desktop environment out of MXML.** The closest things:
+
+- **Adobe AIR** gave MXML/Flex apps native windowing (`WindowedApplication`, `NativeWindow`) and file system access — so you could build *individual desktop apps* (file managers, media players, etc.) in MXML that ran as standalone windows. But the OS desktop (WM, panel, taskbar, system tray) was still the native one.
+- **Flex Commander** — a dual-pane file manager originally written in Flex/AIR (MXML), later ported to Flutter. That's one *component* of a desktop, not the whole thing.
+- **EsnaadM** (2019) — a Windows desktop app that wraps a Flex/MXML UI inside Electron with Pepper Flash. Again, a single app, not a desktop shell.
+
+What you'd need to make a true desktop environment in MXML: a window manager (placement, focus, decorations), a panel/taskbar, a file manager, a system tray, session management, and integration with the OS compositor. No one has attempted that as a complete project. The MXML ecosystem was always oriented toward *applications that run on a desktop*, not *replacing the desktop itself*.
+
+The architectural reason is practical: MXML's `WindowedApplication` and `Window` classes delegate to the OS for actual window compositing, input focus, and window management. You can't implement a window manager *in* the same runtime that depends on the OS to provide windows — you'd be fighting the layer beneath you.
+
+
+> right now I have GodotEngine booting a greetd login screen and then making a desktop environment that can launch apps using different frameworks like Qt, GTK.  I have not built out anything else but this.  GodotEngine has a scene graph but is made for games.   I have a single engine running different .pck processes.  GodotEngine is a good engine perhaps because it has 2d and 3D but I would need more architecture to make a solid desktop environment and MXML would be a good foundation, but it would probably be converted to the GodotEngine scene graph.  So the GodotEngine would be treated as a runtime and we would build GDExtensions.  We have to have a solid app kit that can make real apps if we are to use GodotEngine for this purpose, so we will have to build out various aspects.
+
+This is a solid architecture. The MXML → scene graph mapping is almost too clean to be a coincidence — both are declarative object graphs with the same fundamental grammar:
+
+| MXML | Godot scene graph |
+|------|-------------------|
+| Element | Node (instantiated class) |
+| Attribute | Property (typed, settable) |
+| Nesting | Child-parent in scene tree |
+| `{binding}` | Signal connection / property binding |
+| Namespace | Class registration (`ClassDB`) |
+| `.mxml` file | `.tscn` (Godot's own scene format) |
+
+Godot's `.tscn` format is essentially MXML with a different serialization — same object graph, same "element = class instance, attribute = property" rule. So your MXML compiler is really just an alternate frontend to the same scene tree that `.tscn` already produces.
+
+**What you already have for free from Godot:**
+
+- **Control node hierarchy** — a full UI toolkit (buttons, panels, containers, scroll areas, trees, text editors) rendered with hardware acceleration. The Godot editor itself is built on these.
+- **Signals** — event system, equivalent to MXML event handlers.
+- **Resources** — the data model layer (equivalent to MXML's data bindings).
+- **`.pck` format** — your app packaging. Apps are just pack files the runtime loads.
+- **Low Processor Mode** — event-driven rendering (only redraws on change), which is what a DE needs rather than a 60fps game loop.
+- **ClassDB** — the class registration system. Your MXML namespaces map directly to registered class names.
+
+**What you need to build (the app kit via GDExtensions):**
+
+1. **Window manager** — placement, focus, decorations, z-order. This is the biggest missing piece. Godot's `Window` node gives you a native window, but a DE needs to *manage* windows (move, resize, minimize, maximize, tile).
+2. **Panel / taskbar / launcher** — standard Control node compositions, but you'll want a component set (your "Jewel equivalent").
+3. **Process manager / app launcher** — spawn external processes (Qt, GTK, etc.), track their lifecycle, map them to window manager entries. This is where your `.pck`-based apps and native apps diverge in how they're launched.
+4. **File system + IPC layer** — a GDExtension that wraps Wayland/POSIX file access, D-Bus, and inter-process communication.
+5. **Accessibility** — this is Godot's biggest gap for a DE. No AT-SPI bridge, no screen reader support. You'll need a GDExtension that implements the AT-SPI2 D-Bus interface.
+6. **The MXML compiler itself** — an XML parser that reads `.mxml` files, resolves element names against `ClassDB`, instantiates nodes, sets properties, wires signals, and attaches to the scene tree.
+
+**The key architectural tension to watch:**
+
+Godot's main loop is frame-based (even in Low Processor Mode, it's a `process`/`physics_process` cycle). A DE is fundamentally *event-driven* — it should be idle 99% of the time and wake on input, IPC, or process events. You'll want to make sure your event sources (Wayland events, D-Bus, process signals) feed directly into the scene tree's signal system without requiring a frame to "tick." The Godot editor solves this by using `_notification` callbacks from the OS event loop rather than `process()` — you'll want the same pattern.
+
+**On the "single engine, multiple .pck processes" model:**
+
+That's clever. Each app is a `.pck` that gets loaded into a `PackedScene` within the running DE. For native apps (Qt, GTK), the DE spawns them as separate processes and manages their windows via the compositor. So you have two app types:
+
+- **In-process**: `.pck` files loaded into the Godot runtime (your MXML-compiled apps)
+- **Out-of-process**: native binaries the DE launches and window-manages
+
+The window manager is the unifying layer that treats both the same way from the user's perspective.
+
+This is essentially what the Godot editor does (a full application with its own "window manager" for dockable panels, its own file system, its own plugin system) — but you're generalizing it to manage *external* apps too. That's the part that's genuinely new.
+
+> Ok, Low Processor Mode will act like update on dirty rect? Will it constraint performance
+
+**Not quite — it's coarser than dirty-rect.** Low Processor Mode is a binary "did anything change?" check, not a per-rect invalidation system.
+
+**How it actually works:**
+
+- The engine checks if anything in the scene tree has changed (input, property set, signal fired, animation tick, etc.).
+- **Nothing changed** → sleep for `low_processor_mode_sleep_usec` (default 6900 µs ≈ 144 Hz check rate), then re-check.
+- **Something changed** → render the **full frame** and present it.
+
+So it's "skip the entire frame if the screen is static," not "only redraw the changed rectangle." When it does render, it's a full-screen composite. There's no partial/dirty-rect blitting at the CanvasItem level.
+
+**Does it constrain performance?**
+
+Not in the way you'd worry about. It doesn't cap your FPS or throttle rendering when things *are* happening. If a user drags a window, you get full 60/144fps rendering for the duration of the drag. The moment the drag ends and the screen goes static, it drops to near-zero CPU/GPU. The "constraint" is only on the *idle* state — which is exactly what a DE wants.
+
+The one real cost: the `sleep_usec` polling interval. At the default 6900 µs, the engine wakes ~144 times/second just to *check* if anything changed. For a DE that's negligible, but you can push it to 16600 (60 Hz) or 33000 (30 Hz) to reduce that overhead further at the cost of input latency.
+
+**What would actually give you dirty-rect behavior:**
+
+A "vital redraws only" mode was proposed (and partially existed in 3.x for the editor) but never made it into 4.x as a project-level feature. That would be the true dirty-rect equivalent — tracking which CanvasItems actually changed and only compositing those regions. For a DE, you probably don't need it: full-frame redraws on a modern GPU are cheap, and the expensive part (idle polling) is already solved by LPM.
+
+**One gotcha for your DE:**
+
+Any node with an active `AnimationPlayer`, `GPUParticles2D`, or a shader referencing `TIME` will force continuous redraws and defeat LPM entirely. You'll want to make sure your component set doesn't accidentally leave these running when idle.
+
+
+
+> What I am concerned about is making sure that software developers have a solid app kit, like Cocoa, WPF, XAML based environments.  MXML could
+provide a lot of this. GodotEngine does have a C# engine.   The app conventions would possibly make the apps portable.
+
+Your instinct is right — the app kit is the actual product. The engine is just the substrate. Here's what makes Cocoa/WPF/XAML "solid" from a developer's perspective, and what you'd need to replicate:
+
+**What developers actually rely on in those ecosystems:**
+
+| Capability | WPF/XAML | Cocoa/SwiftUI | Your equivalent |
+|---|---|---|---|
+| Declarative UI | XAML | SwiftUI / Storyboards | MXML → scene graph |
+| Data binding | Runtime, reflection-based, `INotifyPropertyChanged` | State-driven, `@Published` | MXML `{expressions}` + a C# binding layer you build |
+| Lookless controls / templates | `ControlTemplate` — fully replaceable visual tree | `NSView` subclassing or SwiftUI `ViewBuilder` | Godot's `Theme` + `Control` node architecture (close, but needs a template abstraction) |
+| Layout engine | Panels (`Grid`, `StackPanel`, `DockPanel`) | Auto Layout / SwiftUI layout | Godot's `Container` nodes (already there) |
+| Styling / theming | `Style`, `ResourceDictionary` | `NSAppearance`, SwiftUI modifiers | Godot's `Theme` resource (already there) |
+| Language | C# | Swift | C# (Godot 4.7 supports .NET 8, 4.8 requires .NET 10) |
+| Packaging | MSIX / single exe | `.app` bundle | `.pck` (you already have this) |
+| IDE tooling | XAML designer, Live Visual Tree, property grid | Xcode Interface Builder, SwiftUI preview | **This is your biggest gap** |
+| Platform services | Win32 interop, WMI, etc. | AppKit, Core Services | GDExtension (D-Bus, Wayland, file system, notifications) |
+
+**The portability argument is strong.** Here's why:
+
+- MXML is the stable declarative layer (like XAML)
+- C# is the logic layer (same language as WPF, so the mental model transfers)
+- Godot's scene graph is the runtime (replaces WPF's visual tree / Core Animation)
+- GDExtension is the platform bridge (replaces P/Invoke, Core Services)
+- `.pck` is the package format
+
+An app written in MXML + C# targeting your kit is inherently cross-platform because Godot runs on Linux, Windows, macOS, and (experimentally) mobile. That's the same portability promise as Avalonia (XAML + C# + cross-platform rendering) or Uno Platform — but with a rendering engine that's already mature rather than one you're building from scratch.
+
+**The two things that will make or break it:**
+
+1. **A proper binding system in C#.** MXML's `{expressions}` are one-shot or signal-driven. Developers expect `INotifyPropertyChanged`, binding modes (OneWay, TwoWay, OneTime), value converters, and binding diagnostics. You'll want to build this as a C# library that hooks into Godot's signal system — essentially a lightweight WPF binding engine on top of Godot's property/signal infrastructure. This is where the "app kit" really lives.
+
+2. **IDE tooling.** WPF's XAML designer, property grid, and Live Visual Tree are what make it *feel* like a professional app platform. Godot's scene editor is close but designed for game dev (spatial, node-centric). You'd need a "form designer" mode — drag components from a palette, set properties in a grid, preview the result. This is the single biggest investment after the component set, and it's what separates "I can make a game" from "I can build a productivity app."
+
+**The C# angle is a real advantage.** Godot 4.7 (current stable, Aug 2026) ships with C# targeting .NET 8, and 4.8 (beta now) moves to .NET 10. That means developers get the full .NET ecosystem — NuGet packages, LINQ, async/await, `System.Text.Json`, the works — which is exactly what WPF developers already expect. You're not asking them to learn a new language; you're asking them to swap XAML for MXML and `Window` for `Control`. The delta is small.
+
+The risk is the same one Avalonia and Uno hit: the app kit has to be *complete enough* that developers don't hit a wall on day two. A button, a text box, and a list view aren't an app kit. You need the full breadth — file dialogs, web views, rich text editing, charts, data grids, printing, drag-and-drop, context menus, system tray integration. That's the long tail that takes years, and it's the part that convinces a developer to actually build their next app on your platform instead of reaching for Qt or Electron.
+
+> To make it feel like a professional platform, we need consistent layout engine rules, software architecture guidelines for the GUI.  We considered using the defunct XForms file format because it stores form data well, could have an editor, and maybe it could be styled.
+
+XForms is a strong fit, but it's important to understand what it actually is — it's **not a layout format**. It's a **data model + validation + binding logic** specification. That makes it complementary to MXML, not a replacement. The two layers map cleanly:
+
+| Layer | Format | Responsibility |
+|-------|--------|----------------|
+| **Model** | XForms | Data schema (instance), types, constraints, calculations, skip logic, state |
+| **View** | MXML | Component hierarchy, layout containers, visual arrangement, theming |
+| **Controller** | Binding engine (you build) | Connects XForms XPath refs → MXML node properties, propagates dirty state |
+
+**What XForms gives you (the "stores form data well" part):**
+
+- **Instance** — an XML document that *is* the data. Serializable, diffable, versionable, queryable via XPath. No ORM, no impedance mismatch.
+- **Bindings** — per-node declarations: `type="xsd:decimal"`, `required="true()"`, `relevant="if(/form/age > 18)"`, `calculate="/form/subtotal * /form/tax"`. This is your validation and business logic layer, fully declarative.
+- **Repeats** — dynamic lists (like a `DataGrid` bound to a repeating XML node).
+- **Secondary instances** — lookup tables, dictionaries, reference data.
+
+**What XForms does NOT give you:**
+
+- **Layout.** The `body` section defines *controls* (`<input>`, `<select>`, `<output>`, `<group>`, `<repeat>`) but says nothing about *where they go*, how big they are, or what they look like. That's deliberately the presentation layer's job.
+- **Styling.** No CSS, no themes, no visual properties. You can't "style" an XForms document.
+- **Interaction beyond form submission.** No drag-and-drop, no animations, no custom gestures.
+
+**So the architecture would be:**
+
+```
+app.pck
+├── model.xform        ← XForms: data schema, validation, calculations
+├── view.mxml          ← MXML: layout, components, theme references
+├── logic.cs           ← C#: custom actions, platform calls, complex logic
+└── theme.tres         ← Godot Theme: colors, fonts, control styles
+```
+
+The MXML view references XForms nodes via the same `{expression}` binding syntax you already have:
+
+```xml
+<TextBox value="{/form/patient/name}" bind="/form/patient/name"/>
+<Label text="{/form/patient/diagnosis}"/>
+<Repeat nodeset="/form/patient/medications">
+    <GridCell>
+        <TextBox value="{name}"/>
+        <TextBox value="{dosage}" type="xsd:decimal"/>
+    </GridCell>
+</Repeat>
+```
+
+The binding engine (your "controller") watches the XForms instance tree for dirty nodes and updates the corresponding MXML nodes. This is exactly how WPF's `INotifyPropertyChanged` works, but with XPath as the addressing mechanism instead of property names.
+
+**On the editor question:**
+
+- **XLSForm** (used by ODK) is a spreadsheet-based XForms editor — each row is a field, columns define type/constraint/relevant. Very practical for non-developers.
+- **Orbeon Forms** (now defunct) had a visual XForms designer with a live preview.
+- You'd want something in between: a Godot-based form designer where you drag controls into a layout (MXML side) and a property grid where you set the XForms binding, type, and constraints (model side). The two panels stay in sync.
+
+**On "consistent layout engine rules":**
+
+This is where MXML + Godot's `Container` nodes give you the answer. You'd codify a set of layout rules in your app kit:
+
+- **Grid** (row/column with span) — for forms, dashboards
+- **Dock** (top/bottom/left/right/fill) — for toolbars, panels, status bars
+- **Stack** (horizontal/vertical) — for button rows, label stacks
+- **Free** (absolute position) — for canvas-style apps
+- **Responsive** (proportional, like Jewel's numerator/denominator) — for adaptive layouts
+
+Each rule maps to a Godot `Container` subclass. The MXML compiler instantiates the right container and the layout is resolved by Godot's existing layout pass. The "consistency" comes from the *rule set* being fixed and documented — every app uses the same containers, same alignment semantics, same spacing conventions.
+
+**The architectural guideline that ties it together:**
+
+> Every app in the platform is a `.pck` containing an XForms model, an MXML view, and optional C# logic. The MXML view defines *structure and layout*. The XForms model defines *data, validation, and state transitions*. The binding engine connects them. Theming is applied via Godot `Theme` resources at the DE level, overridable per-app.
+
+That's your "Cocoa/WPF equivalent" — and the XForms layer is what makes it feel *professional* rather than just a UI toolkit, because the data model is explicit, serializable, and testable independently of the view.
+
+
+> XForms, if we added to it, could make it easier to make a "form designer" mode — drag components from a palette, set properties in a grid, preview the result.   Our XForms offshoot would include additions and one kind of adapter could serve it to the web.  Just by describing a form in XML, adding bindings, an app could be made relatively quickly for business.
+
+
+Yes, and the XForms 2.0 spec already provides the formal hook for exactly this. The **Extension module** (`<extension>` element) is a container for application-specific elements from any namespace — it's the sanctioned place to add layout, styling, and platform-specific attributes without breaking conformance:
+
+```xml
+<xf:input ref="/form/patient/name">
+  <xf:label>Patient Name</xf:label>
+  <extension>
+    <g:grid-row row="2" col="1" span="2"/>
+    <g:style class="input-primary" width="200"/>
+  </extension>
+</xf:input>
+```
+
+The core XForms semantics (model, bindings, validation, `relevant`, `calculate`, `repeat`) stay intact. Your extension namespace carries the layout and presentation hints that your Godot renderer and your web adapter each interpret differently.
+
+**The web adapter is a proven pattern.** Orbeon Forms does exactly this: it takes XForms + host language markup, transcodes it to HTML/JS in the browser, and runs the binding engine client-side. Your architecture would be:
+
+```
+         .xform (model + bindings + extension layout hints)
+                  │
+        ┌─────────┴─────────┐
+        ▼                   ▼
+  Godot Adapter         Web Adapter
+  (extension →          (extension →
+   Container nodes,      CSS grid/flex,
+   Theme properties,     HTML form controls,
+   Godot layout)         JS binding engine)
+```
+
+Both adapters read the same XForms document. The `<extension>` elements are interpreted by each target's renderer. The model and bindings are identical — that's the portability.
+
+**The form designer pattern is also proven.** Novell's exteNd Director (2006) had exactly the architecture you described: a visual canvas with a control palette, a property inspector grid, an instance data pane (drag a node from the tree onto a control to bind it), an event editor, and a live preview tab. Orbeon Form Builder (still active, open source) and **Vellum** (ODK's designer, used in production by CommCare) are more modern examples. The key insight from all of them: the designer edits the XForms XML directly — the visual canvas is just a projection of the XML tree, and the property grid edits attributes on that tree.
+
+**The "describe a form in XML, get a business app" workflow is the strongest argument.** XLSForm (ODK) already demonstrates this at scale: a spreadsheet row defines a field (type, label, constraint, relevance), and the toolchain generates a working XForms document that renders on phones, web, and desktop. Your version would be:
+
+1. Designer (or spreadsheet) → generates `.xform` with model + bindings + `<extension>` layout
+2. Godot adapter → renders as native app in your DE
+3. Web adapter → renders as HTML form for browser access
+4. Same data, same validation, same business logic — two render targets from one source
+
+That's the "Cocoa/WPF" feel: the developer works in the designer (or the XML), the platform handles the rest, and the app is portable by construction.
+
+> What other unused technologies would be of value that have been abandoned, like XForms?
+
+Here are the most relevant ones, organized by what they contribute to your specific architecture:
+
+**Declarative UI / markup (complements your MXML layer):**
+
+- **XUL** (Mozilla, removed from Firefox 2019, fully purged 2023) — the closest cousin to MXML. Its **box layout model** (`box`, `hbox`, `vbox` with `pack-start`/`pack-end`/`fill`/`expand`) is a different layout paradigm from Godot's containers and worth studying. Its **binding system** (`<bindings>` with `<setter>` and `<handler>` elements) is a clean declarative event/property wiring pattern that maps directly to Godot signals. The component set (toolbar, menubar, tree, grid, tabbox) is a reference for your app kit's breadth.
+
+- **OpenLaszlo / LZX** (discontinued ~2011) — XML UI with a component set and data binding, similar in spirit to MXML. Its **`<bind>` element** with `from`/`to`/`onchange` is a clean declarative binding syntax. The LZX→DHTML and LZX→Flash dual-target compilation is a proven pattern for your Godot/web adapter split.
+
+**Data binding / MVVM (for your binding engine):**
+
+- **Silverlight XAML** (EOL Oct 2021) — the most mature binding system ever shipped in a XAML dialect. The patterns you'd want to replicate: **DataContext inheritance** (set once at root, flows down the visual tree, overridable at any node), **binding modes** (OneTime, OneWay, TwoWay, Explicit with `UpdateSourceTrigger`), **RelativeSource with AncestorType** (bind a child to a property on an ancestor), **IValueConverter** pipeline, and **implicit DataTemplates** (auto-select a template by type). The "Explicit" mode with a submit button is exactly the XForms `submit` pattern — the two align naturally.
+
+**App kit / component architecture:**
+
+- **Apache Pivot** (retired Jan 2025, in Apache Attic) — XAML for Java with a full widget toolkit (WTK). The **WTK widget hierarchy** (`Widget` → `Composite` → `Panel` → specific controls) and its **binding system** (`bind` attribute on properties, two-way by default) are a direct reference for your Godot component set. It also had a **`<pivot:Grid>`** with row/column spans, a **`<pivot:DockPanel>`**, and a **`<pivot:StackPanel>`** — the same layout primitives you're codifying. The fact that it was XAML + a typed language (Java) + cross-platform rendering is the same triad as your MXML + C# + Godot.
+
+- **GWT** (Google Web Toolkit, abandoned) — the **widget architecture** is the key takeaway: `Widget` (base) → `Composite` (owns a child widget) → `Panel` (owns multiple children, defines layout) → specific panels (`FlowPanel`, `DockPanel`, `Grid`, `FlexTable`). This is a clean separation of "what it is" (Widget) from "how it lays out children" (Panel), which maps well to Godot's `Control` vs `Container` split. GWT's **RPC mechanism** (serialize a Java method call to JSON, deserialize on the server) is a pattern for your IPC layer between the DE and out-of-process apps.
+
+**DE architecture / workbench patterns:**
+
+- **Eclipse RCP** (still alive but in decline, no major releases since 2024) — the **workbench model** is the single most relevant architecture for your DE. The key abstractions:
+  - **Perspective** = a named layout of views and editors for a task (e.g. "Development", "Debugging"). Your DE equivalent: a "workspace" or "session layout."
+  - **View** = a dockable, resizable panel with its own state (e.g. file tree, console). Your DE equivalent: a panel in the shell.
+  - **Editor** = a content area with a model (the file being edited). Your DE equivalent: an app window.
+  - **Part** = the base class for both views and editors. Has a `PartSite` (where it's docked) and a `PartReference` (lazy instantiation — the part is only created when first shown).
+  - **Extension points** = declarative plugin registration. Apps register themselves via an XML manifest rather than code. Your `.pck` + a manifest file is the same pattern.
+  
+  The **lazy instantiation** pattern (`PartReference` → `Part` on first show) is directly applicable: your `.pck` apps should be instantiated only when the user launches them, not when the DE boots.
+
+**App packaging / deployment:**
+
+- **Java Web Start** (abandoned 2017) — the **JNLP** (Java Network Launch Protocol) model: a single XML descriptor that specifies the app's JARs, permissions, update policy, and install location. The user double-clicks a `.jnlp` file and the runtime handles download, verify, launch, and auto-update. Your `.pck` + a manifest is the same pattern. The **update policy** (always check, check on launch, manual) is a detail worth copying.
+
+- **ClickOnce** (Microsoft, deprecated) — the .NET equivalent: a manifest-based deployment model with incremental updates, offline caching, and per-user vs per-machine install. The **incremental update** pattern (download only changed files) is relevant if your `.pck` files get large.
+
+**Window compositing / WM patterns:**
+
+- **Compiz** (abandoned 2018, replaced by Mutter's internal compositor) — the **decorations plugin** (server-side window decorations with configurable themes), the **grid plugin** (keyboard-driven window tiling), and the **expo plugin** (overview mode) are the three features every modern DE needs and Compiz had them all working. The **plugin architecture** (each WM feature is a separate plugin that hooks into the compositor's event loop) is a good pattern for keeping your WM modular.
+
+**GUI builder patterns (for your form designer):**
+
+- **Matisse** (NetBeans, abandoned) and **Jigloo** (Eclipse, abandoned) — both had the same core pattern: a **design-time model** separate from the **runtime model**, with a **synchronizer** that keeps them in sync. The designer edits the design-time model; the runtime instantiates the runtime model. The property grid edits design-time properties. The "live preview" is a real runtime instance fed by the design-time model. This separation is what makes the designer not fall over when the user drags a component — you're editing a model, not a live UI.
+
+**IPC / inter-process:**
+
+- **CORBA** (abandoned as a practical tech, OMG still maintains the spec) — the **object reference model** (a reference is a serializable handle to a remote object, the client doesn't know where it lives) is the pattern for your DE's app registry. Each running app gets a CORBA-style object reference; the DE sends messages to it without knowing whether it's in-process (`.pck`) or out-of-process (Qt/GTK binary).
+
+**The shortlist I'd actually mine:**
+
+| Technology | Steal this |
+|---|---|
+| Silverlight XAML | DataContext inheritance, binding modes, AncestorType, Explicit/UpdateSourceTrigger |
+| Eclipse RCP | Perspective/View/Editor/Part model, lazy PartReference, extension-point manifests |
+| Apache Pivot | WTK widget hierarchy, Grid/DockPanel/StackPanel, two-way bind syntax |
+| XUL | Box layout model, `<bindings>`/`<setter>`/`<handler>` declarative wiring |
+| GWT | Widget→Composite→Panel separation, RPC serialization pattern |
+| Compiz | Decorations/grid/expo plugin architecture |
+| Matisse/Jigloo | Design-time vs runtime model separation for the form designer |
+| Java Web Start | JNLP manifest, update policy, single-file launch |
+
+Each of these is a solved problem that someone already implemented, documented, and stress-tested. You don't need to reinvent the binding engine or the workbench model — you need to port the *architecture* into Godot's scene graph and C#.
+
+> So the things we would look for are a binding system, inheritance and hierarchy, and what else?  Make a list.
+
+Here's the full checklist of architectural capabilities to mine from those abandoned technologies:
+
+| # | Capability | What to look for |
+|---|---|---|
+| 1 | **Binding system** | Modes (OneWay/TwoWay/Explicit), DataContext inheritance, converters, `UpdateSourceTrigger`, relative source / ancestor binding |
+| 2 | **Inheritance & hierarchy** | Class hierarchy contract, visual tree vs logical tree separation, namespace resolution, "superclass" pattern (MXML root = base class) |
+| 3 | **Layout engine** | Container model (Grid, Dock, Stack, Free), sizing rules (fixed, proportional, fill, huggable), responsive breakpoints |
+| 4 | **Component / widget architecture** | Base class contract (what every control *must* implement), Widget → Composite → Panel separation, property system (typed, settable, animatable) |
+| 5 | **Templating / lookless controls** | `ControlTemplate` (replace the visual tree), `DataTemplate` (auto-select by type), logical tree vs visual tree split |
+| 6 | **Styling & theming** | Implicit styles, cascading/override, resource dictionaries, per-app vs platform-level theme, dark/light mode |
+| 7 | **Event / signal model** | Declarative wiring (`<handler>`), bubbling vs direct, signal routing, event args contract |
+| 8 | **State management** | View states, observable/`INotifyPropertyChanged` equivalent, transactional state (XForms `submit` pattern), undo/redo |
+| 9 | **Extension / plugin architecture** | Declarative manifests, lazy instantiation (`PartReference`), extension points, app registry |
+| 10 | **Design-time / runtime separation** | Design-time model ≠ runtime model, synchronizer, live preview as a real runtime instance |
+| 11 | **Packaging & deployment** | Manifest format, update policy, single-file launch, incremental updates, permissions |
+| 12 | **IPC / process model** | Object references (CORBA-style), serialization, in-process vs out-of-process transparency, D-Bus / Wayland bridge |
+| 13 | **Accessibility** | AT-SPI2 bridge, semantic roles, focus order, screen reader announcements, keyboard navigation contract |
+| 14 | **Resource system** | Localization (i18n/l10n), images/fonts/sounds as first-class typed resources, resource loading by path or name |
+| 15 | **Animation & transition** | Declarative animation (duration, easing, delay), state transitions, implicit vs explicit animation, interruptible |
+
+**The ones that are hardest to retrofit and should be designed in from the start:**
+
+- **#5 (Templating)** — if your base `Control` doesn't separate "what it does" (logical) from "how it looks" (visual) from day one, you can't add it later without breaking every component.
+- **#2 (Inheritance & hierarchy)** — the visual tree / logical tree split is the same. If MXML nesting *is* the visual tree with no logical layer, you lose templating, data templates, and clean binding scope.
+- **#13 (Accessibility)** — the AT-SPI D-Bus interface needs to be a first-class part of the component contract, not a bolt-on. Every control must expose a semantic role and a label.
+
+The rest can be added incrementally as GDExtensions or C# libraries layered on top of the scene graph.
+
+
+> How much can GodotEngine handle in an app?  Could it handle something like an office suite?
+
+**Godot can host the UI shell, but it cannot *be* an office suite.** The gap is specific and well-defined:
+
+**What Godot gives you (the UI layer):**
+
+- ✅ Full widget toolkit (buttons, menus, toolbars, panels, tabs, tree views)
+- ✅ Text *shaping* — HarfBuzz + ICU + SIL Graphite for BiDi, complex scripts (Arabic, Devanagari, CJK), ligatures, font fallback chains. This landed in 4.0 and is solid.
+- ✅ GPU-accelerated 2D rendering
+- ✅ C# / .NET 8 ecosystem (NuGet, LINQ, async)
+- ✅ GDExtension for C++ native code
+- ✅ Resource system, signals, containers
+
+**What Godot does NOT give you (the document engine layer):**
+
+| Missing piece | What an office suite needs | Where it lives in LibreOffice |
+|---|---|---|
+| **Document model** | Block/inline element tree, style hierarchy, formatting runs (bold/italic/superscript as *spans* within a paragraph) | `sw` (Writer) module, ~200K lines |
+| **Document-level text layout** | Flowing text across pages/columns, inline objects in text flow, footnotes, endnotes, cross-references, **hyphenation**, text justification in a multi-page context | `vcl` + `svl` layout on top of Pango |
+| **Virtualized grid** | 1M rows × 16K cols with only visible cells rendered, sparse memory layout | `sc` (Calc) module |
+| **Formula engine** | Parser, evaluator, circular-dependency detection, 500+ built-in functions | `sc` formula interpreter |
+| **PDF rendering/generation** | Render a document to PDF, or open a PDF for viewing | `pdf` export + `poppler` import |
+| **Printing** | Page setup, margins, headers/footers, duplex, paper size, CUPS/Print Spooler | `vcl` print backend |
+| **File format parsers** | OOXML (DOCX/XLSX/PPTX), ODF, legacy formats | `oox`, `writerfilter`, `sc` import filters |
+
+**The key distinction:** Godot's TextServer is the *shaping* layer (Unicode → glyphs). It's equivalent to HarfBuzz. What a word processor needs on top of that is the *layout* layer — equivalent to **Pango** in the GTK stack — which handles line breaking in a document context, paragraph justification, hyphenation, footnote placement, column flow, and inline object positioning. Godot has HarfBuzz but not Pango. That's the single biggest gap.
+
+**Practical assessment for each office component:**
+
+- **Word processor** — Hardest. You need a full document layout engine. This is the equivalent of building Pango + a document model from scratch. The C# side handles the document model and style system; a C++ GDExtension wraps a layout engine (you could embed Pango directly, or build on top of Godot's TextServer with a custom document layout pass). This is a multi-year effort.
+
+- **Spreadsheet** — Very doable. The grid is a virtualized `GridContainer`-like control (render only visible cells). The formula engine is pure C# (a parser + evaluator + dependency graph — no native code needed). File I/O via `DocumentFormat.OpenXml` (Microsoft's own C# library, available on NuGet). This is the most tractable of the three.
+
+- **Presentation** — Moderate. Slides are fixed-layout (no flowing text), so the document model is simpler. Each slide is essentially a scene with positioned controls. Export to PDF via a MuPDF GDExtension.
+
+- **PDF viewer** — Straightforward. Wrap MuPDF or Poppler in a GDExtension, render pages to textures, display in a scrollable `TextureRect`. This is a weekend project.
+
+**The honest comparison:**
+
+Godot is to an office suite what **GTK is to LibreOffice**. GTK provides the widget toolkit; LibreOffice builds its own document model, its own layout engine (on top of Pango/HarfBuzz), its own grid, its own PDF export. The widget toolkit is maybe **10–15% of the total work**. The document engines are the other 85%, and they're all things you build yourself.
+
+**The strategic implication for your DE:**
+
+You don't need to build an office suite. You need the DE to *launch and window-manage* office apps. The realistic path:
+
+1. **Your DE + app kit** handles: file manager, terminal, settings, media player, text editor (not word processor), calculator, etc. — all in MXML + C# + Godot.
+2. **Office suite** ships as an out-of-process app (LibreOffice, or a C#-based suite using `DocumentFormat.OpenXml` + a custom layout engine) that your DE launches and window-manages.
+3. **The form designer + XForms** covers the "quick business app" use case — data entry, reporting, workflow — which is 80% of what small businesses actually need from "office software."
+
+That last point is important: the XForms + MXML + C# stack is genuinely sufficient for the *business form* use case (data entry, validation, reporting, approval workflows) without needing a full word processor or spreadsheet. That's where your platform's unique value is — not competing with LibreOffice, but covering the long tail of "I need a form that validates data and generates a report" that neither LibreOffice nor a web app handles well.
+
+> How can I embed Pango in Godot for text layout?
+
+There are two levels to this, and they require different approaches:
+
+**Level 1: Pango as a custom TextServer (paragraph-level layout)**
+
+Godot has a first-class plugin point for this: `TextServerExtension`. You build a GDExtension (C++) that subclasses it and delegates to Pango internally. The API surface maps cleanly:
+
+| Godot TextServer API | Pango equivalent |
+|---|---|
+| `_create_shaped_text(direction, orientation)` | `pango_layout_new(context)` |
+| `_shaped_text_add_string(rid, text, fonts, size)` | `pango_layout_set_text()` + `PangoAttrList` for per-span fonts |
+| `_shaped_text_set_direction(rid, dir)` | `pango_layout_set_alignment()` / context direction |
+| `_shaped_text_set_width(rid, width)` | `pango_layout_set_width()` |
+| `_shaped_text_get_size(rid)` | `pango_layout_get_pixel_size()` |
+| `_shaped_text_get_glyphs(rid)` | `pango_layout_get_iter()` → `pango_layout_iter_get_run()` → `PangoGlyphString` |
+| `_shaped_text_draw(rid, canvas_item, pos, ...)` | `pango_cairo_show_layout()` or manual glyph draw to a `Ref<CanvasItem>` |
+| `_shaped_text_ellipsize(rid, mode, width)` | `pango_layout_set_ellipsize()` |
+| `_shaped_text_set_custom_punctuation(rid, punct)` | `pango_layout_set_line_wrap()` + custom break rules |
+
+The key constraint from the [PR that introduced the GDExtension TextServer interface](https://github.com/godotengine/godot/pull/52192): your custom server must be created and set as primary **before** any font resources or theme initialization. In practice, you register it in a static initializer or at the very start of your GDExtension's `initialize()` function.
+
+**Level 2: Document engine (multi-page, columns, footnotes)**
+
+This is where Pango alone isn't enough. `PangoLayout` is a *paragraph* layout engine — it handles line breaking, justification, alignment, and ellipsization within a block of text. It does **not** handle:
+
+- Multi-page flow (text continuing across pages)
+- Column layouts (multi-column magazine style)
+- Footnotes / endnotes with cross-references
+- Inline objects that participate in text flow (images, equations)
+- Page-level decorations (headers, footers, page numbers)
+
+For that, you build a **document model** in C# (or C++ in the same GDExtension) that:
+
+1. Splits content into blocks (paragraphs, headings, tables, images)
+2. For each block, calls your Pango-backed TextServer to get the laid-out lines
+3. Manages the flow: when a block's lines exceed the remaining page height, break the block and continue on the next page
+4. Handles inline objects by reserving space in the line and compositing them in
+5. Manages footnotes as a secondary layout pass
+
+This is exactly what LibreOffice's `sw` module does — it calls Pango for each paragraph, then its own code handles page breaking, column flow, and footnote placement.
+
+**Practical architecture:**
+
+```
+GDExtension (C++)
+├── PangoTextServer : TextServerExtension
+│   ├── Wraps PangoContext, PangoLayout, PangoAttrList
+│   ├── Uses pango_cairo_font_map for font resolution
+│   └── Renders glyphs to Godot's canvas via pango_cairo or manual glyph draw
+│
+├── PangoDocumentModel (C++ or C#)
+│   ├── Block tree (paragraph, heading, table, image, footnote_ref)
+│   ├── Page flow engine (break blocks across pages)
+│   ├── Column layout (N columns per page)
+│   └── Footnote/endnote placement
+│
+└── Godot nodes (your app kit)
+    ├── DocumentView : Control  (scrollable, renders pages)
+    ├── DocumentPage : Control  (single page, contains blocks)
+    └── DocumentBlock : Control (single block, uses PangoTextServer for text)
+```
+
+**One practical shortcut:** Godot already ships HarfBuzz internally (inside `TextServerAdvanced`). Pango also uses HarfBuzz. You have two options:
+
+1. **Link Pango as a system library** in your GDExtension (`-lpango -lpangocairo -lgobject-2.0`). This gives you the full Pango layout engine (line breaking, justification, complex scripts, attributes) with minimal code. Pango is a small, stable C library with no heavy dependencies beyond HarfBuzz (which Godot already has) and Fontconfig.
+
+2. **Use Godot's existing HarfBuzz** and build the paragraph layout logic yourself (line breaking, justification). This avoids the Pango dependency but means re-implementing what Pango already does well.
+
+Option 1 is almost certainly the right call. Pango is ~200KB, it's in every Linux distro's base repos, and it's been battle-tested for 25 years. The GDExtension links against it the same way it would link against any other C library.
+
+**What Pango gives you that Godot's TextServer doesn't:**
+
+- **Justification** (stretching lines to fill width) — Godot's TextServer has no justification
+- **Attribute-based styling within a paragraph** (bold span, italic span, superscript, colored span) via `PangoAttrList` — Godot does this via multiple `add_string` calls with different font RIDs, which is clunkier
+- **Tab stops** (`pango_tab_array`) — Godot has no tab stop support
+- **Line wrapping modes** (word, char, word-char) — Godot only does word wrap
+- **Indentation** (first-line, hanging) — Godot has no paragraph indent
+
+So Pango fills a real gap, not just a theoretical one. The `TextServerExtension` interface was designed for exactly this kind of swap.
+
+
+> The most prominent shortcoming of GodotEngine is its plain GUI controls.  Can they be themed sufficiently?
+
+**Yes, sufficiently — but with structural friction that matters for a DE.**
+
+**What the system can do (and does well):**
+
+- `StyleBoxFlat` gives you background, border, corner radius, shadow, and content margins. That covers flat design, Material-style, and most modern DE aesthetics.
+- `StyleBoxTexture` for 9-slice images (traditional Windows-style chrome).
+- **Theme Type Variations** — a `ButtonDanger` extends `Button` and only overrides what differs. This is your "class" mechanism.
+- Full state coverage per control: `normal`, `hover`, `pressed`, `disabled`, `focus`, `hover_pressed`.
+- Theme cascades down the Control tree (parent theme → children), with per-node overrides on top.
+- A single `Theme` resource swap changes the entire app (light/dark mode is one line).
+
+**Where it falls short structurally:**
+
+| Limitation | Impact for a DE |
+|---|---|
+| **No CSS-like cascade or selectors** | You can't say "all `.panel` elements inside a `.sidebar`." You can only target by class type (`Panel`, `Button`) or by theme type variation. No compound selectors. |
+| **Focus is an overlay only** | The focus StyleBox is *drawn on top of* the base state, not a replacement. You can't make a focused button look fundamentally different from an unfocused one (e.g. a glow that changes the button's shape, not just adds a ring). |
+| **Combinatoric states** | `hover_pressed` is a separate StyleBox from `hover` and `pressed`. There's no "state mask" system. For controls with many states (toggle + check + hover + disabled), the number of StyleBoxes grows combinatorially. |
+| **No partial StyleBox override** | To change one property (e.g. just the background color) on a variant, you must duplicate the entire StyleBox. No "inherit all, override one." |
+| **No transitions/animations** | No built-in color interpolation, no `transition: background 0.2s`. Hover effects are instant state swaps. You'd script them manually with `Tween`. |
+| **String-based property names** | Theme items are referenced by string (`"font_color_hover"`), not typed constants. No compile-time safety, no autocomplete in C#. |
+| **No "reset"** | No equivalent of `all: unset` or a CSS reset. Un-styling a control means overriding every property individually. |
+
+**The practical verdict for your DE:**
+
+The theming system is **sufficient to make a professional-looking DE** — every polished Godot game UI you've seen (including the editor itself) is just a Theme resource with well-chosen StyleBoxes. You can absolutely produce a Windows 11 / macOS Sonoma / GNOME Adwaita look.
+
+But for an **app kit** that third-party developers will use, the friction is real:
+
+1. Developers coming from CSS/XAML will hit the "no cascade, no selectors" wall immediately.
+2. The combinatoric state system makes theming a new custom control tedious.
+3. The lack of transitions makes the UI feel "gamey" (instant snaps) rather than "app-like" (smooth interpolation).
+
+**What you'd build on top (as part of your app kit):**
+
+- A **C# styling DSL** that compiles to Theme resources — a mini-CSS with selectors, cascade, and transitions that generates the underlying StyleBox/Theme graph. This is the "Godot Style Sheet" proposal (issue #13269) that the community has been asking for.
+- A **transition system** — a C# layer that intercepts state changes and tweens between StyleBox properties over N milliseconds.
+- A **state mask model** — instead of 6 separate StyleBoxes, define a base + per-state deltas, and the renderer composites them.
+
+So: the engine's native theming is the *substrate* (like how CSS is the substrate for React). You'd build your app kit's styling layer on top of it, just as you'd build MXML on top of the scene graph. The native system is sufficient to *render* a professional look; it's not sufficient as a *developer-facing styling language* without an abstraction layer.
+
+
+
+> The desktop environment and window manager we build will have to account for what range of responsibilities, such as layering of elements?
+
+Here's the full responsibility map, organized by domain. The layering question is actually the most architecturally significant one — it determines your entire scene graph structure.
+
+**Layering / Z-order (the structural backbone):**
+
+The `wlr-layer-shell` protocol defines four fixed layers, but a real DE needs a finer-grained stack. Here's the actual z-order from a working compositor (labwc) that you'll need to replicate in Godot's scene tree:
+
+| Z (top→bottom) | What lives here |
+|---|---|
+| 1 | Session lock screen |
+| 2 | Window switcher OSD (Alt+Tab overlay) |
+| 3 | Window switcher live previews |
+| 4 | Root menus (right-click desktop) |
+| 5 | Popups on layer-shell surfaces |
+| 6 | **Overlay layer** — notification center, rofi/launcher, cursors |
+| 7 | **Top layer** — panels, taskbars, docks |
+| 8 | Unmanaged/XWayland surfaces |
+| 9 | XDG popups (tooltips, context menus on app windows) |
+| 10 | **Workspace content** — normal app windows, with sub-layers for always-on-top / normal / always-on-bottom |
+| 11 | **Bottom layer** — desktop icons, secondary panels |
+| 12 | **Background layer** — wallpaper |
+
+In Godot, this maps to **sub-trees under the root viewport**, each with a fixed `z_index` or a dedicated `CanvasLayer` node (which renders at a fixed z regardless of its parent's position). `CanvasLayer` is exactly the right primitive — it's Godot's equivalent of a compositor layer.
+
+**The full responsibility list:**
+
+**1. Compositing / Rendering**
+- Combine all visible surfaces into one frame
+- Alpha blending, shadows, transparency
+- Window open/close/minimize animations
+- Workspace switch animations
+- GPU vs software fallback
+
+**2. Window Placement & Geometry**
+- Initial placement (cascade, centered, smart)
+- Move, resize (user drag, programmatic)
+- Maximize, minimize, fullscreen
+- Tiling / snapping (half-screen, quarter, thirds)
+- Per-monitor placement
+- Window rules (per-app-class geometry defaults)
+
+**3. Focus Management**
+- Which window receives keyboard input
+- Focus policy: click-to-focus, focus-follows-mouse, sloppy focus
+- Focus stealing prevention (debounce, delay)
+- Focus indicator (visual highlight on the focused window)
+- Focus traversal (Tab between windows, Alt+Tab)
+- Focus on map (new windows get focus or not)
+
+**4. Input Routing**
+- Keyboard → focused window
+- Mouse → window under cursor (with layer priority: overlay > top > normal > bottom)
+- Touch / tablet / stylus routing
+- Global shortcuts (DE-level, not app-level)
+- Input exclusivity (screen lock grabs all input)
+- Pointer confinement (drag operations)
+
+**5. Window Decorations**
+- Title bar (icon, title, min/max/close buttons)
+- Borders / resize handles
+- Per-app decoration theming
+- Server-side vs client-side decorations (CSD/SSD)
+- Decoration animations
+
+**6. Workspace / Virtual Desktop Management**
+- Multiple workspaces (fixed or dynamic count)
+- Move windows between workspaces
+- Per-workspace window state (which windows are on which workspace)
+- Workspace switch (keyboard, gesture, panel click)
+- Per-monitor workspaces vs global workspaces
+
+**7. App Lifecycle**
+- Launch (in-process `.pck` vs out-of-process binary)
+- Track running instances
+- Suspend / resume (memory pressure, user action)
+- Kill / crash detection
+- Single-instance enforcement (focus existing window or launch new)
+- App registry / desktop entry (`.desktop` file equivalent)
+- Lazy instantiation (don't load the `.pck` until first launch)
+
+**8. Session Management**
+- Login / logout / switch user
+- Save / restore session (window positions, which apps were open)
+- Suspend / resume (DPMS, screen blanking)
+- Screen lock (input grab, show lock surface)
+- Idle detection (screensaver, auto-lock)
+
+**9. Notifications**
+- System-wide notification center (overlay layer)
+- Per-app notification routing
+- Urgency levels (normal, critical, transient)
+- Action buttons on notifications
+- Notification history
+
+**10. System Tray / Status Indicators**
+- Icon area in the panel
+- App-provided status icons (network, battery, volume)
+- D-Bus StatusNotifierItem protocol (or your equivalent)
+- Menu on click
+
+**11. Drag & Drop (cross-app)**
+- Intra-DE DnD (between your `.pck` apps)
+- Cross-process DnD (your app → native app, and vice versa)
+- DnD from file manager to app
+- DnD visual feedback (ghost image follows cursor)
+
+**12. Clipboard / Selection**
+- System-wide clipboard (persistent across sessions)
+- Primary selection (X11-style middle-click paste)
+- Clipboard manager (history)
+- Cross-app clipboard sharing
+
+**13. Multi-Monitor**
+- Detect and enumerate outputs
+- Per-output geometry, scale, rotation
+- Span / extend / mirror modes
+- Per-output layer assignment (panel on each monitor, or one)
+- Window spanning across monitors
+- Fractional scaling (per-monitor DPI)
+
+**14. Accessibility**
+- AT-SPI2 D-Bus bridge (screen reader)
+- Magnifier (overlay layer, input grab)
+- Keyboard navigation (full Tab/Shift+Tab traversal)
+- High contrast mode
+- Screen reader announcements on focus change, notifications
+
+**15. Power Management**
+- Battery monitoring (UPower D-Bus)
+- Suspend / hibernate triggers
+- Brightness / volume OSD (overlay layer)
+- DPMS (display power management)
+
+**16. Theming / Appearance**
+- System-wide theme (applied to all apps)
+- Per-app theme overrides
+- Dark/light mode toggle
+- Accent color
+- Font selection
+- Cursor theme
+
+**17. IPC / Inter-Process Communication**
+- DE ↔ app messaging (your CORBA-style object references)
+- D-Bus for system services (portal, settings, notifications)
+- Wayland protocol for native apps (xdg-shell, layer-shell, foreign-toplevel)
+- In-process: Godot signals between `.pck` apps
+
+**18. File System / Portal**
+- XDG Desktop Portal integration (file picker, sharing)
+- File manager integration (open with, properties)
+- Recent files / pinned apps
+
+**The architectural implication for Godot:**
+
+Your scene tree structure *is* your compositor. The `CanvasLayer` nodes define the z-order. Within each layer, the node tree defines the stacking. The key design decision:
+
+```
+Root
+├── CanvasLayer (z=-100) — Background (wallpaper)
+├── CanvasLayer (z=-50)  — Bottom (desktop icons)
+├── CanvasLayer (z=0)    — Workspace (app windows)
+│   ├── AlwaysOnBottom
+│   ├── Normal (stacked by focus order)
+│   └── AlwaysOnTop
+├── CanvasLayer (z=10)   — XDG Popups (tooltips, context menus)
+├── CanvasLayer (z=50)   — Top (panel, taskbar, dock)
+├── CanvasLayer (z=100)  — Overlay (notifications, launcher, OSD)
+├── CanvasLayer (z=200)  — Window Switcher
+└── CanvasLayer (z=999)  — Session Lock
+```
+
+Each app window is a `Control` node inside the Workspace layer. Its z-index within that layer is managed by your focus/stacking policy. The panel is a `Control` in the Top layer. Notifications are `Control`s in the Overlay layer. This is literally how a compositor works, just expressed as Godot's scene tree instead of a list of Wayland surfaces.
+
+**The one thing Godot doesn't give you that a real compositor needs:**
+
+**Damage tracking / partial updates.** A real compositor only re-composites the regions that changed (the Damage extension on X11, or the implicit "buffer attached" signal on Wayland). Godot's `CanvasLayer` renders the full layer when any node in it changes. For a DE where most of the screen is static (wallpaper, panel, idle windows), this is fine on a modern GPU — full-frame compositing of 1080p/1440p is trivially cheap. But if you ever target low-power hardware, you'd want a GDExtension that tracks dirty rects per `CanvasLayer` and only re-presents those regions to the DRM/KMS plane.
+
+
+
