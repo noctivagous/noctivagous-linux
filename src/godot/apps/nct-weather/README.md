@@ -19,3 +19,8 @@ Self-test (headless): `NCT_WEATHER_SELFTEST=1` loads the newest
 dataset's frames, prints `NCT_WEATHER_FRAME_OK <w>x<h>
 provider=... stale=... frames=N`, optionally saves a viewport
 PNG to `NCT_WEATHER_SHOT`, and quits.
+
+The picker lists the bridge's frame and grid datasets (24).
+`obs.surface-hourly` is deliberately absent: it serves JSON
+observation records, not frames — see the bridge README's /obs
+endpoint.
