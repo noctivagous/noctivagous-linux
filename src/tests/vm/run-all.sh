@@ -27,8 +27,21 @@ check00() { # environment & pins
   /usr/lib/nct/godot/godot --version > "$RES/00.log" 2>&1 || true
 }
 check01() { # nested chain re-run in the guest (tiers 0-1, real firefox-esr)
-  if NCT_GODOT=/usr/lib/nct/godot/godot "$SRC/tools/run-chain.sh" > "$RES/01.log" 2>&1; then
-    ok 01-nested-chain
+  # The chain's fixture bridge must own port 7717, which the live
+  # greeter's bridge already holds — the two cannot coexist in one
+  # boot. Stop greetd for the chain's duration, then restart it so
+  # the greeter checks below get their pre-login seat back.
+  local had_greetd=""
+  if systemctl is-active greetd >/dev/null 2>&1; then
+    had_greetd=1; systemctl stop greetd || true; sleep 2
+  fi
+  local rc=0
+  NCT_GODOT=/usr/lib/nct/godot/godot "$SRC/tools/run-chain.sh" > "$RES/01.log" 2>&1 || rc=$?
+  if [ -n "$had_greetd" ]; then
+    systemctl start greetd || true
+    local t=0; while [ $t -lt 20 ]; do pgrep -f "cage" >/dev/null && break; sleep 1; t=$((t+1)); done
+  fi
+  if [ "$rc" = 0 ]; then ok 01-nested-chain
   else bad 01-nested-chain "run-chain failed in guest; see log + $SRC/tests/results-local"; fi
 }
 check02() { # greetd armed
