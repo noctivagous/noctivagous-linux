@@ -11,10 +11,26 @@ project tasks
 	What we will use on Mac to make the environment.
 
 nct-app-kit Template Components and stock controls
-	- audio playback control component with horizontal ("music player app").
+	- audio playback control component with horizontal ("music player app"), other layouts.
 	- timeline composition component
 	- app shell with optional inspector component + bind to properties
-	
+
+app-adapter-kit:
+	nct-app-kit website-app-adapter	
+		- routes headless Chromium / Firefox activity with
+		schema and profile for the specific web app, so that
+		activity is routed into a GUI app.  Profiles for different
+		websites.  comes with extension that is loaded by
+		the Chromium / Firefox to allow easier control next to CDP.
+
+File Navigator Workflows - reduce number of steps needed at right-click menu
+   usually: just single functions.
+    right-click folder that can be opened -> Workflows> use search box in submenu  and type "virtual box" > choose "package dir and open in Virtual Box"
+   contextual menu is not list of functions in this case but allows
+   for searching workflows.
+   right-click file or folder: -> AI agent instruction [  ] --> type instruction to AI agent (that has access to command line),
+   AI agent performs those tasks with AI agent window that shows up with progress. 
+
 	
 Noctivagous App Catalog
  - Apps and Bundles produced by Noctivagous,
