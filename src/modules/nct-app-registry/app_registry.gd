@@ -46,6 +46,17 @@ var _counter: int = 0
 var _wm = null                   ## the window manager (set by the host)
 var _env = null                  ## the environment manager (bus), optional
 
+## Whether launch() substitutes a placeholder surface when the
+## caller supplies no backing. Hosts that render app surfaces
+## in-process (the modules harness, an in-shell NCTXML hosting)
+## keep the default. A host whose apps live in their own
+## processes under a compositor (the shipped shell, Model 2)
+## sets this false: the record is registered WITHOUT a backing
+## and the surface attaches to it when the compositor link
+## lands — the shell must never draw a fake window for a real
+## external program.
+var placeholder_backings: bool = true
+
 func set_window_manager(wm) -> void:
 	_wm = wm
 
@@ -112,7 +123,7 @@ func launch(app_id: String, backing: Control = null) -> String:
 		return existing
 	_counter += 1
 	var window_id := "%s-win-%d" % [app_id, _counter]
-	if backing == null:
+	if backing == null and placeholder_backings:
 		backing = _placeholder(app_id, m)
 	var rec = Record.new(window_id, str(m.get("requested_style", "normal")))
 	rec.origin = ORIGIN_FOR_KIND[str(m["kind"])]
