@@ -49,6 +49,8 @@ func _ready() -> void:
 	_setup_window_manager()
 	_setup_registry(entries)
 	_setup_watcher()
+	stack_host.rows_changed.connect(_rewire_focus)
+	_rewire_focus()
 	var args := OS.get_cmdline_user_args()
 	if "--liveness-test" in args:
 		_liveness_test()
@@ -110,6 +112,21 @@ func _setup_window_manager() -> void:
 	bar_rec.geometry = Rect2(Vector2.ZERO,
 		Vector2(get_viewport_rect().size.x, 48))
 	wm.register_window(bar_rec)
+	# The WindowTransformer stack is Top-layer furniture too
+	# (build log 37): its panel is seated in the same layer
+	# as the bar's root. In the default canvas its buttons
+	# formed a focus island — the engine's focus chain does
+	# not cross canvas boundaries, so Tab cycled the bar
+	# alone and the stack was keyboard-unreachable.
+	var stack_rec := Record.new("stack-region", "panel")
+	stack_rec.origin = "shell"
+	stack_rec.kind_link = "shell"
+	stack_rec.title = "Window stack"
+	stack_rec.backing = stack_host.get_panel_root()
+	stack_rec.geometry = Rect2(
+		Vector2(get_viewport_rect().size.x - 320, 56),
+		Vector2(312, 0))
+	wm.register_window(stack_rec)
 
 ## The registry: one manifest per launch-list entry (the shell
 ## itself is furniture, not a launchable app). Record-only
@@ -263,17 +280,90 @@ func _stack_test() -> void:
 	var items: Array = stack_host.stacked()
 	for t in items:
 		print("STACK_ITEM ", t["id"], " ", t["title"])
-	var first_id := str(items[0]["id"])
-	stack_host.send_restore(first_id)
+	# Keyboard legs (build log 37): the stack row must be IN
+	# the focus chain that starts at the bar, and activating
+	# it with ui_accept — the Enter key's action — must
+	# restore its window out of the stack. This is the user's
+	# keyboard path, driven headlessly.
+	var bar_buttons: Array = []
+	_collect_buttons(bar_host.get_bar_root(), bar_buttons)
+	var stack_buttons: Array = []
+	_collect_buttons(stack_host.get_panel_root(), stack_buttons)
+	if bar_buttons.is_empty() or stack_buttons.is_empty():
+		printerr("STACK_FAIL no buttons to walk")
+		get_tree().quit(1)
+		return
+	var visited: Array = []
+	var cur: Control = bar_buttons[0]
+	for i in 16:
+		var nxt: Control = cur.find_next_valid_focus()
+		if nxt == null or nxt == bar_buttons[0]:
+			break
+		visited.append(nxt)
+		cur = nxt
+	var in_chain := false
+	for b in stack_buttons:
+		if visited.has(b):
+			in_chain = true
+	if not in_chain:
+		printerr("STACK_FAIL stack row is not in the bar's focus chain")
+		get_tree().quit(1)
+		return
+	print("STACK_FOCUS_OK chain=", visited.size() + 1)
+	var row_button: Control = stack_buttons[0]
+	row_button.grab_focus()
+	await get_tree().process_frame
+	var press := InputEventAction.new()
+	press.action = "ui_accept"
+	press.pressed = true
+	get_viewport().push_input(press)
+	await get_tree().process_frame
+	var release := InputEventAction.new()
+	release.action = "ui_accept"
+	release.pressed = false
+	get_viewport().push_input(release)
 	var restored := await _wait_until(
 		func(): return stack_host.stacked_count() == want - 1, 8.0)
 	if not restored:
-		printerr("STACK_FAIL restore never left the stack")
+		printerr("STACK_FAIL keyboard restore never left the stack")
 		get_tree().quit(1)
 		return
-	print("STACK_RESTORE_OK id=", first_id)
+	print("STACK_RESTORE_OK id=", str(items[0]["id"]))
 	print("STACK_TEST_OK")
 	get_tree().quit()
+
+## The furniture focus chain (build log 37): the engine's
+## automatic chain keeps each Control-rooted island under a
+## CanvasLayer separate — measured in the guest and
+## headlessly: the bar cycled alone and the stack's rows
+## cycled alone, both seated in the same Top layer. So the
+## chain is wired explicitly — bar buttons, then stack
+## rows, as one cycle — and rewired whenever the stack's
+## rows change. focus_next / focus_previous are the
+## engine's own override for exactly this.
+func _rewire_focus() -> void:
+	var chain: Array = []
+	_collect_buttons(bar_host.get_bar_root(), chain)
+	_collect_buttons(stack_host.get_panel_root(), chain)
+	if chain.is_empty():
+		return
+	for i in chain.size():
+		var b: Control = chain[i]
+		b.focus_next = b.get_path_to(chain[(i + 1) % chain.size()])
+		b.focus_previous = b.get_path_to(
+			chain[(i - 1 + chain.size()) % chain.size()])
+	# A row that held focus can vanish (restored, closed).
+	# If the shell window is focused and nothing holds focus
+	# now, put it back on the first bar button.
+	if get_window().has_focus() \
+			and get_viewport().gui_get_focus_owner() == null:
+		(chain[0] as Control).grab_focus.call_deferred()
+
+func _collect_buttons(n: Node, out: Array) -> void:
+	for c in n.get_children():
+		if c is Button:
+			out.append(c)
+		_collect_buttons(c, out)
 
 func _wait_until(cond: Callable, timeout: float) -> bool:
 	var waited := 0.0
@@ -304,6 +394,14 @@ func _wm_self_test() -> void:
 			fails.append("bar backing is not seated in the Top layer")
 		if bar.takes_focus():
 			fails.append("a panel-style bar must not take focus")
+	var stack = wm.get_record("stack-region")
+	if stack == null:
+		fails.append("no stack-region record")
+	else:
+		if stack.layer != "Top":
+			fails.append("stack layer is " + stack.layer)
+		if stack.backing == null or stack.backing.get_parent() != wm.layer_node("Top"):
+			fails.append("stack backing is not seated in the Top layer")
 	var rec := Record.new("app-self-test-1", "normal")
 	rec.origin = "own-process"
 	rec.app_id = "self-test-app"

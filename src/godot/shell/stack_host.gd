@@ -26,6 +26,10 @@ extends Control
 ## node never blocks the desktop: it ignores mouse input
 ## itself and only its panel takes any.
 
+## The row set changed (build log 37): main.gd rewires the
+## furniture focus chain whenever this fires.
+signal rows_changed
+
 const COL_TEXT := Color(0.73, 0.73, 0.73)        # #bababa
 const COL_FOCUS := Color(0.31, 0.76, 0.97)       # #4fc3f7
 const POLL_S := 1.0
@@ -166,6 +170,15 @@ func stacked_count() -> int:
 func bridge_connected() -> bool:
 	return _connected
 
+## The panel itself, for the window manager's furniture
+## record (build log 37): main.gd seats it in the Top layer
+## beside the bar's root, the way the bar is seated — the
+## stack is Top-layer furniture, and seating it anywhere
+## else puts its buttons in a different canvas, which the
+## engine's focus chain will not cross.
+func get_panel_root() -> PanelContainer:
+	return _panel
+
 func send_restore(id: String) -> void:
 	_send("RESTORE " + id)
 
@@ -186,6 +199,7 @@ func _refresh() -> void:
 	for t in items:
 		_rows.add_child(_make_row(t))
 	_panel.visible = not items.is_empty()
+	rows_changed.emit()
 
 func _make_row(t: Dictionary) -> Control:
 	var row := HBoxContainer.new()
