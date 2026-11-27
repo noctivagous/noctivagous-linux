@@ -21,6 +21,12 @@ This is first to see whether can Godot can allow the construction of
 
 a robust desktop environment.
 
+What the project is for — and what it is not — is stated in
+[POSITIONING.md](POSITIONING.md): a rapid application environment
+(Godot + the app kit), key-clicks at the centre, and AI agents
+building apps inside the OS. Read it before borrowing from other
+desktop projects.
+
 ## What This Is
 
 Noctivagous Linux sits on Debian.  Debian itself is never in this tree.
