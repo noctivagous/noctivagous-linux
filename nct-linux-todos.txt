@@ -8,9 +8,19 @@
 Blender as first-class background app can drive
 3D models for the UI.  Relationship: Enabler-Software Application
 
--- NCT Kiosk - used by Kiosk mode.  allows for configuring
-kiosks.
+-- Hardware Ports Overview - shows all ports and everything hooked up to them
+on a sheet with ports on the sheet looking like what the ports are on the hardware.
+If something is plugged into USB A type port, it looks that way on the sheet.
+If it is empty, then the slot is there.  Includes microphone ports.
+If the SSD plugged into a port inside the motherboard, what is on
+the sheet is a vector graphic of that port.  The devices don't have
+to be depicted first but can be overlayed icons. (A printer).
 
+-- (NCT) Kiosk app - used by Kiosk mode.  allows for configuring
+kiosks: cybercafe, demo, touchscreen, check-in, etc.
+
+-- noctivagous-linux-web-remote.  We don't have to stream
+pixels for everything but instead window and text positions.
 
 nct modules.
 

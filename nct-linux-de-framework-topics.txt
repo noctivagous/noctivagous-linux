@@ -28,6 +28,26 @@ I18N
  
  ----
  
+ From the early-2000s W3C XML ecosystem era (the same period XForms was being developed and recommended in 2003), the key XML-based technologies that are "like" XForms — i.e., standards built on XML for structured web applications — include:
+
+- **XHTML 1.0/1.1** (2000/2001) — XML syntax for HTML; XHTML 2.0 was planned to integrate XForms natively.
+- **XML Schema** — type system XForms (and InfoPath) relied on for data validation.
+- **XPath 1.0** — addressing/calculation language used by XForms, XSLT, and InfoPath rules.
+- **XSLT** — transformation language for rendering XML data into HTML/SVG.
+- **XML Events** — W3C declarative event-handling standard, released alongside XForms 1.0.
+- **SVG** (Scalable Vector Graphics) — XML-based vector graphics, often paired with XForms for presentation.
+- **VoiceXML** — XML markup for voice-based web interactions.
+- **WML** (Wireless Markup Language) — XML markup for early mobile devices.
+- **SMIL** — Synchronized Multimedia Integration Language, XML-based timed media.
+- **Microsoft InfoPath** — proprietary XML forms tool (formerly "XDocs"), the main commercial competitor to XForms.
+- **Adobe LifeCycle Designer** — XML forms designer, another competitor.
+- **XRX** (XForms + REST + XQuery) — an application architecture built on top of XForms, popularized by eXistDB/betterFORM.
+
+These all share the same design philosophy: XML as the lingua franca for data, with declarative markup separating structure, logic, and presentation.
+
+
+--------
+ 
  **Yes.** Apache Royale uses the `.mxml` file format directly — most Royale applications have an MXML file as their main entry point (e.g. `src/MyApp.mxml`), and the compiler tool `mxmlc` is literally named after it. MXML is an XML-based declarative markup language (originally introduced by Macromedia in 2004) that Royale inherited from the Apache Flex SDK; the compiler transpiles `.mxml` files (along with `.as` and CSS) into JavaScript or SWF output.
 
 > if you were making a new runtime renderer, mxml file format forms a readymade system?
