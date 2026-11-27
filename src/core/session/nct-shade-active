@@ -1,0 +1,12 @@
+#!/bin/sh
+# nct-shade-active — the WindowTransformer's shade key (log 36):
+# ask nct-wl-bridge to shade the activated foreign window into
+# the shell's stack. Bound to Super+S in the labwc rc.xml. The
+# bridge binary lives with its source under services/bridge
+# (compiled by build-deb.sh in the installed tree); resolve it
+# from this script's own location, like the rest of the chain.
+set -eu
+case $0 in */*) _self=$0 ;; *) _self=$(command -v "$0") ;; esac
+here=$(cd "$(dirname "$_self")" && pwd)
+src=${NCT_SRC:-$(cd "$here/../.." && pwd)}
+exec "$src/services/bridge/nct-wl-bridge" shade-active

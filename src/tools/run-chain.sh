@@ -42,6 +42,16 @@ for f in "$SRC"/core/session/nct-*; do
 done
 python3 -c "import ast; ast.parse(open('$SRC/services/bridge/nct-greetd-bridge.py').read())" \
   && ok "t0 bridge parses" || bad "t0 bridge parses" "python ast failed"
+# The wl-bridge is C (build log 36): scanner + compile is its
+# parse check, and the binary serves the stack test below.
+WLB_DIR=$(mktemp -d)
+if wayland-scanner client-header "$SRC/services/bridge/wlr-foreign-toplevel-management-unstable-v1.xml" "$WLB_DIR/wlr-foreign-toplevel.h" 2>/dev/null \
+  && wayland-scanner private-code "$SRC/services/bridge/wlr-foreign-toplevel-management-unstable-v1.xml" "$WLB_DIR/wlr-foreign-toplevel.c" 2>/dev/null \
+  && cc -O2 -I"$WLB_DIR" -o "$WLB_DIR/nct-wl-bridge" "$SRC/services/bridge/nct-wl-bridge.c" "$WLB_DIR/wlr-foreign-toplevel.c" -lwayland-client 2> "$WLB_DIR/cc.log"; then
+  ok "t0 wl-bridge builds"
+else
+  bad "t0 wl-bridge builds" "$(cat "$WLB_DIR/cc.log" 2>/dev/null)"
+fi
 GODOT=${NCT_GODOT:-}
 if [ -z "$GODOT" ]; then
   for c in /usr/lib/nct/godot/godot "$(command -v godot || true)" "$HOME/workspace/.nct-tools/godot"; do
@@ -68,6 +78,42 @@ if [ -n "$GODOT" ]; then
     "$GODOT" --headless --path "$SRC/godot/shell" -- --liveness-test 2>&1)
   echo "$out" | grep -q "LIVENESS_TEST_OK" && ok "t0 shell liveness relaunch" || bad "t0 shell liveness relaunch" "$out"
   rm -rf "$lt_dir"
+  # Shell stack (log 36): the WindowTransformer stack against
+  # the wl-bridge's fixture backend — two fake foreign windows,
+  # one of them stacked; the shell must render it as a stack
+  # item and restore it out of the stack.
+  st_dir=$(mktemp -d)
+  printf 'org.mozilla.firefox\tFirefox\t1\t0\t0\nfoot\tTerminal\t0\t1\t1\n' > "$st_dir/tops.tsv"
+  NCT_WL_FIXTURE="$st_dir/tops.tsv" NCT_WL_BRIDGE_PORT=17718 \
+    "$WLB_DIR/nct-wl-bridge" > "$st_dir/bridge.log" 2>&1 &
+  st_bridge=$!
+  sleep 1
+  out=$(NCT_WL_BRIDGE_PORT=17718 NCT_STACK_TEST_WANT=1 \
+    "$GODOT" --headless --path "$SRC/godot/shell" -- --stack-test 2>&1)
+  kill $st_bridge 2>/dev/null
+  echo "$out" | grep -q "STACK_TEST_OK" && ok "t0 shell stack transformer" || bad "t0 shell stack transformer" "$out"
+  # Shade exclusion (log 36): with the session's exclusion the
+  # active shell window must refuse SHADE_ACTIVE, while another
+  # Godot_Engine window (NCT Hello) under the same env shades.
+  printf 'Godot_Engine\tNCT Shell (DEBUG)\t1\t0\t0\norg.mozilla.firefox\tFirefox\t0\t0\t0\n' > "$st_dir/tops.tsv"
+  NCT_WL_FIXTURE="$st_dir/tops.tsv" NCT_WL_BRIDGE_PORT=17719 \
+    NCT_WL_EXCLUDE_APP_IDS="Godot_Engine:NCT Shell" \
+    "$WLB_DIR/nct-wl-bridge" > "$st_dir/bridge2.log" 2>&1 &
+  st_bridge=$!
+  sleep 1
+  out=$(NCT_WL_BRIDGE_PORT=17719 "$WLB_DIR/nct-wl-bridge" shade-active 2>&1)
+  kill $st_bridge 2>/dev/null; sleep 1
+  printf 'Godot_Engine\tNCT Hello\t1\t0\t0\n' > "$st_dir/tops.tsv"
+  NCT_WL_FIXTURE="$st_dir/tops.tsv" NCT_WL_BRIDGE_PORT=17719 \
+    NCT_WL_EXCLUDE_APP_IDS="Godot_Engine:NCT Shell" \
+    "$WLB_DIR/nct-wl-bridge" > "$st_dir/bridge3.log" 2>&1 &
+  st_bridge=$!
+  sleep 1
+  out2=$(NCT_WL_BRIDGE_PORT=17719 "$WLB_DIR/nct-wl-bridge" shade-active 2>&1)
+  kill $st_bridge 2>/dev/null
+  echo "$out" | grep -q "^FAIL" && echo "$out2" | grep -q "^OK" \
+    && ok "t0 wl-bridge shade excludes shell" || bad "t0 wl-bridge shade excludes shell" "$out / $out2"
+  rm -rf "$st_dir" "$WLB_DIR"
   # Modules Slice 1: window + layer manager skeleton, fake windows of
   # every style, conversion + freeze measured from the scene tree.
   out=$("$GODOT" --headless --path "$SRC/modules" -- --self-test 2>&1)

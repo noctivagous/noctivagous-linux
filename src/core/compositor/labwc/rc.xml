@@ -1,8 +1,12 @@
 <?xml version="1.0"?>
 <!-- labwc configuration — foundation stand-in compositor.
      Deliberately near-stock: the NCT compositor's policy (placement,
-     key-click operators, shade/freeze/hide) is compositor work that
-     lands in the real compositor, not in this file. -->
+     key-click operators, freeze/hide) is compositor work that lands
+     in the real compositor, not in this file. One exception since
+     build log 36: shade lives in the shell (the WindowTransformer
+     stack) over the foreign-toplevel protocol, so its KEY is bound
+     here — Super+S runs nct-shade-active, which asks nct-wl-bridge
+     to minimize the activated window into the stack. -->
 <labwc_config>
   <core>
     <decoration>server</decoration>
@@ -13,6 +17,9 @@
   </theme>
   <keyboard>
     <default />
+    <keybind key="W-s">
+      <action name="Execute" command="nct-shade-active" />
+    </keybind>
   </keyboard>
   <mouse>
     <default />

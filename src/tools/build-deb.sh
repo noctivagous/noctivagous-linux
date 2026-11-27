@@ -75,6 +75,16 @@ rm -rf "$PKG/usr/lib/nct/godot/greeter" "$PKG/usr/lib/nct/godot/shell" \
 cp "$WORK/pcks/greeter.pck" "$PKG/usr/lib/nct/godot/greeter.pck"
 cp "$WORK/pcks/shell.pck" "$PKG/usr/lib/nct/godot/shell.pck"
 cp "$WORK/pcks/apps/nct-hello.pck" "$PKG/usr/lib/nct/godot/apps/nct-hello.pck"
+# The WindowTransformer bridge (log 36) is the shipped tree's one
+# compiled C artifact: wayland-scanner + cc against the vendored
+# protocol XML beside its source. Build machines need
+# libwayland-dev and the scanner (libwayland-bin) — the same class
+# of build-time requirement as the .NET SDK the .pck step needs.
+wayland-scanner client-header "$SRC/services/bridge/wlr-foreign-toplevel-management-unstable-v1.xml" "$WORK/wlr-foreign-toplevel.h"
+wayland-scanner private-code "$SRC/services/bridge/wlr-foreign-toplevel-management-unstable-v1.xml" "$WORK/wlr-foreign-toplevel.c"
+cc -O2 -I"$WORK" -o "$PKG/usr/lib/nct/services/bridge/nct-wl-bridge" \
+  "$SRC/services/bridge/nct-wl-bridge.c" "$WORK/wlr-foreign-toplevel.c" \
+  -lwayland-client
 # the system overlay, at its real paths
 cp -r "$SRC/system/etc" "$PKG/"
 mkdir -p "$PKG/usr/share" "$PKG/usr/lib/systemd"

@@ -12,6 +12,20 @@ list=${NCT_LAUNCH_LIST:-$src/core/session/launch-list.tsv}
 state=${NCT_STATE_DIR:-$HOME/.local/state/nct}; mkdir -p "$state"
 export PATH="$here:$PATH" NCT_SRC="$src"
 echo "$(date -Is) session-apps start" >> "$state/session.log"
+# The WindowTransformer bridge (log 36): holds the compositor's
+# foreign-toplevel binding that the shell's stack speaks to.
+# Started here — inside the live compositor, before any app —
+# and left running for the session. (In the installed tree the
+# binary is compiled by build-deb.sh beside its source; a bare
+# checkout has it only after a local build, hence the -x guard.)
+if [ -n "${WAYLAND_DISPLAY:-}" ] && [ -x "$src/services/bridge/nct-wl-bridge" ]; then
+  # Never shade the shell itself: it is a Godot_Engine toplevel
+  # titled "NCT Shell..." (log 36 guest proof). The title prefix
+  # keeps every other Godot window — NCT Hello included —
+  # shadeable.
+  NCT_WL_EXCLUDE_APP_IDS="Godot_Engine:NCT Shell" \
+  "$src/services/bridge/nct-wl-bridge" >> "$state/wl-bridge.log" 2>&1 &
+fi
 awk -F'\t' '$4==1 {print $1}' "$list" | while read -r id; do
   [ -n "$id" ] && nct-launch "$id" || true
 done

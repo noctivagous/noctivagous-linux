@@ -34,6 +34,7 @@ const AppRegistry := preload("nct-app-registry/app_registry.gd")
 const ProcessWatcher := preload("process_watcher.gd")
 
 @onready var bar_host: Control = $BarHost
+@onready var stack_host: Control = $StackHost
 
 var wm  ## the hosted window manager (nct-window-manager)
 var registry  ## the hosted app registry (nct-app-registry)
@@ -51,6 +52,8 @@ func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	if "--liveness-test" in args:
 		_liveness_test()
+	if "--stack-test" in args:
+		_stack_test()
 	if "--self-test" in args:
 		for e in entries:
 			print("SHELL_ENTRY ", e["id"], " ", e["title"])
@@ -240,6 +243,36 @@ func _liveness_test() -> void:
 	print("LIVENESS_RELAUNCH_OK pid=", watcher.pid_of(id))
 	OS.kill(watcher.pid_of(id))
 	print("LIVENESS_TEST_OK")
+	get_tree().quit()
+
+## --stack-test only: the WindowTransformer stack against the
+## wl-bridge (the chain supplies its fixture backend): the
+## stacked items arrive in the feed, and restoring the first
+## one takes it back out of the stack (build log 36).
+func _stack_test() -> void:
+	var want := 1
+	var env := OS.get_environment("NCT_STACK_TEST_WANT")
+	if env != "":
+		want = int(env)
+	var seen := await _wait_until(
+		func(): return stack_host.stacked_count() >= want, 12.0)
+	if not seen:
+		printerr("STACK_FAIL stacked items never arrived")
+		get_tree().quit(1)
+		return
+	var items: Array = stack_host.stacked()
+	for t in items:
+		print("STACK_ITEM ", t["id"], " ", t["title"])
+	var first_id := str(items[0]["id"])
+	stack_host.send_restore(first_id)
+	var restored := await _wait_until(
+		func(): return stack_host.stacked_count() == want - 1, 8.0)
+	if not restored:
+		printerr("STACK_FAIL restore never left the stack")
+		get_tree().quit(1)
+		return
+	print("STACK_RESTORE_OK id=", first_id)
+	print("STACK_TEST_OK")
 	get_tree().quit()
 
 func _wait_until(cond: Callable, timeout: float) -> bool:
