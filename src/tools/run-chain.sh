@@ -161,6 +161,19 @@ if [ -n "$GODOT" ]; then
   # hosted" / "t0 shell registry hosted" checks above.
   out=$(bash "$SRC/tools/check-shell-modules-copies.sh" 2>&1)
   echo "$out" | grep -q "SHELL_MODULES_CLEAN" && ok "t0 shell modules drift check" || bad "t0 shell modules drift check" "$out"
+
+  # .NET runtime bundling (build logs 31/33): the mono engine
+  # needs a hostfxr the zip does not ship. The pin lives in
+  # PIN.md, build-deb.sh stages the bundle and fails without
+  # it, and nct-godot-run selects it via DOTNET_ROOT. All three
+  # legs are checked here so the gap cannot quietly reopen.
+  if grep -q "## The .NET runtime" "$SRC/godot/runtime/PIN.md" \
+     && grep -q "libhostfxr" "$SRC/tools/build-deb.sh" \
+     && grep -q "DOTNET_ROOT" "$SRC/core/session/nct-godot-run"; then
+    ok "t0 dotnet runtime bundled pin"
+  else
+    bad "t0 dotnet runtime bundled pin" "PIN.md / build-deb.sh / nct-godot-run disagree about the bundled .NET runtime"
+  fi
   for host in greeter shell; do
     if command -v "$DOTNET" > /dev/null 2>&1 && "$DOTNET" build -v q -nologo "$SRC/godot/$host" > "$RES/nctxml-$host-build.log" 2>&1; then
       out=$("$GODOT" --headless --path "$SRC/godot/$host" res://nctxml-smoke/main.tscn 2>&1)

@@ -26,6 +26,22 @@ if [ -z "$godot" ]; then
 fi
 [ -n "$godot" ] || { echo "nct-godot-run: no godot runtime found (see godot/runtime/PIN.md)" >&2; exit 3; }
 
+# The mono engine needs a .NET runtime (hostfxr) to start any
+# project that loads C#, and the engine zip ships none: without
+# one the greeter crashed before drawing on a bare machine
+# (agent-build-log/31). The runtime deb bundles the pinned
+# runtime beside the binary (godot/runtime/PIN.md); when the
+# bundle is present it is THE runtime — a shipped machine needs
+# no dotnet of its own, and an ambient installation never
+# silently replaces the pin. Dev trees (NCT_GODOT pointing at a
+# bare binary, no bundle beside it) keep the ambient
+# DOTNET_ROOT / PATH behaviour.
+godot_dir=$(dirname "$godot")
+if [ -x "$godot_dir/dotnet/dotnet" ]; then
+  DOTNET_ROOT="$godot_dir/dotnet"; export DOTNET_ROOT
+  PATH="$godot_dir/dotnet:$PATH"; export PATH
+fi
+
 run_godot() {
   # Reads the driver variables at call time: under the ladder they
   # change per attempt (ladder_apply exports them first).
