@@ -17,3 +17,7 @@ window/size/viewport_height=56
 
 [rendering]
 environment/defaults/default_clear_color=Color(0.137255, 0.137255, 0.160784, 1)
+
+[dotnet]
+
+project/assembly_name="NCTShell"

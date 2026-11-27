@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Constraint proofs: calculate, relevance, types, repeats. -->
+<model>
+  <instance>
+    <order>
+      <subtotal>100</subtotal>
+      <tax>0.2</tax>
+      <total></total>
+      <advanced>false</advanced>
+      <discount></discount>
+      <items>
+        <item><name>Tea</name><qty>1</qty></item>
+        <item><name>Cup</name><qty>2</qty></item>
+      </items>
+    </order>
+  </instance>
+  <bind node="subtotal" type="number" label="Subtotal"/>
+  <bind node="tax" type="number" label="Tax rate"/>
+  <bind node="total" type="number" label="Total"
+        calculate="subtotal * (1 + tax)"/>
+  <bind node="advanced" type="boolean" label="Advanced"/>
+  <bind node="discount" type="number" label="Discount %"
+        relevant="advanced = 'true'"/>
+</model>

@@ -2,26 +2,27 @@ extends Control
 ## NCT Greeter — a Godot app shown before login.
 ## Talks to nct-greetd-bridge (services/bridge) over TCP 127.0.0.1:7717:
 ## AUTH <user> <pass> -> OK, then START -> STARTED, then the greeter quits
-## and the session it started replaces it. UI is built in code so the
-## scene file stays a two-node stub that is easy to diff and repair.
+## and the session it started replaces it.
+##
+## The login form itself is NCTXML now (E3): login.nctxml over the
+## login.nctform model, hosted by GreeterForm.cs (the FormHost
+## node). This script owns the backdrop and the bridge
+## conversation; the form calls form_attempt_login() and the
+## conversation's outcome is reported back through the FormHost
+## (resolve_login / set_status / refocus_password).
 
 var tcp := StreamPeerTCP.new()
 var phase := "idle" # idle -> connecting -> auth -> start -> done
 var rx := ""
-var user_edit: LineEdit
-var pass_edit: LineEdit
-var status_label: Label
 var pending_user := ""
 var pending_pass := ""
 var auto_mode := false
 
+@onready var form_host: Control = $FormHost
+
 func _ready() -> void:
-	_build_ui()
+	_build_bg()
 	var args := OS.get_cmdline_user_args()
-	var host := OS.get_environment("NCT_BRIDGE_HOST")
-	var port := OS.get_environment("NCT_BRIDGE_PORT")
-	if host != "": tcp = StreamPeerTCP.new() # host/port read in _connect()
-	if port != "": pass # (kept simple: defaults below, env overrides in _connect)
 	if "--self-test" in args or "--auto-login" in args:
 		var i := args.find("--self-test")
 		if i == -1: i = args.find("--auto-login")
@@ -31,54 +32,29 @@ func _ready() -> void:
 			pending_pass = args[i + 2]
 			_connect_and_auth()
 
-func _build_ui() -> void:
+func _build_bg() -> void:
 	var bg := ColorRect.new()
 	bg.color = Color(0.07, 0.07, 0.08)
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
-	var center := VBoxContainer.new()
-	center.set_anchors_preset(Control.PRESET_CENTER)
-	center.alignment = BoxContainer.ALIGNMENT_CENTER
-	center.add_theme_constant_override("separation", 10)
-	add_child(center)
-	var title := Label.new()
-	title.text = "NOCTIVAGOUS"
-	title.add_theme_font_size_override("font_size", 34)
-	center.add_child(title)
-	user_edit = LineEdit.new()
-	user_edit.placeholder_text = "Username"
-	user_edit.custom_minimum_size = Vector2(280, 36)
-	center.add_child(user_edit)
-	pass_edit = LineEdit.new()
-	pass_edit.placeholder_text = "Password"
-	pass_edit.secret = true
-	pass_edit.custom_minimum_size = Vector2(280, 36)
-	pass_edit.text_submitted.connect(func(_t): _on_login_pressed())
-	center.add_child(pass_edit)
-	var btn := Button.new()
-	btn.text = "Log In"
-	btn.custom_minimum_size = Vector2(280, 40)
-	btn.pressed.connect(_on_login_pressed)
-	center.add_child(btn)
-	status_label = Label.new()
-	status_label.text = ""
-	center.add_child(status_label)
-	# A greeter's first field holds focus from the start, like every
-	# real greeter — the user just types. Deferred: a grab during
-	# _ready is dropped before the window owns focus.
-	user_edit.grab_focus.call_deferred()
+	# The form (FormHost, declared in the scene) paints above it.
+	move_child(form_host, get_child_count() - 1)
 
 func _notification(what: int) -> void:
 	# Same guard as the shell: if activation cleared the startup
-	# grab and nothing holds focus, put it back on the username field.
-	if what == NOTIFICATION_WM_WINDOW_FOCUS_IN and user_edit:
-		if get_viewport().gui_get_focus_owner() == null:
-			user_edit.grab_focus()
+	# grab and nothing holds focus, put it back on the username
+	# field (the FormHost owns the fields now).
+	if what == NOTIFICATION_WM_WINDOW_FOCUS_IN and form_host:
+		form_host.ensure_focus()
 
-func _on_login_pressed() -> void:
-	pending_user = user_edit.text
-	pending_pass = pass_edit.text
+## Called by the form's submission (via GreeterForm.AttemptLogin).
+## The bridge conversation is async: the submission stays pending
+## until _on_line / _fail resolves it through the FormHost.
+func form_attempt_login(user: String, passwd: String) -> Dictionary:
+	pending_user = user
+	pending_pass = passwd
 	_connect_and_auth()
+	return {"state": "pending"}
 
 func _connect_and_auth() -> void:
 	var host := OS.get_environment("NCT_BRIDGE_HOST")
@@ -86,7 +62,7 @@ func _connect_and_auth() -> void:
 	var port := 7717
 	var p := OS.get_environment("NCT_BRIDGE_PORT")
 	if p != "": port = int(p)
-	status_label.text = "Connecting…"
+	form_host.set_status("Connecting…")
 	if tcp.get_status() == StreamPeerTCP.STATUS_CONNECTED:
 		# Retry after a failed attempt: the bridge holds one connection
 		# for the whole conversation, so reuse it.
@@ -127,13 +103,14 @@ func _on_line(line: String) -> void:
 	if phase == "auth":
 		if line == "OK":
 			phase = "start"
-			status_label.text = "Starting session…"
+			form_host.set_status("Starting session…")
 			_send("START")
 		else:
 			_fail(line)
 	elif phase == "start":
 		if line == "STARTED":
 			phase = "done"
+			form_host.resolve_login(true, "")
 			print("GREETER_LOGIN_OK user=", pending_user)
 			if auto_mode:
 				print("GREETER_SELFTEST_OK")
@@ -143,11 +120,10 @@ func _on_line(line: String) -> void:
 
 func _fail(why: String) -> void:
 	phase = "idle"
-	status_label.text = why
+	form_host.resolve_login(false, why)
 	printerr("GREETER_FAIL: ", why)
 	# Back to the password field, contents selected for retyping.
-	pass_edit.select_all()
-	pass_edit.grab_focus()
+	form_host.refocus_password()
 	if auto_mode:
 		print("GREETER_SELFTEST_FAIL ", why)
 		get_tree().quit(1)

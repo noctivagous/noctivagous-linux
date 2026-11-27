@@ -140,6 +140,27 @@ if [ -n "$GODOT" ]; then
   echo "$out" | grep -q "NCTGRID_OK" && ok "t0 nctxml grid solver" || bad "t0 nctxml grid solver" "$out"
   out=$("$GODOT" --headless --path "$SRC/modules" res://nctxml/grid/compare.tscn 2>&1)
   echo "$out" | grep -q "GRID_COMPARE_OK" && ok "t0 nctxml grid engines compared" || bad "t0 nctxml grid engines compared" "$out"
+  # E2: the XForms layer — instance/binds/submission + layout
+  # annotations, one model in two layouts over a shared instance.
+  out=$("$GODOT" --headless --path "$SRC/modules" res://nctxml/forms/main.tscn 2>&1)
+  echo "$out" | grep -q "NCTFORM_OK" && ok "t0 nctxml forms (xforms layer)" || bad "t0 nctxml forms (xforms layer)" "$out"
+  # E5: the TitleBar component — an app window wearing it as
+  # client-side chrome; commands mapped per instance.
+  out=$("$GODOT" --headless --path "$SRC/modules" res://nctxml/components/main.tscn 2>&1)
+  echo "$out" | grep -q "TITLEBAR_OK" && ok "t0 nctxml titlebar component" || bad "t0 nctxml titlebar component" "$out"
+  # E1 hosting: the NCTXML library vendored into the greeter and
+  # shell projects (decision 1A, source-sync) — copies drift-checked,
+  # each project builds and renders a document from its own copy.
+  out=$(bash "$SRC/tools/check-nctxml-copies.sh" 2>&1)
+  echo "$out" | grep -q "NCTXML_COPIES_CLEAN" && ok "t0 nctxml copies drift check" || bad "t0 nctxml copies drift check" "$out"
+  for host in greeter shell; do
+    if command -v "$DOTNET" > /dev/null 2>&1 && "$DOTNET" build -v q -nologo "$SRC/godot/$host" > "$RES/nctxml-$host-build.log" 2>&1; then
+      out=$("$GODOT" --headless --path "$SRC/godot/$host" res://nctxml-smoke/main.tscn 2>&1)
+      echo "$out" | grep -q "NCTXML_SMOKE_OK" && ok "t0 nctxml hosted in $host" || bad "t0 nctxml hosted in $host" "$out"
+    else
+      bad "t0 nctxml hosted in $host" "dotnet build failed (see nctxml-$host-build.log)"
+    fi
+  done
   # Launch model 2: the same projects as .pck packs on the shared
   # runtime (the shipped form). Build to the results dir, then run
   # the shell pack through nct-godot-run's --main-pack path.

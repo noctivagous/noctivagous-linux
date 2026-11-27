@@ -57,7 +57,8 @@ public partial class NctXmlRenderer : RefCounted
     // ---------------------------------------------------------------
     // Load + build one document
     // ---------------------------------------------------------------
-    public NctDocument Load(string path, GodotObject host, NctDataObject dataContext)
+    public NctDocument Load(string path, GodotObject host, NctDataObject dataContext,
+        NctFormModel modelOverride = null)
     {
         var doc = new NctDocument { DataContext = dataContext };
         var rootEl = ParseFile(path, doc);
@@ -81,13 +82,51 @@ public partial class NctXmlRenderer : RefCounted
         root.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         doc.Root = root;
 
+        string baseDir = path.GetBaseDir();
+        doc.BaseDir = baseDir;
+
+        // The XForms layer (§11): a view may declare Model=
+        // "file.nctform". The model's instance becomes the
+        // DataContext (host-supplied keys the instance lacks are
+        // merged in as bag-only extras — a clock, a title), binds
+        // drive live relevance/readonly state on bound controls,
+        // and submissions become callable from the view.
+        var effectiveContext = dataContext;
+        NctFormModel formModel = null;
+        if (modelOverride != null)
+        {
+            formModel = modelOverride;
+            formModel.Host = host;
+            doc.Model = formModel;
+            if (formModel.Instance != null)
+            {
+                effectiveContext = formModel.Instance;
+                doc.DataContext = effectiveContext;
+            }
+        }
+        else if (Attr(rootEl, "Model") is string modelRef)
+        {
+            formModel = NctFormModel.Load(baseDir.PathJoin(modelRef));
+            formModel.Host = host;
+            doc.Model = formModel;
+            if (formModel.Instance != null)
+            {
+                if (dataContext != null)
+                    foreach (var key in dataContext.Keys)
+                        if (!formModel.Instance.Has(key))
+                            formModel.Instance.Set(key, dataContext.Get(key));
+                effectiveContext = formModel.Instance;
+                doc.DataContext = effectiveContext;
+            }
+            else doc.Note($"model '{modelRef}' failed to load");
+        }
+
         var ctx = new NctRenderContext
         {
-            Renderer = this, Kind = kind, DataContext = dataContext,
-            Host = host, Document = doc,
+            Renderer = this, Kind = kind, DataContext = effectiveContext,
+            Host = host, Document = doc, Model = formModel,
         };
 
-        string baseDir = path.GetBaseDir();
         if (kind == "app")
         {
             doc.Manifest["id"] = Attr(rootEl, "Id") ?? "";
@@ -112,6 +151,7 @@ public partial class NctXmlRenderer : RefCounted
         if (kind == "window" && Attr(rootEl, "Title") is string t)
             root.Name = t;
 
+        var visuals = new List<Control>();
         foreach (var child in rootEl.Elements())
         {
             // Metadata elements are consumed, never rendered.
@@ -122,10 +162,42 @@ public partial class NctXmlRenderer : RefCounted
                 continue;
             }
             var visual = BuildNode(child, ctx);
-            if (visual != null) root.AddChild(visual);
+            if (visual != null) { root.AddChild(visual); visuals.Add(visual); }
         }
+        // A document has one content root: it fills the document.
+        // (Without this, a top-level container keeps its minimum
+        // size inside the wrapper and nothing downstream lays out —
+        // found by the E1 hosting smoke, where a Grid inside a
+        // Stack rendered at content size inside a 400px document.)
+        if (visuals.Count == 1)
+            visuals[0].SetAnchorsPreset(Control.LayoutPreset.FullRect);
 
         if (kind == "preview") EnforcePreview(root, doc);
+        return doc;
+    }
+
+    /// <summary>Render a form's auto-view as a whole document
+    /// (the XForms layer standing alone: model + annotations, no
+    /// hand-written view). Hosts that already hold the model —
+    /// tests, embedders — pass it in, so several views can share
+    /// one instance.</summary>
+    public NctDocument LoadAutoForm(NctFormModel model, GodotObject host)
+    {
+        var doc = new NctDocument { Kind = "form" };
+        model.Host = host;
+        doc.Model = model;
+        doc.DataContext = model.Instance;
+        var root = new Control { Name = "AutoForm" };
+        root.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        doc.Root = root;
+        var ctx = new NctRenderContext
+        {
+            Renderer = this, Kind = "form", DataContext = model.Instance,
+            Host = host, Document = doc, Model = model,
+        };
+        var view = BuildFormView(model, ctx);
+        root.AddChild(view);
+        view.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         return doc;
     }
 
@@ -138,6 +210,60 @@ public partial class NctXmlRenderer : RefCounted
             return BuildComponentInstance(el, ctx);
 
         var name = el.Name.LocalName;
+
+        // <FormView Model="f.nctform"/>: the XForms layer's
+        // auto-view — the form rendered from its model + layout
+        // annotations alone (§11). A hand-written view may lay
+        // the same model out any other way; both bind the one
+        // instance.
+        if (name == "FormView")
+        {
+            var modelRef = Attr(el, "Model");
+            if (modelRef == null)
+            {
+                ctx.Document.Note("<FormView> without Model= — placeholder substituted");
+                return new Label { Text = "<FormView?>" };
+            }
+            var fvModel = NctFormModel.Load(ctx.Document.BaseDir.PathJoin(modelRef));
+            fvModel.Host = ctx.Host;
+            ctx.Document.KeepAlive(fvModel);
+            return BuildFormView(fvModel, ctx);
+        }
+
+        // <Repeat Items="{path}"> with ONE child element as the
+        // item template (§11 names repeats with the XForms
+        // layer; the launch bar is the first use). Items come
+        // from a form instance's repeated nodes or from an array
+        // on the DataContext (objects, or dictionaries wrapped
+        // as objects). The repeat rebuilds when the source path
+        // changes on the context.
+        if (name == "Repeat")
+        {
+            var itemsAttr = Attr(el, "Items");
+            var template = el.Elements().FirstOrDefault();
+            if (itemsAttr == null || !BindingSpec.IsBinding(itemsAttr) || template == null)
+            {
+                ctx.Document.Note("<Repeat> needs Items=\"{path}\" and one template child — placeholder substituted");
+                return new Label { Text = "<Repeat?>" };
+            }
+            var path = BindingSpec.Parse(itemsAttr).Path;
+            Control box = Attr(el, "Orientation") == "horizontal"
+                ? new HBoxContainer() : new VBoxContainer();
+            box.Name = Attr(el, "Name") ?? "Repeat";
+            BuildRepeatItems(box, template, path, ctx);
+            if (ctx.DataContext != null)
+            {
+                var capturedCtx = ctx;
+                ctx.DataContext.Connect(NctDataObject.SignalName.PropertyChanged,
+                    Callable.From<string>(changed =>
+                    {
+                        if (changed == path && GodotObject.IsInstanceValid(box))
+                            BuildRepeatItems(box, template, path, capturedCtx);
+                    }));
+            }
+            return box;
+        }
+
         if (!Registry.TryGet(name, out var entry))
         {
             ctx.Document.Note($"unknown element <{name}> — placeholder substituted");
@@ -163,7 +289,8 @@ public partial class NctXmlRenderer : RefCounted
                 {
                     Renderer = this, Kind = ctx.Kind, DataContext = sub,
                     Host = ctx.Host, Document = ctx.Document,
-                    RadioGroups = ctx.RadioGroups,
+                    RadioGroups = ctx.RadioGroups, Model = ctx.Model,
+                    RepeatItem = ctx.RepeatItem, Commands = ctx.Commands,
                 };
             else
                 ctx.Document.Note($"DataContext '{dcName}' not found on the parent context");
@@ -173,6 +300,27 @@ public partial class NctXmlRenderer : RefCounted
         {
             if (attr is "Name" or "DataContext") continue;
             ApplyAttribute(control, entry, attr, value, nodeCtx);
+        }
+
+        // The XForms layer in a hand-written view (§11): a
+        // control bound to a model node follows the node's live
+        // relevance/readonly state, and Submit="id" on a button
+        // runs the model's named submission.
+        if (ctx.Model != null)
+        {
+            foreach (var (attr, value) in attrs)
+            {
+                if (!BindingSpec.IsBinding(value)) continue;
+                var p = BindingSpec.Parse(value).Path;
+                if (ctx.Model.BindFor(p) != null)
+                { ctx.Model.TrackControl(control, p); break; }
+            }
+            if (attrs.TryGetValue("Submit", out var subId) && control is BaseButton btn)
+            {
+                var model = ctx.Model; var id = subId;
+                btn.Connect(BaseButton.SignalName.Pressed,
+                    Callable.From(() => model.Submit(id)));
+            }
         }
 
         // Element text → Text property (Label, Button, …)
@@ -234,8 +382,45 @@ public partial class NctXmlRenderer : RefCounted
 
         // Layout attributes are consumed by the parent's placement
         // pass (PostPlaceChild), never set as properties.
-        if (attr is "Dock" or "Expand" or "Title"
+        if (attr is "Dock" or "Expand" or "Title" or "Submit"
             or "Column" or "Row" or "ColumnSpan" or "RowSpan" or "Area") return;
+
+        // Component commands: a template button declares
+        // Command="Close"; the instance maps it to a host method
+        // with onClose="...". The template stays host-agnostic.
+        // An unmapped command is a legitimate configuration (the
+        // instance offers no such action — e.g. a titlebar with
+        // no minimize): the button renders disabled, visibly
+        // inert, rather than logging or silently doing nothing.
+        if (attr == "Command")
+        {
+            if (control is BaseButton cmdBtn && ctx.Commands != null
+                && ctx.Commands.TryGetValue(value, out var cmdMethod)
+                && ctx.Host != null)
+            {
+                try { cmdBtn.Connect(BaseButton.SignalName.Pressed, new Callable(ctx.Host, cmdMethod)); }
+                catch { doc.Note($"cannot wire command '{value}' → {cmdMethod}"); }
+            }
+            else if (control is BaseButton unmapped) unmapped.Disabled = true;
+            return;
+        }
+
+        // Drag regions: Drag="window" makes a control the drag
+        // handle for its window (custom chrome — titlebars).
+        if (attr == "Drag")
+        {
+            if (value == "window")
+            {
+                var c = control;
+                c.Connect(Control.SignalName.GuiInput, Callable.From<InputEvent>(ev =>
+                {
+                    if (ev is InputEventMouseButton mb && mb.Pressed
+                        && mb.ButtonIndex == MouseButton.Left)
+                        c.GetWindow().StartDrag();
+                }));
+            }
+            return;
+        }
 
         // A Grid's own spec attributes are consumed by its
         // registry factory (both engines), never set as properties.
@@ -255,7 +440,19 @@ public partial class NctXmlRenderer : RefCounted
             }
             if (ctx.Host == null) { doc.Note($"handler '{attr}' has no host to wire to"); return; }
             var signal = PascalToSnake(attr.Substring(2));
-            try { control.Connect(signal, new Callable(ctx.Host, value)); }
+            try
+            {
+                // Inside a Repeat template, the handler receives
+                // the item as its argument — that is how a launch
+                // button knows which entry it is.
+                if (ctx.RepeatItem != null)
+                {
+                    var host = ctx.Host; var method = value; var item = ctx.RepeatItem;
+                    control.Connect(signal, Callable.From(
+                        () => new Callable(host, method).Call(item)));
+                }
+                else control.Connect(signal, new Callable(ctx.Host, value));
+            }
             catch { doc.Note($"cannot wire handler '{attr}' → {value} (signal '{signal}')"); }
             return;
         }
@@ -289,6 +486,150 @@ public partial class NctXmlRenderer : RefCounted
         SetConverted(control, target, value, doc, attr);
     }
 
+    private void BuildRepeatItems(Control box, XElement template,
+        string path, NctRenderContext ctx)
+    {
+        foreach (var child in box.GetChildren())
+        {
+            box.RemoveChild(child);
+            child.QueueFree();
+        }
+        foreach (var item in ResolveItems(ctx, path))
+        {
+            var itemCtx = new NctRenderContext
+            {
+                Renderer = this, Kind = ctx.Kind, DataContext = item,
+                Host = ctx.Host, Document = ctx.Document,
+                RadioGroups = ctx.RadioGroups, Model = ctx.Model,
+                RepeatItem = item, Commands = ctx.Commands,
+            };
+            var node = BuildNode(template, itemCtx);
+            if (node != null) box.AddChild(node);
+        }
+    }
+
+    private List<NctDataObject> ResolveItems(NctRenderContext ctx, string path)
+    {
+        var items = new List<NctDataObject>();
+        if (ctx.DataContext is FormInstance form)
+        {
+            var found = form.GetItems(path);
+            if (found.Count > 0) return found;
+        }
+        var v = ctx.DataContext?.Get(path) ?? default;
+        if (v.VariantType == Variant.Type.Array)
+        {
+            foreach (var el in v.AsGodotArray())
+            {
+                if (el.AsGodotObject() is NctDataObject o) items.Add(o);
+                else if (el.VariantType == Variant.Type.Dictionary)
+                {
+                    var wrap = new NctDataObject();
+                    foreach (var kv in el.AsGodotDictionary())
+                        wrap.Set(kv.Key.AsString(), kv.Value);
+                    items.Add(wrap);
+                }
+            }
+        }
+        return items;
+    }
+
+    // ---------------------------------------------------------------
+    // The XForms auto-view (§11): render a form from its model +
+    // layout annotations alone. The container spec and the
+    // per-field placement speak the platform's layout vocabulary
+    // (the NCTGraphite grid terms); field controls are chosen by
+    // bind type (or the bind's control annotation); submissions
+    // become buttons. Nothing here is form-specific — the same
+    // builder renders any .nctform.
+    // ---------------------------------------------------------------
+    private Control BuildFormView(NctFormModel model, NctRenderContext ctx)
+    {
+        var doc = ctx.Document;
+        var instance = model.Instance;
+        if (instance == null) return new Label { Text = "<FormView: no instance>" };
+
+        var spec = model.LayoutSpec;
+        Control container;
+        if (spec.TryGetValue("container", out var c) && c == "grid"
+            && Registry.TryGet("Grid", out var gridEntry))
+        {
+            var keys = new Dictionary<string, string>
+            {
+                ["columns"] = "Columns", ["rows"] = "Rows",
+                ["areas"] = "Areas", ["gap"] = "Gap",
+                ["padding"] = "Padding", ["breakpoints"] = "Breakpoints",
+                ["proportions"] = "Proportions", ["baseline"] = "Baseline",
+                ["baselineOffset"] = "BaselineOffset",
+            };
+            var attrs = new Dictionary<string, string>();
+            foreach (var (from, to) in keys)
+                if (spec.TryGetValue(from, out var v)) attrs[to] = v;
+            container = gridEntry.Factory(attrs);
+        }
+        else container = new VBoxContainer();
+        container.Name = "FormView";
+
+        // Top-level fields only: a node with '/' belongs to a
+        // repeat or a group, rendered by a Repeat or a hand view.
+        var fields = model.Binds.Where(b => !b.Node.Contains("/"))
+            .OrderBy(b => b.Layout.TryGetValue("order", out var o)
+                          && int.TryParse(o, out var n) ? n : 0)
+            .ToList();
+        foreach (var bind in fields)
+        {
+            var wrapper = new VBoxContainer { Name = "Field_" + bind.Node };
+            if (!string.IsNullOrEmpty(bind.Label))
+                wrapper.AddChild(new Label { Text = bind.Label });
+            bool ro = model.IsReadOnly(bind);
+            var kind = bind.Control
+                ?? (ro ? "Label" : bind.Type == "boolean" ? "CheckBox" : "TextField");
+            if (!Registry.TryGet(kind, out var entry))
+            { doc.Note($"form view: unknown control '{kind}'"); continue; }
+            var field = entry.Factory(new Dictionary<string, string>());
+            field.Name = "Input_" + bind.Node;
+            if (field is LineEdit le && bind.Secret) le.Secret = true;
+            var link = new BindingLink();
+            doc.KeepAlive(link);
+            link.BindControl(field, entry,
+                kind == "CheckBox" ? "ButtonPressed" : "Text",
+                new BindingSpec
+                {
+                    Path = bind.Node,
+                    Mode = ro ? "OneWay" : "TwoWay",
+                }, instance);
+            wrapper.AddChild(field);
+            container.AddChild(wrapper);
+            model.TrackControl(field, bind.Node);
+            if (container is NctGridContainer || container.GetClass() == "NctGridNative")
+            {
+                if (bind.Layout.TryGetValue("area", out var area))
+                    wrapper.SetMeta("grid_area", area);
+                if (bind.Layout.TryGetValue("column", out var col)
+                    && int.TryParse(col, out var ci))
+                    wrapper.SetMeta("grid_col", ci - 1);
+                if (bind.Layout.TryGetValue("row", out var row)
+                    && int.TryParse(row, out var ri))
+                    wrapper.SetMeta("grid_row", ri - 1);
+                if (bind.Layout.TryGetValue("columnSpan", out var cs)
+                    && int.TryParse(cs, out var csi))
+                    wrapper.SetMeta("grid_col_span", csi);
+                if (bind.Layout.TryGetValue("rowSpan", out var rs)
+                    && int.TryParse(rs, out var rsi))
+                    wrapper.SetMeta("grid_row_span", rsi);
+            }
+        }
+        foreach (var sub in model.Submissions)
+        {
+            var b = new Button { Text = sub.Label ?? sub.Id, Name = "Submit_" + sub.Id };
+            var m = model; var id = sub.Id;
+            b.Connect(BaseButton.SignalName.Pressed,
+                Callable.From(() => m.Submit(id)));
+            container.AddChild(b);
+        }
+        return container;
+    }
+
     // ---------------------------------------------------------------
     // Component instances: <nct:LabelledSlider Value="{Volume}"/>
     // The instance's property bag is the template's DataContext;
@@ -307,10 +648,19 @@ public partial class NctXmlRenderer : RefCounted
         foreach (var (pName, pType, pDefault) in def.Props)
             bag.Set(pName, ParseTyped(pDefault, pType));
 
+        var commands = new Dictionary<string, string>();
         var outer = ctx.DataContext;
         foreach (var attr in el.Attributes().Where(x => !x.IsNamespaceDeclaration))
         {
             var attrName = attr.Name.LocalName;
+            // Instance on<Event>="hostMethod" maps the template's
+            // named commands (Command="Close") to the host.
+            if (attrName.Length > 2 && attrName.StartsWith("on")
+                && char.IsUpper(attrName[2]))
+            {
+                commands[attrName.Substring(2)] = attr.Value;
+                continue;
+            }
             var declared = def.Props.FirstOrDefault(p => p.Name == attrName);
             if (declared.Name == null)
             {
@@ -335,6 +685,8 @@ public partial class NctXmlRenderer : RefCounted
         {
             Renderer = this, Kind = ctx.Kind, DataContext = bag,
             Host = ctx.Host, Document = ctx.Document, RadioGroups = ctx.RadioGroups,
+            Model = ctx.Model, RepeatItem = ctx.RepeatItem,
+            Commands = commands.Count > 0 ? commands : ctx.Commands,
         };
         var visual = BuildNode(def.Template, templateCtx);
         var instName = Attr(el, "Name");
@@ -415,6 +767,13 @@ public partial class NctXmlRenderer : RefCounted
             case Variant.Type.Float: v = double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : 0.0; break;
             case Variant.Type.Int: v = long.TryParse(value, out var l) ? l : 0; break;
             case Variant.Type.Bool: v = value == "true"; break;
+            case Variant.Type.Vector2:
+                var parts = value.Split(',');
+                v = parts.Length == 2
+                    && float.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var vx)
+                    && float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var vy)
+                    ? new Vector2(vx, vy) : Vector2.Zero;
+                break;
             default: v = value; break;
         }
         c.Set(engineProp, v);

@@ -1,15 +1,16 @@
 extends Control
-## NCT Shell — the session's first furniture: a bar with a clock and one
-## button per launch-list entry. Buttons go through nct-launch; the shell
+## NCT Shell — the session's first furniture: the launch bar.
+## The bar itself is NCTXML now (E4): bar.nctxml, hosted by
+## ShellBar.cs (the BarHost node), one Repeat-generated button
+## per launch-list entry. This script owns the launch list and
+## the launching: buttons go through nct-launch; the shell
 ## contains no program paths (CONVENTIONS.md §10).
 
-var clock_label: Label
-var has_focus_owner := false
-var first_btn: Button
+@onready var bar_host: Control = $BarHost
 
 func _ready() -> void:
 	var entries := _read_launch_list()
-	_build_ui(entries)
+	print("SHELL_READY entries=", entries.size())
 	var args := OS.get_cmdline_user_args()
 	if "--self-test" in args:
 		for e in entries:
@@ -38,51 +39,20 @@ func _read_launch_list() -> Array:
 			out.append({"id": cols[0], "title": cols[1], "key": cols[2]})
 	return out
 
-func _build_ui(entries: Array) -> void:
-	var panel := PanelContainer.new()
-	panel.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(panel)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
-	panel.add_child(row)
-	var brand := Label.new()
-	brand.text = "  NCT"
-	row.add_child(brand)
-	clock_label = Label.new()
-	clock_label.text = ""
-	row.add_child(clock_label)
-	for e in entries:
-		if e["id"] == "shell":
-			continue
-		var btn := Button.new()
-		btn.text = e["title"]
-		var id: String = e["id"]
-		btn.pressed.connect(func():
-			print("SHELL_LAUNCH ", id)
-			OS.create_process("nct-launch", [id]))
-		row.add_child(btn)
-		# The bar is the session's home surface: its first launch
-		# button holds keyboard focus from the start, so the session
-		# is keyboard-drivable the moment it appears.
-		if not has_focus_owner:
-			# Deferred: a grab during _ready is dropped before the
-			# window owns focus; by the idle frame it sticks.
-			btn.grab_focus.call_deferred()
-			has_focus_owner = true
-			first_btn = btn
-	print("SHELL_READY entries=", entries.size())
+## The BarHost builds its Repeat items from these.
+func get_launch_entries() -> Array:
+	return _read_launch_list()
+
+## A bar button was pressed (ShellBar.LaunchItem).
+func launch_entry(id: String) -> void:
+	print("SHELL_LAUNCH ", id)
+	OS.create_process("nct-launch", [id])
 
 func _notification(what: int) -> void:
 	# Activation can clear a grab made at startup (this window is
 	# typically mapped while the greeter still holds the seat, and
-	# activated when the greeter quits). When the bar's window gains
-	# focus and nothing inside holds it, focus the first button.
-	if what == NOTIFICATION_WM_WINDOW_FOCUS_IN and first_btn:
-		print("SHELL_FOCUS_IN owner=", get_viewport().gui_get_focus_owner())
-		if get_viewport().gui_get_focus_owner() == null:
-			first_btn.grab_focus()
-			print("SHELL_FOCUS_IN grabbed first button")
-
-func _process(_delta: float) -> void:
-	if clock_label:
-		clock_label.text = Time.get_time_string_from_system()
+	# activated when the greeter quits). When the bar's window
+	# gains focus and nothing inside holds it, the BarHost puts
+	# focus back on the first button.
+	if what == NOTIFICATION_WM_WINDOW_FOCUS_IN and bar_host:
+		bar_host.ensure_focus()

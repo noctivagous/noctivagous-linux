@@ -31,6 +31,8 @@ public partial class NctDataObject : GodotObject
 
     public bool Has(string name) => _values.ContainsKey(name);
 
+    public IEnumerable<string> Keys => _values.Keys;
+
     public static NctDataObject Of(params (string, Variant)[] pairs)
     {
         var o = new NctDataObject();

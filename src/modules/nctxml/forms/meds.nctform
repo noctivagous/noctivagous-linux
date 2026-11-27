@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Repeat proof data: repeated instance nodes (the topics
+     file's medications example, trimmed). -->
+<model>
+  <instance>
+    <chart>
+      <patient>Ada</patient>
+      <medications>
+        <med><name>Tea</name><dosage>1 cup</dosage></med>
+        <med><name>Soup</name><dosage>1 bowl</dosage></med>
+      </medications>
+    </chart>
+  </instance>
+</model>

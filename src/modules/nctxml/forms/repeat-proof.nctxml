@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Repeat proofs: instance repeats (form data) and context
+     arrays (host data) through the one mechanism. -->
+<pane Model="meds.nctform">
+  <Stack Orientation="vertical">
+    <Repeat Name="MedRepeat" Items="{medications/med}">
+      <Label Text="{name}"/>
+    </Repeat>
+    <Repeat Name="EntryRepeat" Items="{Entries}" Orientation="horizontal">
+      <Button Text="{title}" onPressed="PickEntry"/>
+    </Repeat>
+  </Stack>
+</pane>

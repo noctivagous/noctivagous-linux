@@ -29,6 +29,9 @@ public class NctRenderContext
     public GodotObject Host;                  // handler target (code-behind)
     public NctDocument Document;
     public Dictionary<string, ButtonGroup> RadioGroups = new();
+    public NctFormModel Model;                // the XForms layer, when the view declares one (§11)
+    public NctDataObject RepeatItem;          // inside a Repeat template: the item being built
+    public Dictionary<string, string> Commands;  // component instance on<Event> mappings, by command name
 }
 
 /// <summary>
@@ -107,6 +110,8 @@ public class ControlRegistry
         Add(new NctControlEntry { Name = "Dock", Role = "layout", Factory = _ => new DockContainer() });
         Add(new NctControlEntry { Name = "Free", Role = "layout", Factory = _ => new Control() });
         Add(new NctControlEntry { Name = "Scroll", Role = "scroll", Focusable = true, Factory = _ => new ScrollContainer() });
+        Add(new NctControlEntry { Name = "Center", Role = "layout", Factory = _ => new CenterContainer() });
+        Add(new NctControlEntry { Name = "Panel", Role = "layout", Factory = _ => new PanelContainer() });
 
         // --- stock controls (§6) ---
         Add(new NctControlEntry { Name = "Label", Role = "text", Factory = _ => new Label() });

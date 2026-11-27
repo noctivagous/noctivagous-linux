@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The login form as data (the XForms layer, NCTXML.md §11).
+     This model is the greeter's form contract: the greeter's
+     hand-written view and the annotation-driven auto-view both
+     render THIS instance. -->
+<model>
+  <instance>
+    <login>
+      <username></username>
+      <password></password>
+      <status></status>
+    </login>
+  </instance>
+  <layout container="grid" columns="1fr"
+          areas="'user' 'pass' 'go' 'status'"/>
+  <bind node="username" label="User name" required="true">
+    <layout area="user"/>
+  </bind>
+  <bind node="password" label="Password" required="true" secret="true">
+    <layout area="pass"/>
+  </bind>
+  <bind node="status" readonly="true">
+    <layout area="status"/>
+  </bind>
+  <submission id="attempt" action="AttemptLogin" label="Log in"
+              errorTarget="status"/>
+</model>
