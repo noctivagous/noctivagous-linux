@@ -26,4 +26,11 @@ comp_pid=$(pgrep -u "$(id -u)" -f 'labwc|sway' 2>/dev/null | head -1)
 echo "$(date -Is) launch $id -> $cmd (wayland=${WAYLAND_DISPLAY:-none} comp_pid=${comp_pid:-none})" >> "$state/launch.log"
 echo "=== launch $(date -Is) id=$id wayland=${WAYLAND_DISPLAY:-none} comp_pid=${comp_pid:-none} cmd=$cmd ===" >> "$state/$id.log"
 PATH="$here:$PATH" NCT_SRC="$src" nohup sh -c "$cmd" >> "$state/$id.log" 2>&1 &
+# Record the launch (line 1: pid, line 2: the resolved command)
+# for the session's process watcher, which feeds the app
+# registry's liveness seam from it: without a pid the registry
+# can never learn the program exited, and its button can never
+# launch it again. The watcher — not this script — owns
+# staleness: it checks the pid against /proc before believing.
+{ echo $!; echo "$cmd"; } > "$state/$id.pid"
 echo "launched $id ($cmd)"

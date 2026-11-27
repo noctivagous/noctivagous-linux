@@ -27,10 +27,15 @@ var _buttons: Array[Button] = []
 var _clock_label: Label
 var _date_label: Label
 var _last_second := ""
+var _indicators: Dictionary = {}  ## app id -> status ColorRect
+var _status: Dictionary = {}      ## app id -> launching/running/idle
+var _flash_until: Dictionary = {} ## app id -> msec the failure flash ends
 
 const COL_TEXT := Color(0.73, 0.73, 0.73)        # #bababa
 const COL_FOCUS := Color(0.31, 0.76, 0.97)       # #4fc3f7
 const COL_GREEN := Color(0.4, 1.0, 0.4)          # #66ff66
+const COL_RED := Color(0.88, 0.35, 0.31)         # #e05a4e
+const FLASH_MS := 1400
 
 func _ready() -> void:
 	_build_bar()
@@ -106,6 +111,21 @@ func _build_bar() -> void:
 			Color(1, 1, 1))
 		b.add_theme_font_size_override("font_size", 12)
 		b.pressed.connect(_on_entry_pressed.bind(e["id"]))
+		# The status strip: a 3px indicator along the button's
+		# bottom edge — pulsing blue while the program is
+		# launching, steady green while it runs, a red flash
+		# when a launch never comes alive (build log 35). It
+		# renders the watcher's word, driven by set_app_status.
+		var ind := ColorRect.new()
+		ind.name = "StatusStrip"
+		ind.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+		ind.offset_top = -3
+		ind.offset_bottom = 0
+		ind.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ind.visible = false
+		b.add_child(ind)
+		_indicators[e["id"]] = ind
+		_status[e["id"]] = "idle"
 		row.add_child(b)
 		_buttons.append(b)
 		if _first_button == null:
@@ -137,6 +157,32 @@ func _process(_delta: float) -> void:
 	if t != _last_second:
 		_last_second = t
 		_update_clock()
+	_update_indicators()
+
+## Render every button's status strip from the stored state:
+## the failure flash (fading red) outranks the app status;
+## launching pulses on the focus blue, running holds the
+## primary green, idle hides the strip.
+func _update_indicators() -> void:
+	var now := Time.get_ticks_msec()
+	for app_id in _indicators:
+		var ind: ColorRect = _indicators[app_id]
+		if now < int(_flash_until.get(app_id, 0)):
+			var left := float(int(_flash_until[app_id]) - now) \
+				/ float(FLASH_MS)
+			ind.visible = true
+			ind.color = Color(COL_RED, clampf(left, 0.0, 1.0))
+			continue
+		match str(_status.get(app_id, "idle")):
+			"launching":
+				ind.visible = true
+				var pulse := 0.5 + 0.5 * sin(float(now) / 180.0)
+				ind.color = Color(COL_FOCUS, 0.3 + 0.7 * pulse)
+			"running":
+				ind.visible = true
+				ind.color = Color(COL_GREEN, 0.9)
+			_:
+				ind.visible = false
 
 func _update_clock() -> void:
 	if _clock_label == null:
@@ -170,3 +216,13 @@ func button_count() -> int:
 func ensure_focus() -> void:
 	if get_viewport().gui_get_focus_owner() == null and _first_button:
 		_first_button.grab_focus()
+
+## The watcher's word on one app, via main.gd: "launching"
+## (spawned, not yet confirmed), "running" (pid confirmed),
+## "idle" (not running). Stored; _process renders it.
+func set_app_status(app_id: String, status: String) -> void:
+	_status[app_id] = status
+
+## A launch that never came alive: flash the app's strip red.
+func flash_failed(app_id: String) -> void:
+	_flash_until[app_id] = Time.get_ticks_msec() + FLASH_MS

@@ -58,6 +58,16 @@ if [ -n "$GODOT" ]; then
   echo "$out" | grep -q "SHELL_SELFTEST_OK" && ok "t0 shell self-test" || bad "t0 shell self-test" "$out"
   echo "$out" | grep -q "SHELL_WM_OK" && ok "t0 shell wm hosted" || bad "t0 shell wm hosted" "$out"
   echo "$out" | grep -q "SHELL_REGISTRY_OK" && ok "t0 shell registry hosted" || bad "t0 shell registry hosted" "$out"
+  # Shell liveness (log 35): the full launch path — registry +
+  # nct-launch pid record + process watcher — against a
+  # sleeper entry: launch, kill, reap, relaunch with a new pid.
+  lt_dir=$(mktemp -d)
+  printf 'sleeper\tSleeper\tsleeper\t0\n' > "$lt_dir/list.tsv"
+  out=$(NCT_LAUNCH_LIST="$lt_dir/list.tsv" NCT_CMD_SLEEPER="/bin/sleep 60" \
+    NCT_STATE_DIR="$lt_dir/state" \
+    "$GODOT" --headless --path "$SRC/godot/shell" -- --liveness-test 2>&1)
+  echo "$out" | grep -q "LIVENESS_TEST_OK" && ok "t0 shell liveness relaunch" || bad "t0 shell liveness relaunch" "$out"
+  rm -rf "$lt_dir"
   # Modules Slice 1: window + layer manager skeleton, fake windows of
   # every style, conversion + freeze measured from the scene tree.
   out=$("$GODOT" --headless --path "$SRC/modules" -- --self-test 2>&1)

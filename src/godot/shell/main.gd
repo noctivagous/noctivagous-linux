@@ -20,19 +20,24 @@ extends Control
 ## Single-instance lives there too: relaunching a running app
 ## focuses its window instead of spawning a second process.
 ## Spawning itself stays the foundation chain's (nct-launch,
-## detached — no pid reaches the shell, so the registry's
-## liveness seam stays unfed until nct-launch reports pids;
-## the records do not change when it does).
+## detached). Since build log 35 the seam is fed: nct-launch
+## records the spawned pid, and the process watcher
+## (process_watcher.gd) polls it into the registry's
+## mark_process_dead / check_liveness — a closed program
+## leaves the running set, so its button launches it again.
+## The watcher also drives the bar's per-app status display.
 
 const WinMgr := preload("nct-window-manager/window_manager.gd")
 const Record := preload("nct-window-manager/window_record.gd")
 const LayerStack := preload("nct-window-manager/nct-layer-stack/layer_stack.gd")
 const AppRegistry := preload("nct-app-registry/app_registry.gd")
+const ProcessWatcher := preload("process_watcher.gd")
 
 @onready var bar_host: Control = $BarHost
 
 var wm  ## the hosted window manager (nct-window-manager)
 var registry  ## the hosted app registry (nct-app-registry)
+var watcher  ## the process watcher feeding the liveness seam
 
 const Backdrop := preload("backdrop.gd")
 
@@ -42,7 +47,10 @@ func _ready() -> void:
 	print("SHELL_READY entries=", entries.size())
 	_setup_window_manager()
 	_setup_registry(entries)
+	_setup_watcher()
 	var args := OS.get_cmdline_user_args()
+	if "--liveness-test" in args:
+		_liveness_test()
 	if "--self-test" in args:
 		for e in entries:
 			print("SHELL_ENTRY ", e["id"], " ", e["title"])
@@ -160,20 +168,88 @@ func _read_launch_list() -> Array:
 func get_launch_entries() -> Array:
 	return _read_launch_list()
 
+## The process watcher: feeds the registry's liveness seam
+## from nct-launch's pid records, and carries the per-app
+## status to the bar's indicators.
+func _setup_watcher() -> void:
+	watcher = ProcessWatcher.new()
+	add_child(watcher)
+	watcher.status_changed.connect(_on_app_status)
+	watcher.launch_failed.connect(_on_launch_failed)
+	watcher.start(registry)
+
+func _on_app_status(app_id: String, status: String) -> void:
+	bar_host.set_app_status(app_id, status)
+
+func _on_launch_failed(app_id: String) -> void:
+	bar_host.flash_failed(app_id)
+
 ## A bar button was pressed (ShellBar.LaunchItem). The launch
 ## goes through the registry: it registers the Window record
 ## and tracks the lifecycle; the shell then starts the program
 ## through the foundation chain. A running single-instance app
-## is focused, never respawned.
+## is focused, never respawned — but the registry's word alone
+## is bookkeeping, so the watcher revalidates the process
+## first: an app whose program has closed is reaped on the
+## spot and launched fresh (build log 35).
 func launch_entry(id: String) -> void:
 	print("SHELL_LAUNCH ", id)
 	if registry.is_running(id):
-		registry.launch(id)
-		return
+		if watcher.revalidate(id):
+			registry.launch(id)
+			return
+		registry.check_liveness()
 	if registry.launch(id) == "":
 		printerr("SHELL: no manifest for launch id ", id)
 		return
 	OS.create_process("nct-launch", [id])
+
+## --liveness-test only: the full launch path against the
+## "sleeper" entry the chain supplies (NCT_LAUNCH_LIST +
+## NCT_CMD_SLEEPER=/bin/sleep 60): launch through nct-launch,
+## watch the watcher confirm the pid, kill the program, watch
+## the reap, relaunch and confirm a NEW pid — the user's
+## open, close, reopen pattern, proven headless.
+func _liveness_test() -> void:
+	var id := "sleeper"
+	launch_entry(id)
+	var spawned := await _wait_until(
+		func(): return watcher.is_confirmed(id), 8.0)
+	if not spawned:
+		printerr("LIVENESS_FAIL spawn never confirmed")
+		get_tree().quit(1)
+		return
+	var pid1: int = watcher.pid_of(id)
+	print("LIVENESS_SPAWN_OK pid=", pid1)
+	OS.kill(pid1)
+	var reaped := await _wait_until(
+		func(): return not registry.is_running(id), 6.0)
+	if not reaped:
+		printerr("LIVENESS_FAIL dead app never reaped")
+		get_tree().quit(1)
+		return
+	print("LIVENESS_REAP_OK")
+	launch_entry(id)
+	var relaunched := await _wait_until(
+		func(): return watcher.is_confirmed(id) \
+			and watcher.pid_of(id) != pid1, 8.0)
+	if not relaunched:
+		printerr("LIVENESS_FAIL relaunch never confirmed")
+		get_tree().quit(1)
+		return
+	print("LIVENESS_RELAUNCH_OK pid=", watcher.pid_of(id))
+	OS.kill(watcher.pid_of(id))
+	print("LIVENESS_TEST_OK")
+	get_tree().quit()
+
+func _wait_until(cond: Callable, timeout: float) -> bool:
+	var waited := 0.0
+	while waited < timeout:
+		if bool(cond.call()):
+			return true
+		await get_tree().create_timer(0.25).timeout
+		waited += 0.25
+	return bool(cond.call())
 
 ## --self-test only: the hosted window manager, proven from
 ## the live scene tree (layer nodes present, the bar's backing
