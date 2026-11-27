@@ -17,6 +17,12 @@ skeleton: window_record.gd (the §3 record + §5 style policy),
 window_manager.gd (registry, focus, style conversion, freeze;
 shell-backed windows on one CanvasLayer per layer), and a
 headless harness (harness/) driving fake windows of every style.
-Own-process and foreign backings attach to the same records in
-Slice 3; chrome drawing, input routing and workspace assignment
-are later work. Plan: src/plans/ENVIRONMENT-MANAGER.md §1–§5, §7.
+HOSTED IN THE SHIPPED SHELL (2026-11-27, agent-build-log/30):
+the manager + layer stack are vendored into godot/shell
+(tools/sync-wm.sh, drift-checked) and run in the session: the
+launch bar is a panel-style record seated on the Top layer,
+and every launch registers an own-process record. Backings
+for those records attach when the compositor link lands;
+processes belong to the app registry (plans §1). Chrome
+drawing, input routing and workspace assignment are later
+work. Plan: src/plans/ENVIRONMENT-MANAGER.md §1–§5, §7.

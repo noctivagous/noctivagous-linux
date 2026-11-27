@@ -56,6 +56,7 @@ if [ -n "$GODOT" ]; then
   done
   out=$("$GODOT" --headless --path "$SRC/godot/shell" -- --self-test 2>&1)
   echo "$out" | grep -q "SHELL_SELFTEST_OK" && ok "t0 shell self-test" || bad "t0 shell self-test" "$out"
+  echo "$out" | grep -q "SHELL_WM_OK" && ok "t0 shell wm hosted" || bad "t0 shell wm hosted" "$out"
   # Modules Slice 1: window + layer manager skeleton, fake windows of
   # every style, conversion + freeze measured from the scene tree.
   out=$("$GODOT" --headless --path "$SRC/modules" -- --self-test 2>&1)
@@ -153,6 +154,11 @@ if [ -n "$GODOT" ]; then
   # each project builds and renders a document from its own copy.
   out=$(bash "$SRC/tools/check-nctxml-copies.sh" 2>&1)
   echo "$out" | grep -q "NCTXML_COPIES_CLEAN" && ok "t0 nctxml copies drift check" || bad "t0 nctxml copies drift check" "$out"
+  # WM hosting: the window manager + layer stack vendored into
+  # the shell project the same way — drift-checked here, and
+  # proven live by the "t0 shell wm hosted" check above.
+  out=$(bash "$SRC/tools/check-wm-copies.sh" 2>&1)
+  echo "$out" | grep -q "WM_COPIES_CLEAN" && ok "t0 wm copies drift check" || bad "t0 wm copies drift check" "$out"
   for host in greeter shell; do
     if command -v "$DOTNET" > /dev/null 2>&1 && "$DOTNET" build -v q -nologo "$SRC/godot/$host" > "$RES/nctxml-$host-build.log" 2>&1; then
       out=$("$GODOT" --headless --path "$SRC/godot/$host" res://nctxml-smoke/main.tscn 2>&1)
