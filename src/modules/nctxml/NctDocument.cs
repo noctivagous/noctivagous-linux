@@ -12,6 +12,8 @@ public partial class NctDocument : GodotObject
     public string Kind = "";
     public Control Root;
     public NctDataObject DataContext;
+    public NctFormModel Model;   // set when the view declares Model= (the XForms layer, §11)
+    public string BaseDir = "";  // the document's directory, for relative model/resource paths
     public Godot.Collections.Dictionary Manifest = new();
     public Godot.Collections.Array<string> Diagnostics = new();
     public int BlockedHandlers;   // preview kind: handlers the renderer refused to wire

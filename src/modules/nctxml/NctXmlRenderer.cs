@@ -57,7 +57,8 @@ public partial class NctXmlRenderer : RefCounted
     // ---------------------------------------------------------------
     // Load + build one document
     // ---------------------------------------------------------------
-    public NctDocument Load(string path, GodotObject host, NctDataObject dataContext)
+    public NctDocument Load(string path, GodotObject host, NctDataObject dataContext,
+        NctFormModel modelOverride = null)
     {
         var doc = new NctDocument { DataContext = dataContext };
         var rootEl = ParseFile(path, doc);
@@ -81,13 +82,51 @@ public partial class NctXmlRenderer : RefCounted
         root.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         doc.Root = root;
 
+        string baseDir = path.GetBaseDir();
+        doc.BaseDir = baseDir;
+
+        // The XForms layer (§11): a view may declare Model=
+        // "file.nctform". The model's instance becomes the
+        // DataContext (host-supplied keys the instance lacks are
+        // merged in as bag-only extras — a clock, a title), binds
+        // drive live relevance/readonly state on bound controls,
+        // and submissions become callable from the view.
+        var effectiveContext = dataContext;
+        NctFormModel formModel = null;
+        if (modelOverride != null)
+        {
+            formModel = modelOverride;
+            formModel.Host = host;
+            doc.Model = formModel;
+            if (formModel.Instance != null)
+            {
+                effectiveContext = formModel.Instance;
+                doc.DataContext = effectiveContext;
+            }
+        }
+        else if (Attr(rootEl, "Model") is string modelRef)
+        {
+            formModel = NctFormModel.Load(baseDir.PathJoin(modelRef));
+            formModel.Host = host;
+            doc.Model = formModel;
+            if (formModel.Instance != null)
+            {
+                if (dataContext != null)
+                    foreach (var key in dataContext.Keys)
+                        if (!formModel.Instance.Has(key))
+                            formModel.Instance.Set(key, dataContext.Get(key));
+                effectiveContext = formModel.Instance;
+                doc.DataContext = effectiveContext;
+            }
+            else doc.Note($"model '{modelRef}' failed to load");
+        }
+
         var ctx = new NctRenderContext
         {
-            Renderer = this, Kind = kind, DataContext = dataContext,
-            Host = host, Document = doc,
+            Renderer = this, Kind = kind, DataContext = effectiveContext,
+            Host = host, Document = doc, Model = formModel,
         };
 
-        string baseDir = path.GetBaseDir();
         if (kind == "app")
         {
             doc.Manifest["id"] = Attr(rootEl, "Id") ?? "";
@@ -137,6 +176,31 @@ public partial class NctXmlRenderer : RefCounted
         return doc;
     }
 
+    /// <summary>Render a form's auto-view as a whole document
+    /// (the XForms layer standing alone: model + annotations, no
+    /// hand-written view). Hosts that already hold the model —
+    /// tests, embedders — pass it in, so several views can share
+    /// one instance.</summary>
+    public NctDocument LoadAutoForm(NctFormModel model, GodotObject host)
+    {
+        var doc = new NctDocument { Kind = "form" };
+        model.Host = host;
+        doc.Model = model;
+        doc.DataContext = model.Instance;
+        var root = new Control { Name = "AutoForm" };
+        root.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        doc.Root = root;
+        var ctx = new NctRenderContext
+        {
+            Renderer = this, Kind = "form", DataContext = model.Instance,
+            Host = host, Document = doc, Model = model,
+        };
+        var view = BuildFormView(model, ctx);
+        root.AddChild(view);
+        view.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        return doc;
+    }
+
     // ---------------------------------------------------------------
     // The build: one logical node → its visual subtree
     // ---------------------------------------------------------------
@@ -146,6 +210,60 @@ public partial class NctXmlRenderer : RefCounted
             return BuildComponentInstance(el, ctx);
 
         var name = el.Name.LocalName;
+
+        // <FormView Model="f.nctform"/>: the XForms layer's
+        // auto-view — the form rendered from its model + layout
+        // annotations alone (§11). A hand-written view may lay
+        // the same model out any other way; both bind the one
+        // instance.
+        if (name == "FormView")
+        {
+            var modelRef = Attr(el, "Model");
+            if (modelRef == null)
+            {
+                ctx.Document.Note("<FormView> without Model= — placeholder substituted");
+                return new Label { Text = "<FormView?>" };
+            }
+            var fvModel = NctFormModel.Load(ctx.Document.BaseDir.PathJoin(modelRef));
+            fvModel.Host = ctx.Host;
+            ctx.Document.KeepAlive(fvModel);
+            return BuildFormView(fvModel, ctx);
+        }
+
+        // <Repeat Items="{path}"> with ONE child element as the
+        // item template (§11 names repeats with the XForms
+        // layer; the launch bar is the first use). Items come
+        // from a form instance's repeated nodes or from an array
+        // on the DataContext (objects, or dictionaries wrapped
+        // as objects). The repeat rebuilds when the source path
+        // changes on the context.
+        if (name == "Repeat")
+        {
+            var itemsAttr = Attr(el, "Items");
+            var template = el.Elements().FirstOrDefault();
+            if (itemsAttr == null || !BindingSpec.IsBinding(itemsAttr) || template == null)
+            {
+                ctx.Document.Note("<Repeat> needs Items=\"{path}\" and one template child — placeholder substituted");
+                return new Label { Text = "<Repeat?>" };
+            }
+            var path = BindingSpec.Parse(itemsAttr).Path;
+            Control box = Attr(el, "Orientation") == "horizontal"
+                ? new HBoxContainer() : new VBoxContainer();
+            box.Name = Attr(el, "Name") ?? "Repeat";
+            BuildRepeatItems(box, template, path, ctx);
+            if (ctx.DataContext != null)
+            {
+                var capturedCtx = ctx;
+                ctx.DataContext.Connect(NctDataObject.SignalName.PropertyChanged,
+                    Callable.From<string>(changed =>
+                    {
+                        if (changed == path && GodotObject.IsInstanceValid(box))
+                            BuildRepeatItems(box, template, path, capturedCtx);
+                    }));
+            }
+            return box;
+        }
+
         if (!Registry.TryGet(name, out var entry))
         {
             ctx.Document.Note($"unknown element <{name}> — placeholder substituted");
@@ -171,7 +289,8 @@ public partial class NctXmlRenderer : RefCounted
                 {
                     Renderer = this, Kind = ctx.Kind, DataContext = sub,
                     Host = ctx.Host, Document = ctx.Document,
-                    RadioGroups = ctx.RadioGroups,
+                    RadioGroups = ctx.RadioGroups, Model = ctx.Model,
+                    RepeatItem = ctx.RepeatItem, Commands = ctx.Commands,
                 };
             else
                 ctx.Document.Note($"DataContext '{dcName}' not found on the parent context");
@@ -181,6 +300,27 @@ public partial class NctXmlRenderer : RefCounted
         {
             if (attr is "Name" or "DataContext") continue;
             ApplyAttribute(control, entry, attr, value, nodeCtx);
+        }
+
+        // The XForms layer in a hand-written view (§11): a
+        // control bound to a model node follows the node's live
+        // relevance/readonly state, and Submit="id" on a button
+        // runs the model's named submission.
+        if (ctx.Model != null)
+        {
+            foreach (var (attr, value) in attrs)
+            {
+                if (!BindingSpec.IsBinding(value)) continue;
+                var p = BindingSpec.Parse(value).Path;
+                if (ctx.Model.BindFor(p) != null)
+                { ctx.Model.TrackControl(control, p); break; }
+            }
+            if (attrs.TryGetValue("Submit", out var subId) && control is BaseButton btn)
+            {
+                var model = ctx.Model; var id = subId;
+                btn.Connect(BaseButton.SignalName.Pressed,
+                    Callable.From(() => model.Submit(id)));
+            }
         }
 
         // Element text → Text property (Label, Button, …)
@@ -242,7 +382,7 @@ public partial class NctXmlRenderer : RefCounted
 
         // Layout attributes are consumed by the parent's placement
         // pass (PostPlaceChild), never set as properties.
-        if (attr is "Dock" or "Expand" or "Title"
+        if (attr is "Dock" or "Expand" or "Title" or "Submit"
             or "Column" or "Row" or "ColumnSpan" or "RowSpan" or "Area") return;
 
         // A Grid's own spec attributes are consumed by its

@@ -29,6 +29,9 @@ public class NctRenderContext
     public GodotObject Host;                  // handler target (code-behind)
     public NctDocument Document;
     public Dictionary<string, ButtonGroup> RadioGroups = new();
+    public NctFormModel Model;                // the XForms layer, when the view declares one (§11)
+    public NctDataObject RepeatItem;          // inside a Repeat template: the item being built
+    public Dictionary<string, string> Commands;  // component instance on<Event> mappings, by command name
 }
 
 /// <summary>

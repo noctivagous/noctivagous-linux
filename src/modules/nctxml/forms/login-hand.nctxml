@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The same login model, laid out by hand in a two-column
+     grid — the proof that a form of data can be laid out any
+     way: this view ignores the model's layout annotations. -->
+<pane Model="login.nctform">
+  <Grid Name="HandGrid" Columns="120px 1fr" Gap="8">
+    <Label Text="User name"/>
+    <TextField Name="HandUser" Text="{username, Mode=TwoWay}" Column="1"/>
+    <Label Text="Password" Row="1"/>
+    <TextField Name="HandPass" Text="{password, Mode=TwoWay}"
+               Secret="true" Column="1" Row="1"/>
+    <Button Name="HandGo" Text="Log in" Submit="attempt"
+            Row="2" ColumnSpan="2"/>
+    <Label Name="HandStatus" Text="{status}" Row="3" ColumnSpan="2"/>
+  </Grid>
+</pane>
