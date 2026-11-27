@@ -403,7 +403,19 @@ public partial class NctXmlRenderer : RefCounted
             }
             if (ctx.Host == null) { doc.Note($"handler '{attr}' has no host to wire to"); return; }
             var signal = PascalToSnake(attr.Substring(2));
-            try { control.Connect(signal, new Callable(ctx.Host, value)); }
+            try
+            {
+                // Inside a Repeat template, the handler receives
+                // the item as its argument — that is how a launch
+                // button knows which entry it is.
+                if (ctx.RepeatItem != null)
+                {
+                    var host = ctx.Host; var method = value; var item = ctx.RepeatItem;
+                    control.Connect(signal, Callable.From(
+                        () => new Callable(host, method).Call(item)));
+                }
+                else control.Connect(signal, new Callable(ctx.Host, value));
+            }
             catch { doc.Note($"cannot wire handler '{attr}' → {value} (signal '{signal}')"); }
             return;
         }
@@ -435,6 +447,150 @@ public partial class NctXmlRenderer : RefCounted
         // Plain typed property.
         var target = entry.Aliases.TryGetValue(attr, out var a2) ? a2 : attr;
         SetConverted(control, target, value, doc, attr);
+    }
+
+    private void BuildRepeatItems(Control box, XElement template,
+        string path, NctRenderContext ctx)
+    {
+        foreach (var child in box.GetChildren())
+        {
+            box.RemoveChild(child);
+            child.QueueFree();
+        }
+        foreach (var item in ResolveItems(ctx, path))
+        {
+            var itemCtx = new NctRenderContext
+            {
+                Renderer = this, Kind = ctx.Kind, DataContext = item,
+                Host = ctx.Host, Document = ctx.Document,
+                RadioGroups = ctx.RadioGroups, Model = ctx.Model,
+                RepeatItem = item, Commands = ctx.Commands,
+            };
+            var node = BuildNode(template, itemCtx);
+            if (node != null) box.AddChild(node);
+        }
+    }
+
+    private List<NctDataObject> ResolveItems(NctRenderContext ctx, string path)
+    {
+        var items = new List<NctDataObject>();
+        if (ctx.DataContext is FormInstance form)
+        {
+            var found = form.GetItems(path);
+            if (found.Count > 0) return found;
+        }
+        var v = ctx.DataContext?.Get(path) ?? default;
+        if (v.VariantType == Variant.Type.Array)
+        {
+            foreach (var el in v.AsGodotArray())
+            {
+                if (el.AsGodotObject() is NctDataObject o) items.Add(o);
+                else if (el.VariantType == Variant.Type.Dictionary)
+                {
+                    var wrap = new NctDataObject();
+                    foreach (var kv in el.AsGodotDictionary())
+                        wrap.Set(kv.Key.AsString(), kv.Value);
+                    items.Add(wrap);
+                }
+            }
+        }
+        return items;
+    }
+
+    // ---------------------------------------------------------------
+    // The XForms auto-view (§11): render a form from its model +
+    // layout annotations alone. The container spec and the
+    // per-field placement speak the platform's layout vocabulary
+    // (the NCTGraphite grid terms); field controls are chosen by
+    // bind type (or the bind's control annotation); submissions
+    // become buttons. Nothing here is form-specific — the same
+    // builder renders any .nctform.
+    // ---------------------------------------------------------------
+    private Control BuildFormView(NctFormModel model, NctRenderContext ctx)
+    {
+        var doc = ctx.Document;
+        var instance = model.Instance;
+        if (instance == null) return new Label { Text = "<FormView: no instance>" };
+
+        var spec = model.LayoutSpec;
+        Control container;
+        if (spec.TryGetValue("container", out var c) && c == "grid"
+            && Registry.TryGet("Grid", out var gridEntry))
+        {
+            var keys = new Dictionary<string, string>
+            {
+                ["columns"] = "Columns", ["rows"] = "Rows",
+                ["areas"] = "Areas", ["gap"] = "Gap",
+                ["padding"] = "Padding", ["breakpoints"] = "Breakpoints",
+                ["proportions"] = "Proportions", ["baseline"] = "Baseline",
+                ["baselineOffset"] = "BaselineOffset",
+            };
+            var attrs = new Dictionary<string, string>();
+            foreach (var (from, to) in keys)
+                if (spec.TryGetValue(from, out var v)) attrs[to] = v;
+            container = gridEntry.Factory(attrs);
+        }
+        else container = new VBoxContainer();
+        container.Name = "FormView";
+
+        // Top-level fields only: a node with '/' belongs to a
+        // repeat or a group, rendered by a Repeat or a hand view.
+        var fields = model.Binds.Where(b => !b.Node.Contains("/"))
+            .OrderBy(b => b.Layout.TryGetValue("order", out var o)
+                          && int.TryParse(o, out var n) ? n : 0)
+            .ToList();
+        foreach (var bind in fields)
+        {
+            var wrapper = new VBoxContainer { Name = "Field_" + bind.Node };
+            if (!string.IsNullOrEmpty(bind.Label))
+                wrapper.AddChild(new Label { Text = bind.Label });
+            bool ro = model.IsReadOnly(bind);
+            var kind = bind.Control
+                ?? (ro ? "Label" : bind.Type == "boolean" ? "CheckBox" : "TextField");
+            if (!Registry.TryGet(kind, out var entry))
+            { doc.Note($"form view: unknown control '{kind}'"); continue; }
+            var field = entry.Factory(new Dictionary<string, string>());
+            field.Name = "Input_" + bind.Node;
+            if (field is LineEdit le && bind.Secret) le.Secret = true;
+            var link = new BindingLink();
+            doc.KeepAlive(link);
+            link.BindControl(field, entry,
+                kind == "CheckBox" ? "ButtonPressed" : "Text",
+                new BindingSpec
+                {
+                    Path = bind.Node,
+                    Mode = ro ? "OneWay" : "TwoWay",
+                }, instance);
+            wrapper.AddChild(field);
+            container.AddChild(wrapper);
+            model.TrackControl(field, bind.Node);
+            if (container is NctGridContainer || container.GetClass() == "NctGridNative")
+            {
+                if (bind.Layout.TryGetValue("area", out var area))
+                    wrapper.SetMeta("grid_area", area);
+                if (bind.Layout.TryGetValue("column", out var col)
+                    && int.TryParse(col, out var ci))
+                    wrapper.SetMeta("grid_col", ci - 1);
+                if (bind.Layout.TryGetValue("row", out var row)
+                    && int.TryParse(row, out var ri))
+                    wrapper.SetMeta("grid_row", ri - 1);
+                if (bind.Layout.TryGetValue("columnSpan", out var cs)
+                    && int.TryParse(cs, out var csi))
+                    wrapper.SetMeta("grid_col_span", csi);
+                if (bind.Layout.TryGetValue("rowSpan", out var rs)
+                    && int.TryParse(rs, out var rsi))
+                    wrapper.SetMeta("grid_row_span", rsi);
+            }
+        }
+        foreach (var sub in model.Submissions)
+        {
+            var b = new Button { Text = sub.Label ?? sub.Id, Name = "Submit_" + sub.Id };
+            var m = model; var id = sub.Id;
+            b.Connect(BaseButton.SignalName.Pressed,
+                Callable.From(() => m.Submit(id)));
+            container.AddChild(b);
+        }
+        return container;
     }
 
     // ---------------------------------------------------------------
