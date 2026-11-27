@@ -2,11 +2,15 @@ extends Node
 ## nct-window-manager — window records + policy for every window
 ## (plans/ENVIRONMENT-MANAGER.md §1, §3, §5).
 ##
-## Slice 1 scope: shell-backed windows only (a Control subtree per
+## Slice 1 scope: shell-backed windows (a Control subtree per
 ## window, one CanvasLayer per render layer under `layers_root`).
-## Own-process and foreign backings attach to the same records when
-## the app registry and the compositor link land (Slice 3) — the
-## record does not change.
+## Since the WM-hosting slice (build log 30) this manager also
+## runs in the SHIPPED shell (godot/shell, vendored copies under
+## wm/, drift-checked like the NCTXML library): the launch bar
+## is a panel-style record there, and every launched app
+## registers an own-process record — app-registry processes and
+## compositor backings attach to those same records when they
+## land. The record does not change.
 ##
 ## The manager owns the registry and the focus. It does not draw
 ## chrome, route input, or decide security policy: indicators are a

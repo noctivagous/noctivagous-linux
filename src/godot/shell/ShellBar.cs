@@ -11,6 +11,7 @@ public partial class ShellBar : Control
 {
     private NctDataObject _ctx;
     private Button _firstButton;
+    private Control _barRoot;
     private string _lastSecond = "";
 
     public override void _Ready()
@@ -39,6 +40,7 @@ public partial class ShellBar : Control
             return;
         }
         AddChild(doc.Root);
+        _barRoot = doc.Root;
         _firstButton = FindFirstButton(doc.Root);
         Callable.From(() => _firstButton?.GrabFocus()).CallDeferred();
     }
@@ -67,6 +69,11 @@ public partial class ShellBar : Control
             _ctx?.Set("Clock", t);
         }
     }
+
+    // The bar's backing for its Window record: main.gd hands
+    // this root to the window manager, which seats it on the
+    // Top layer (the manager reparents it out of this host).
+    public Control get_bar_root() => _barRoot;
 
     // Called from main.gd's focus guard.
     public void ensure_focus()
