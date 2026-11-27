@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The login screen's interactive layer (E3): an NCTXML view
+     over the login form model. The backdrop stays scene-side
+     (main.gd's ColorRect); this document is the form — fields,
+     submission, status — and nothing else. -->
+<window Model="login.nctform" Title="Log in">
+  <Center>
+    <Stack Orientation="vertical">
+      <Label Text="NOCTIVAGOUS"/>
+      <TextField Name="UserField" Placeholder="Username"
+                 CustomMinimumSize="280, 36"
+                 Text="{username, Mode=TwoWay}"
+                 onTextSubmitted="OnUserSubmitted"/>
+      <TextField Name="PassField" Placeholder="Password" Secret="true"
+                 CustomMinimumSize="280, 36"
+                 Text="{password, Mode=TwoWay}"
+                 onTextSubmitted="OnPasswordSubmitted"/>
+      <Button Name="LoginButton" Text="Log In"
+              CustomMinimumSize="280, 40" Submit="attempt"/>
+      <Label Name="StatusLabel" Text="{status}"/>
+    </Stack>
+  </Center>
+</window>

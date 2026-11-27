@@ -110,6 +110,8 @@ public class ControlRegistry
         Add(new NctControlEntry { Name = "Dock", Role = "layout", Factory = _ => new DockContainer() });
         Add(new NctControlEntry { Name = "Free", Role = "layout", Factory = _ => new Control() });
         Add(new NctControlEntry { Name = "Scroll", Role = "scroll", Focusable = true, Factory = _ => new ScrollContainer() });
+        Add(new NctControlEntry { Name = "Center", Role = "layout", Factory = _ => new CenterContainer() });
+        Add(new NctControlEntry { Name = "Panel", Role = "layout", Factory = _ => new PanelContainer() });
 
         // --- stock controls (§6) ---
         Add(new NctControlEntry { Name = "Label", Role = "text", Factory = _ => new Label() });

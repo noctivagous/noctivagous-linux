@@ -563,6 +563,13 @@ public partial class NctXmlRenderer : RefCounted
             case Variant.Type.Float: v = double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : 0.0; break;
             case Variant.Type.Int: v = long.TryParse(value, out var l) ? l : 0; break;
             case Variant.Type.Bool: v = value == "true"; break;
+            case Variant.Type.Vector2:
+                var parts = value.Split(',');
+                v = parts.Length == 2
+                    && float.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var vx)
+                    && float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var vy)
+                    ? new Vector2(vx, vy) : Vector2.Zero;
+                break;
             default: v = value; break;
         }
         c.Set(engineProp, v);
