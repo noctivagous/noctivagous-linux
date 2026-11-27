@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A proof app window wearing the TitleBar as its chrome. -->
+<window xmlns:nct="nct" Title="Proof">
+  <Stack Orientation="vertical">
+    <nct:TitleBar Name="Bar" Title="{WindowTitle}"
+                  onClose="OnClose" onMinimize="OnMinimize"/>
+    <nct:TitleBar Name="BarNoMin" Title="Second" ShowMinimize="false"
+                  onClose="OnClose"/>
+    <Label Text="body"/>
+  </Stack>
+</window>

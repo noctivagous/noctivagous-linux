@@ -1,0 +1,21 @@
+<component Name="TitleBar" xmlns:nct="nct">
+  <!-- The stock window titlebar (E5): client-side chrome for
+       NCT windows. The template is host-agnostic — its buttons
+       declare commands, and each instance maps them to host
+       methods: <nct:TitleBar Title="{...}" onClose="..."
+       onMinimize="..."/>. The bar is the window's drag handle
+       (Drag="window"). Foreign windows keep the compositor's
+       decorations; this is for NCT windows' own chrome. -->
+  <properties>
+    <property Name="Title" Type="string" Default=""/>
+    <property Name="ShowMinimize" Type="bool" Default="true"/>
+  </properties>
+  <Panel Drag="window">
+    <Stack Orientation="horizontal">
+      <Label Name="TitleLabel" Text="{Title}" Drag="window" Expand="true"/>
+      <Button Name="MinButton" Text="–" Command="Minimize"
+              Visible="{ShowMinimize, Converter=Visibility}"/>
+      <Button Name="CloseButton" Text="×" Command="Close"/>
+    </Stack>
+  </Panel>
+</component>

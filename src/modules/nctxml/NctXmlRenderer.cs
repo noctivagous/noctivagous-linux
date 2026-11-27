@@ -385,6 +385,43 @@ public partial class NctXmlRenderer : RefCounted
         if (attr is "Dock" or "Expand" or "Title" or "Submit"
             or "Column" or "Row" or "ColumnSpan" or "RowSpan" or "Area") return;
 
+        // Component commands: a template button declares
+        // Command="Close"; the instance maps it to a host method
+        // with onClose="...". The template stays host-agnostic.
+        // An unmapped command is a legitimate configuration (the
+        // instance offers no such action — e.g. a titlebar with
+        // no minimize): the button renders disabled, visibly
+        // inert, rather than logging or silently doing nothing.
+        if (attr == "Command")
+        {
+            if (control is BaseButton cmdBtn && ctx.Commands != null
+                && ctx.Commands.TryGetValue(value, out var cmdMethod)
+                && ctx.Host != null)
+            {
+                try { cmdBtn.Connect(BaseButton.SignalName.Pressed, new Callable(ctx.Host, cmdMethod)); }
+                catch { doc.Note($"cannot wire command '{value}' → {cmdMethod}"); }
+            }
+            else if (control is BaseButton unmapped) unmapped.Disabled = true;
+            return;
+        }
+
+        // Drag regions: Drag="window" makes a control the drag
+        // handle for its window (custom chrome — titlebars).
+        if (attr == "Drag")
+        {
+            if (value == "window")
+            {
+                var c = control;
+                c.Connect(Control.SignalName.GuiInput, Callable.From<InputEvent>(ev =>
+                {
+                    if (ev is InputEventMouseButton mb && mb.Pressed
+                        && mb.ButtonIndex == MouseButton.Left)
+                        c.GetWindow().StartDrag();
+                }));
+            }
+            return;
+        }
+
         // A Grid's own spec attributes are consumed by its
         // registry factory (both engines), never set as properties.
         if ((control is NctGridContainer || control.GetClass() == "NctGridNative")
@@ -611,10 +648,19 @@ public partial class NctXmlRenderer : RefCounted
         foreach (var (pName, pType, pDefault) in def.Props)
             bag.Set(pName, ParseTyped(pDefault, pType));
 
+        var commands = new Dictionary<string, string>();
         var outer = ctx.DataContext;
         foreach (var attr in el.Attributes().Where(x => !x.IsNamespaceDeclaration))
         {
             var attrName = attr.Name.LocalName;
+            // Instance on<Event>="hostMethod" maps the template's
+            // named commands (Command="Close") to the host.
+            if (attrName.Length > 2 && attrName.StartsWith("on")
+                && char.IsUpper(attrName[2]))
+            {
+                commands[attrName.Substring(2)] = attr.Value;
+                continue;
+            }
             var declared = def.Props.FirstOrDefault(p => p.Name == attrName);
             if (declared.Name == null)
             {
@@ -639,6 +685,8 @@ public partial class NctXmlRenderer : RefCounted
         {
             Renderer = this, Kind = ctx.Kind, DataContext = bag,
             Host = ctx.Host, Document = ctx.Document, RadioGroups = ctx.RadioGroups,
+            Model = ctx.Model, RepeatItem = ctx.RepeatItem,
+            Commands = commands.Count > 0 ? commands : ctx.Commands,
         };
         var visual = BuildNode(def.Template, templateCtx);
         var instName = Attr(el, "Name");
