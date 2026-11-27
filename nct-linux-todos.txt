@@ -4,16 +4,22 @@
 	- window titlebar collapse/expand
 	- patch cords.
 	
+project tasks
+	[  ] separate nct-godot-packages git repo
+	so that people can use their machines to make
+	apps and programs out of Godot on their other machines.
+	What we will use on Mac to make the environment.
 
 Noctivagous App Catalog
  - Apps and Bundles produced by Noctivagous,
  including apps for the distro.  Some apps will be produced by Noctivagous.
- Apps from the open source projects may have different names,
+ Apps from existing open source projects will be modified and may have different names,
  have hooks installed into them for the distro to make use of its service modules 
- and be rethemed, customized, usually ported.
+ and be re-themed, customized.
  - "App store" layout app but like Raspberry Pi app catalog only apps
  set up by Noctivagous for installation, from its own package manager system.
- 	- Will include Activity Pack page where 
+ 	- Will include Activity Pack page where activity packs correspond to the users'
+ 	interests and computer usage.
  - apps installed by Noctivagous are tracked by nct-software-trail-watcher or
  (undecided) nct-packages-watcher that aggregates all package manager issues.
  it will be the service that allows for clean uninstalls and reinstalls of nct apps.
