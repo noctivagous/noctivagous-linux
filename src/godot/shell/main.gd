@@ -1,10 +1,14 @@
 extends Control
 ## NCT Shell — the session's first furniture: the launch bar.
-## The bar itself is NCTXML (E4): bar.nctxml, hosted by
-## ShellBar.cs (the BarHost node), one Repeat-generated button
-## per launch-list entry. This script owns the launch list and
-## the launching: buttons go through nct-launch; the shell
-## contains no program paths (CONVENTIONS.md §10).
+## The bar is GDScript (bar_host.gd, the BarHost node): one
+## button per launch-list entry, built in code and styled
+## from the TypeScript demo. (It was an NCTXML document
+## hosted by C# until the GDScript-first strategy, build
+## log 34; the NCTXML view lives on in
+## src/modules/nctxml/examples/.) This script owns the
+## backdrop, the launch list and the launching: buttons go
+## through the registry and nct-launch; the shell contains
+## no program paths (CONVENTIONS.md §10).
 ##
 ## Two modules are hosted here, on the seam plans §1 rule 2
 ## draws: the WINDOW MANAGER owns the windows (build log 30 —
@@ -30,7 +34,10 @@ const AppRegistry := preload("nct-app-registry/app_registry.gd")
 var wm  ## the hosted window manager (nct-window-manager)
 var registry  ## the hosted app registry (nct-app-registry)
 
+const Backdrop := preload("backdrop.gd")
+
 func _ready() -> void:
+	_build_backdrop()
 	var entries := _read_launch_list()
 	print("SHELL_READY entries=", entries.size())
 	_setup_window_manager()
@@ -40,9 +47,37 @@ func _ready() -> void:
 		for e in entries:
 			print("SHELL_ENTRY ", e["id"], " ", e["title"])
 		print("SHELL_SELFTEST_OK entries=", entries.size())
+		_bar_self_test(entries)
 		_wm_self_test()
 		_registry_self_test(entries)
 		get_tree().quit()
+
+## The desktop backdrop, on a CanvasLayer below every window
+## layer the manager builds: the demo's wallpaper (backdrop.gd).
+## Its top registration marks sit below the launch bar.
+func _build_backdrop() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = -100
+	add_child(layer)
+	var bg = Backdrop.new()
+	bg.top_inset = 62.0
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(bg)
+
+## --self-test only: the bar itself, proven present — the
+## check whose absence let a shipped shell pass its self-test
+## with the bar's C# half missing (build log 33). The bar
+## root must exist and carry one button per launchable entry.
+func _bar_self_test(entries: Array) -> void:
+	var want := 0
+	for e in entries:
+		if e["id"] != "shell":
+			want += 1
+	if bar_host.get_bar_root() != null and bar_host.button_count() == want:
+		print("SHELL_BAR_OK buttons=", bar_host.button_count())
+	else:
+		printerr("SHELL_BAR_FAIL root=", bar_host.get_bar_root(),
+			" buttons=", bar_host.button_count(), " want=", want)
 
 ## Build the layer stack (one CanvasLayer per layer in the
 ## fixed table, under this shell) and register the launch bar:
@@ -57,7 +92,12 @@ func _setup_window_manager() -> void:
 	bar_rec.kind_link = "shell"
 	bar_rec.title = "Launch bar"
 	bar_rec.backing = bar_host.get_bar_root()
-	bar_rec.geometry = Rect2(Vector2.ZERO, get_viewport_rect().size)
+	# A panel's geometry is its strip: the full width, the
+	# bar's own height. (Full-viewport geometry was harmless
+	# while the bar's root was a transparent panel; a styled
+	# bar seated at that size would stretch to fill it.)
+	bar_rec.geometry = Rect2(Vector2.ZERO,
+		Vector2(get_viewport_rect().size.x, 48))
 	wm.register_window(bar_rec)
 
 ## The registry: one manifest per launch-list entry (the shell

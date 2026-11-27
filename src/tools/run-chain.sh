@@ -150,11 +150,11 @@ if [ -n "$GODOT" ]; then
   # client-side chrome; commands mapped per instance.
   out=$("$GODOT" --headless --path "$SRC/modules" res://nctxml/components/main.tscn 2>&1)
   echo "$out" | grep -q "TITLEBAR_OK" && ok "t0 nctxml titlebar component" || bad "t0 nctxml titlebar component" "$out"
-  # E1 hosting: the NCTXML library vendored into the greeter and
-  # shell projects (decision 1A, source-sync) — copies drift-checked,
-  # each project builds and renders a document from its own copy.
-  out=$(bash "$SRC/tools/check-nctxml-copies.sh" 2>&1)
-  echo "$out" | grep -q "NCTXML_COPIES_CLEAN" && ok "t0 nctxml copies drift check" || bad "t0 nctxml copies drift check" "$out"
+  # (E1 hosting retired, build log 34: the greeter and shell no
+  # longer vendor the NCTXML library — the shipped environment
+  # is GDScript, and NCTXML is a baking-track component whose
+  # own tests in src/modules (above) carry it until it bakes
+  # into an app. The sync/check scripts went with the copies.)
   # Shell module hosting: the window manager, layer stack and
   # app registry vendored into the shell project the same way —
   # drift-checked here, and proven live by the "t0 shell wm
@@ -174,22 +174,12 @@ if [ -n "$GODOT" ]; then
   else
     bad "t0 dotnet runtime bundled pin" "PIN.md / build-deb.sh / nct-godot-run disagree about the bundled .NET runtime"
   fi
-  for host in greeter shell; do
-    if command -v "$DOTNET" > /dev/null 2>&1 && "$DOTNET" build -v q -nologo "$SRC/godot/$host" > "$RES/nctxml-$host-build.log" 2>&1; then
-      out=$("$GODOT" --headless --path "$SRC/godot/$host" res://nctxml-smoke/main.tscn 2>&1)
-      echo "$out" | grep -q "NCTXML_SMOKE_OK" && ok "t0 nctxml hosted in $host" || bad "t0 nctxml hosted in $host" "$out"
-    else
-      bad "t0 nctxml hosted in $host" "dotnet build failed (see nctxml-$host-build.log)"
-    fi
-  done
   # The greeter's login card, centered — measured from the live
   # scene at a real display size, not eyeballed from a render.
-  if command -v "$DOTNET" > /dev/null 2>&1 && "$DOTNET" build -v q -nologo "$SRC/godot/greeter" > "$RES/greeter-layout-build.log" 2>&1; then
-    out=$("$GODOT" --headless --path "$SRC/godot/greeter" res://layout-probe/main.tscn 2>&1)
-    echo "$out" | grep -q "GREETER_LAYOUT_OK" && ok "t0 greeter layout (card centred)" || bad "t0 greeter layout (card centred)" "$out"
-  else
-    bad "t0 greeter layout (card centred)" "dotnet build failed (see greeter-layout-build.log)"
-  fi
+  # The form is GDScript now (build log 34): no assembly build
+  # stands between the source and this probe.
+  out=$("$GODOT" --headless --path "$SRC/godot/greeter" res://layout-probe/main.tscn 2>&1)
+  echo "$out" | grep -q "GREETER_LAYOUT_OK" && ok "t0 greeter layout (card centred)" || bad "t0 greeter layout (card centred)" "$out"
   # Launch model 2: the same projects as .pck packs on the shared
   # runtime (the shipped form). Build to the results dir, then run
   # the shell pack through nct-godot-run's --main-pack path.
@@ -197,6 +187,15 @@ if [ -n "$GODOT" ]; then
     ok "t0 pck build (greeter, shell, nct-hello)"
     out=$(NCT_DISPLAY_DRIVER=headless NCT_RENDER_DRIVER=opengl3 "$SRC/core/session/nct-godot-run" "$RES/pcks/shell.pck" -- --self-test 2>&1)
     echo "$out" | grep -q "SHELL_SELFTEST_OK entries=5" && ok "t0 shell self-test via .pck" || bad "t0 shell self-test via .pck" "$out"
+    # Shipped-form gates (build log 34, from the log-33 defect):
+    # the packs must not only load but BUILD their UI — the bar
+    # present with its buttons, the greeter form present — and
+    # no class may be missing from the shipped form.
+    echo "$out" | grep -q "SHELL_BAR_OK buttons=4" && ok "t0 shell bar present via .pck" || bad "t0 shell bar present via .pck" "$out"
+    echo "$out" | grep -q "Cannot instantiate" && bad "t0 shell pack missing-class errors" "$out" || ok "t0 shell pack missing-class errors"
+    out=$(NCT_DISPLAY_DRIVER=headless NCT_RENDER_DRIVER=opengl3 timeout 60 "$SRC/core/session/nct-godot-run" "$RES/pcks/greeter.pck" --quit-after 30 2>&1)
+    echo "$out" | grep -q "GREETER_FORM_OK" && ok "t0 greeter form present via .pck" || bad "t0 greeter form present via .pck" "$out"
+    echo "$out" | grep -q "Cannot instantiate" && bad "t0 greeter pack missing-class errors" "$out" || ok "t0 greeter pack missing-class errors"
   else
     bad "t0 pck build (greeter, shell, nct-hello)" "see pcks.log"
   fi

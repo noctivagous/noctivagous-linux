@@ -38,14 +38,18 @@ per the plan: the compiler/cache, the designer, Pango,
 annotated-SVG theming (§8 — v1 applies no theme beyond Godot
 defaults), DataTemplates, relative-source binding.
 
-HOSTING (2026-11-26, agent-build-log/29): the library is
-vendored into the projects that host it — godot/greeter and
-godot/shell carry synced copies under their own nctxml/
-(src/tools/sync-nctxml.sh; a tier-0 drift check,
-check-nctxml-copies.sh, keeps the copies byte-identical to
-this directory, the source of truth). Both projects are .NET
-projects now; each has an nctxml-smoke/ scene proving its own
-copy renders.
+HOSTING (2026-11-26, agent-build-log/29): the library was
+vendored into godot/greeter and godot/shell, source-synced
+with a tier-0 drift check. RETIRED (2026-11-27, build
+log 34): under the GDScript-first strategy the shipped
+environment no longer hosts the library — the greeter's
+form and the shell's bar are GDScript builds, and the
+vendored copies, the smoke scenes and the sync/check
+scripts are gone. The library's own tests in src/modules
+carry it now. Its production views over the greeter form
+and the shell bar are kept in examples/ as the reference
+for the baking slice that brings the interpreter back —
+baked, in an app's export layout, when it is stable.
 
 FORMS — the XForms layer (2026-11-26, agent-build-log/29;
 plans/NCTXML.md §11, built): FormModel.cs + FormExpr.cs.

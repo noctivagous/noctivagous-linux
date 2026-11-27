@@ -24,12 +24,8 @@ export NCT_RENDER_DRIVER=${NCT_RENDER_DRIVER:-opengl3}
 export NCT_DISPLAY_DRIVER=${NCT_DISPLAY_DRIVER:-wayland}
 export PATH="$SRC/core/session:$PATH"
 GODOT=${NCT_GODOT:-$HOME/workspace/.nct-tools/godot}; export NCT_GODOT="$GODOT"
-# The greeter's main scene hosts C# now (the NCTXML form, E3):
-# its assembly must be built before the runtime can start it.
-if command -v dotnet > /dev/null 2>&1; then
-  dotnet build -v q -nologo "$SRC/godot/greeter" > "$RES/greeter-build.log" 2>&1 \
-    || { echo "FAIL greeter build — see greeter-build.log"; exit 1; }
-fi
+# The greeter is GDScript (build log 34): no assembly build
+# stands between the source and the runtime.
 # Same host-Firefox arrangement as run-chain.sh: this machine has no
 # firefox on PATH (the VM/rootfs use firefox-esr, which resolves
 # plainly), so point the resolver at the local tarball build with a

@@ -151,3 +151,15 @@ Rules for the agent on the rig:
   NRestarts=0) — and C# project assemblies are absent from
   --export-pack packs, so the greeter form cannot instantiate
   in shipped form yet (log 33; shipping shape undecided).
+- 2026-11-27 (later) — the GDScript environment's tier-2 proof
+  (agent-build-log/34): with the greeter and shell rebuilt in
+  GDScript, the full chain ran on the QEMU track — greetd held
+  (NRestarts=0) after an in-place restart, the login card
+  rendered and measured centred from the screendump's pixels,
+  a monitor-typed login started the session, and Enter on the
+  bar's focused Firefox button launched Firefox. The C#
+  shipping-shape question closed by strategy instead: the
+  environment ships GDScript; compiled components bake in
+  later, per component. New operational fact: the Windows
+  host's SSH server refuses the default SFTP scp — use
+  `scp -O` (legacy protocol) for rig transfers.

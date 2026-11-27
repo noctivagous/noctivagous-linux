@@ -4,9 +4,12 @@ extends Control
 ## AUTH <user> <pass> -> OK, then START -> STARTED, then the greeter quits
 ## and the session it started replaces it.
 ##
-## The login form itself is NCTXML now (E3): login.nctxml over the
-## login.nctform model, hosted by GreeterForm.cs (the FormHost
-## node). This script owns the backdrop and the bridge
+## The login form is GDScript (form_host.gd, the FormHost node):
+## a card built in code, styled from the TypeScript demo. (It
+## was an NCTXML view hosted by C# until the GDScript-first
+## strategy, build log 34; the NCTXML view + model live on in
+## src/modules/nctxml/examples/ as the baking track's
+## reference.) This script owns the backdrop and the bridge
 ## conversation; the form calls form_attempt_login() and the
 ## conversation's outcome is reported back through the FormHost
 ## (resolve_login / set_status / refocus_password).
@@ -32,9 +35,10 @@ func _ready() -> void:
 			pending_pass = args[i + 2]
 			_connect_and_auth()
 
+const Backdrop := preload("backdrop.gd")
+
 func _build_bg() -> void:
-	var bg := ColorRect.new()
-	bg.color = Color(0.07, 0.07, 0.08)
+	var bg = Backdrop.new()
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 	# The form (FormHost, declared in the scene) paints above it.

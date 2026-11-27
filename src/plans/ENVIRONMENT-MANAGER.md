@@ -469,3 +469,43 @@ it splits the NCTXML engine's language from the shell's for
 no structural gain, since the engine is a library both load.
 So: the engine is written once, in C#, and GDScript remains
 the shell's glue and view language.
+
+DECIDED (user, 2026-11-27; build logs 33–34): **the shipped
+environment is GDScript-first, and compiled languages are a
+baking step, not a starting point.** The tier-2 proof found
+that Godot's C# support has no shipped form for the launch
+model's bare packs: --export-pack carries C# *sources*, not
+the compiled assemblies the runtime loads, so a C# greeter
+in pack form starts with its form class missing. GDScript
+has no such gap — the engine itself compiles it, so source
+in a pack is runnable as shipped. The strategy that follows:
+
+- The environment itself — greeter, shell, furniture — is
+  built in GDScript and ships from source in packs on the
+  shared binary. A working interactive environment comes
+  first; nothing compiled stands between the source and
+  the login screen.
+- When a section stabilizes, it is **baked in from source**
+  as a compiled artefact, per component and by decision:
+  a GDExtension native library, or a C# assembly shipped in
+  that app's export layout (binary + pack + data dir — the
+  form Godot's C# support actually offers). C# from source
+  on the target would need the SDK and build tools there;
+  that is a development setup, never a shipping form.
+- NCTXML accordingly leaves the shipped environment's
+  critical path: the greeter's form and the shell's bar are
+  GDScript builds, and the interpreter stays in-tree as a
+  baking-track component (its reference views live in
+  src/modules/nctxml/examples/). The "logic-heavy C#" row
+  above is superseded for the environment itself — those
+  components bake when stable rather than hosting live.
+- Principle 2 gains a rider: for anything that ships *in
+  the environment*, source-shipping is a hard constraint —
+  the language must be one the pack carries runnable.
+- The mono pin stands: the shared runtime stays the .NET
+  edition (the baked C# components and the dev loop need
+  it), and the bundled .NET runtime (log 33) stays with it.
+  Still open mechanically: the path rule by which a
+  GDExtension library placed for the shared binary is found
+  in pack form (the projects' bin/ path does not resolve);
+  the first baking slice solves it.
