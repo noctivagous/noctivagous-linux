@@ -24,3 +24,7 @@ window/size/mode=3
 ; Match the boot background: no second flash between splash-off and
 ; the scene's first frame.
 environment/defaults/default_clear_color=Color(0.07, 0.07, 0.08, 1)
+
+[dotnet]
+
+project/assembly_name="NCTGreeter"

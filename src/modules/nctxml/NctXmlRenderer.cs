@@ -112,6 +112,7 @@ public partial class NctXmlRenderer : RefCounted
         if (kind == "window" && Attr(rootEl, "Title") is string t)
             root.Name = t;
 
+        var visuals = new List<Control>();
         foreach (var child in rootEl.Elements())
         {
             // Metadata elements are consumed, never rendered.
@@ -122,8 +123,15 @@ public partial class NctXmlRenderer : RefCounted
                 continue;
             }
             var visual = BuildNode(child, ctx);
-            if (visual != null) root.AddChild(visual);
+            if (visual != null) { root.AddChild(visual); visuals.Add(visual); }
         }
+        // A document has one content root: it fills the document.
+        // (Without this, a top-level container keeps its minimum
+        // size inside the wrapper and nothing downstream lays out —
+        // found by the E1 hosting smoke, where a Grid inside a
+        // Stack rendered at content size inside a 400px document.)
+        if (visuals.Count == 1)
+            visuals[0].SetAnchorsPreset(Control.LayoutPreset.FullRect);
 
         if (kind == "preview") EnforcePreview(root, doc);
         return doc;
