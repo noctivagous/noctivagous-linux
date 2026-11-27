@@ -385,6 +385,35 @@ public partial class NctXmlRenderer : RefCounted
         if (attr is "Dock" or "Expand" or "Title" or "Submit"
             or "Column" or "Row" or "ColumnSpan" or "RowSpan" or "Area") return;
 
+        // Theme-constant attributes: spacing and margins are
+        // theme constants in the engine, not properties, so a
+        // document names them and the renderer applies them as
+        // overrides. Separation spaces a box container's
+        // children; Margin* pads a Margin container.
+        if (attr == "Separation" && control is Container box
+            && int.TryParse(value, out var sep))
+        {
+            box.AddThemeConstantOverride("separation", sep);
+            return;
+        }
+        if (control is MarginContainer && attr.StartsWith("Margin")
+            && int.TryParse(value, out var mgn))
+        {
+            var constant = attr switch
+            {
+                "MarginLeft" => "margin_left",
+                "MarginRight" => "margin_right",
+                "MarginTop" => "margin_top",
+                "MarginBottom" => "margin_bottom",
+                _ => null,
+            };
+            if (constant != null)
+            {
+                control.AddThemeConstantOverride(constant, mgn);
+                return;
+            }
+        }
+
         // Component commands: a template button declares
         // Command="Close"; the instance maps it to a host method
         // with onClose="...". The template stays host-agnostic.
@@ -765,7 +794,14 @@ public partial class NctXmlRenderer : RefCounted
         switch (current.VariantType)
         {
             case Variant.Type.Float: v = double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : 0.0; break;
-            case Variant.Type.Int: v = long.TryParse(value, out var l) ? l : 0; break;
+            case Variant.Type.Int:
+                // A number, or an enum member named in the
+                // document (HorizontalAlignment="Center") —
+                // resolved against the property's enum hint so
+                // documents stay legible.
+                if (long.TryParse(value, out var l)) v = l;
+                else v = EnumValueByName(c, engineProp, value, doc, attrForMsg);
+                break;
             case Variant.Type.Bool: v = value == "true"; break;
             case Variant.Type.Vector2:
                 var parts = value.Split(',');
@@ -777,6 +813,29 @@ public partial class NctXmlRenderer : RefCounted
             default: v = value; break;
         }
         c.Set(engineProp, v);
+    }
+
+    /// <summary>Resolve an enum member name ("Center") to its
+    /// value for an engine property, using the property list's
+    /// enum hint. Unknown names note a diagnostic and give 0.</summary>
+    private static long EnumValueByName(Control c, string engineProp,
+        string value, NctDocument doc, string attrForMsg)
+    {
+        foreach (var p in c.GetPropertyList())
+        {
+            if (p["name"].AsString() != engineProp) continue;
+            if (p["hint"].AsInt32() != (int)PropertyHint.Enum) break;
+            var names = p["hint_string"].AsString().Split(',');
+            for (int i = 0; i < names.Length; i++)
+            {
+                var name = names[i].Split(':')[0].Trim();
+                if (string.Equals(name, value, StringComparison.OrdinalIgnoreCase))
+                    return i;
+            }
+            break;
+        }
+        doc.Note($"no enum member '{value}' for attribute '{attrForMsg}'");
+        return 0;
     }
 
     public static Texture2D LoadTexture(string path)

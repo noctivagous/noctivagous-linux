@@ -112,6 +112,7 @@ public class ControlRegistry
         Add(new NctControlEntry { Name = "Scroll", Role = "scroll", Focusable = true, Factory = _ => new ScrollContainer() });
         Add(new NctControlEntry { Name = "Center", Role = "layout", Factory = _ => new CenterContainer() });
         Add(new NctControlEntry { Name = "Panel", Role = "layout", Factory = _ => new PanelContainer() });
+        Add(new NctControlEntry { Name = "Margin", Role = "layout", Factory = _ => new MarginContainer() });
 
         // --- stock controls (§6) ---
         Add(new NctControlEntry { Name = "Label", Role = "text", Factory = _ => new Label() });
