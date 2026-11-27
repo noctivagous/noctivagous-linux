@@ -26,6 +26,10 @@ often have to install functionality that is already
 inside the local dev app kit but requires compilation
 for those apps to use it.  e.g. shell scripts can't
 make use of any .framework files in Mac OS.
+Furthermore, an AI agent built into the system
+will have access to these utilities and won't
+have to install equivalent functionality from
+packages when carrying out tasks.
 
 -- nct-api-gateway - the app in the environment lets you
 set up API information so that it can be utilized by apps
@@ -38,12 +42,13 @@ API.
    shell scripts can make use of them, NCT apps can,
    any app given access to the nct-api-gateway.
    
--- nct-file-converter-toolcloset - ffmpeg, image conversion,
-word processing, pdf.  A suite for NCT apps and shell to
+-- nct-file-manipulation-toolcloset - ffmpeg, image conversion,
+word processing, pdf, compression.  A suite for NCT apps and shell to
 do file conversion and export.  utilized by the contextual-menu.
 
 -- nct-rendering-preview-hub - the place where descriptions
-and programs are stored for rendering different file type.
+and programs are stored for rendering and editing different file types.
+schemas for different file types
 
 -- AI apps
 	- side-by-side imagewells.  modify the UI and configure
@@ -56,7 +61,7 @@ and programs are stored for rendering different file type.
 overlap with another it will track it.  Venn diagram on Installed
 Tab.  Activity Packs turn dashed outline on the venn diagram if
 no packs installed different from others
-   - 
+
    - Radio
    - Homelab
    - Astronomy
