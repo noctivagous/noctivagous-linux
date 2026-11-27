@@ -34,9 +34,44 @@ loads the project. NCTXML files use the .nctxml extension.
 
 Status: SLICE 2 BUILT (2026-11-26, agent-build-log/18) —
 interpreter v1 with the §12 proofs green in tier 0. Deferred
-per the plan: the compiler/cache, XForms, the designer, Pango,
+per the plan: the compiler/cache, the designer, Pango,
 annotated-SVG theming (§8 — v1 applies no theme beyond Godot
 defaults), DataTemplates, relative-source binding.
+
+HOSTING (2026-11-26, agent-build-log/29): the library is
+vendored into the projects that host it — godot/greeter and
+godot/shell carry synced copies under their own nctxml/
+(src/tools/sync-nctxml.sh; a tier-0 drift check,
+check-nctxml-copies.sh, keeps the copies byte-identical to
+this directory, the source of truth). Both projects are .NET
+projects now; each has an nctxml-smoke/ scene proving its own
+copy renders.
+
+FORMS — the XForms layer (2026-11-26, agent-build-log/29;
+plans/NCTXML.md §11, built): FormModel.cs + FormExpr.cs.
+A .nctform file declares a form as data: an <instance> XML
+tree (the data itself — serializable, diffable), <bind>
+constraints per node (type, required, readonly, relevant,
+calculate — expressions are paths/literals/arithmetic, not
+XPath), <submission> transactions (validate, then call the
+host action with the instance; async hosts answer
+{"state":"pending"} and resolve later), and <layout>
+ANNOTATIONS in the platform's layout vocabulary (container,
+columns/areas/breakpoints; per-field area/row/column/span/
+order) so a form carries a default layout. A view declares
+Model="f.nctform" and binds the instance like any context;
+<FormView Model="..."/> renders the form from its model +
+annotations alone. One model, any layout — forms/ holds the
+proofs: the login model in a hand grid AND the auto-view over
+one shared instance, calculate/relevance/repeat proofs.
+<Repeat Items="{path}"> renders a template per item (form
+repeats or context arrays); inside a template, handlers
+receive their item as argument. Components gained commands:
+a template button declares Command="Close", the instance
+maps it with onClose="hostMethod" (unmapped = disabled).
+components/title-bar.nctxml is the stock TitleBar — client
+chrome for NCT windows (Drag="window" makes a control its
+window's drag handle).
 
 GRID (2026-11-26, agent-build-log/28): <Grid> is now the
 system's own grid — NCTXML §7 semantics ported from

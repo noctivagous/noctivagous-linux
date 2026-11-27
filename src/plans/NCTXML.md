@@ -225,6 +225,18 @@ those arrive with the XForms layer (§11).
   data, types, constraints, calculations, relevance, repeats;
   NCTXML as its view; a web adapter rendering the same form.
   It binds to the finished binding engine; it does not precede it.
+  BUILT v1 (2026-11-26, agent-build-log/29): instance + binds
+  (type/required/readonly/relevant/calculate) + submissions
+  (transactional, with a pending state for async hosts) +
+  repeats, in nctxml/FormModel.cs. Per the topics file's
+  extension-module pattern, the model carries LAYOUT
+  ANNOTATIONS in the platform's own layout vocabulary, so a
+  form of data renders with a default layout (the auto-view)
+  and can equally be laid out any other way by a hand-written
+  view — both over one shared instance (proofs in
+  nctxml/forms/). Still deferred here: the web adapter,
+  per-item validation of repeats, XPath (expressions stay the
+  small path/arithmetic language of FormExpr.cs).
 - **Form / GUI designer** — edits NCTXML (+ the XForms model)
   directly: palette, canvas, property grid, live preview as a
   real runtime instance; design-time model kept separate from
