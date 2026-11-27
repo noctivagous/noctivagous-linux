@@ -19,10 +19,14 @@ shell-backed windows on one CanvasLayer per layer), and a
 headless harness (harness/) driving fake windows of every style.
 HOSTED IN THE SHIPPED SHELL (2026-11-27, agent-build-log/30):
 the manager + layer stack are vendored into godot/shell
-(tools/sync-wm.sh, drift-checked) and run in the session: the
-launch bar is a panel-style record seated on the Top layer,
-and every launch registers an own-process record. Backings
-for those records attach when the compositor link lands;
-processes belong to the app registry (plans §1). Chrome
-drawing, input routing and workspace assignment are later
-work. Plan: src/plans/ENVIRONMENT-MANAGER.md §1–§5, §7.
+(drift-checked) and run in the session: the launch bar is a
+panel-style record seated on the Top layer, and every launch
+registers an own-process record. Backings for those records
+attach when the compositor link lands; processes belong to
+the app registry (plans §1) — which is now hosted beside it
+(agent-build-log/32): launches go through the registry, and
+the vendored layout mirrors src/modules (godot/shell/
+nct-window-manager + nct-app-registry, tools/
+sync-shell-modules.sh). Chrome drawing, input routing and
+workspace assignment are later work. Plan:
+src/plans/ENVIRONMENT-MANAGER.md §1–§5, §7.
