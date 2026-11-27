@@ -10,6 +10,12 @@ project tasks
 	apps and programs out of Godot on their other machines.
 	What we will use on Mac to make the environment.
 
+nct-app-kit Template Components and stock controls
+	- audio playback control component with horizontal ("music player app").
+	- timeline composition component
+	- app shell with optional inspector component + bind to properties
+	
+	
 Noctivagous App Catalog
  - Apps and Bundles produced by Noctivagous,
  including apps for the distro.  Some apps will be produced by Noctivagous.

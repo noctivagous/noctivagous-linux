@@ -877,3 +877,93 @@ The GRUB→Plymouth transition is the one you need to make seamless (matching `G
 **Practical note:** if you're using **aarambh** as your UEFI bootloader (from the Stage 4 plan), it replaces GRUB for the UEFI path and handles the live-boot entries natively. GRUB would then only be the **legacy/CSM fallback** for the USB stick. That simplifies things — you theme aarambh for the primary path and keep a minimal GRUB config for the fallback.
 
 
+> how early could thorVG be loaded?
+
+The short answer: **as early as the initramfs**, and in some configurations, *earlier than Plymouth does today.*
+
+## Why thorVG is uniquely suited for this
+
+The critical property is that thorVG's **CPU (software) renderer** is:
+
+- **~170 KB** core, ~300 KB with the `sw-lite` preset (basic Lottie, PNG, no fonts/expressions)
+- **Zero mandatory dependencies** — the core is fully self-contained, with built-in static PNG/JPEG loaders
+- **C API** (`thorvg_capi.h`) — linkable from a C binary
+- **Statically linkable** — no shared library runtime needed
+- **No GPU required** — the CPU renderer draws to a plain pixel buffer (`RenderSurface`)
+
+This means a single **statically-linked C binary** (~200–400 KB) can:
+1. Open `/dev/fb0` (the Linux framebuffer)
+2. Create a thorVG canvas targeting a pixel buffer the size of the framebuffer
+3. Render a scene (shapes, text, progress bars, Lottie animations)
+4. `write()` the buffer to `/dev/fb0`
+
+No X, no Wayland, no DRM master, no GPU driver beyond whatever the kernel already loaded to give you a framebuffer.
+
+## Where in the boot sequence that lands
+
+| Point | Framebuffer available? | thorVG possible? | Notes |
+|---|---|---|---|
+| **GRUB** | Yes (its own VGA/UEFI GOP mode) | **No** | GRUB can't execute arbitrary C/C++ binaries. Its own bytecode is the only execution environment. |
+| **Kernel, before initramfs** | Maybe (SimpleDRM from UEFI GOP) | **No** | Kernel space is C, no C++ runtime. You *could* port the CPU renderer, but it's not worth it. |
+| **Initramfs (`/init`)** | **Yes** — KMS is active if the GPU driver is built-in or in the initramfs; SimpleDRM as fallback | **Yes** | This is the earliest practical point. A static binary in the initramfs can open `/dev/fb0` and render. |
+| **Plymouth (in initramfs)** | Yes | **Yes** (as a replacement renderer) | Plymouth *is* in the initramfs, but it's a daemon (`plymouthd`) with a plugin system. A thorVG-based renderer is simpler and starts faster. |
+| **systemd / userspace** | Yes | **Yes** | Trivial. This is where the categorized overlay from our earlier discussion would run. |
+
+## The key insight: thorVG can be *earlier* than Plymouth
+
+Plymouth's startup sequence in the initramfs is:
+
+```
+/init starts
+  → mount /proc, /sys, /dev
+  → start udev (or wait for it)
+  → detect GPU, load driver (if module)
+  → start plymouthd (daemon, ~1.6 MB RSS)
+  → plymouthd loads splash plugin
+  → splash plugin opens DRM/fbdev
+  → first frame rendered
+```
+
+A thorVG-based renderer in the initramfs could be:
+
+```
+/init starts
+  → mount /dev (tmpfs)
+  → open /dev/fb0 (already exists if KMS is active)
+  → render first frame (thorVG CPU, ~1 ms for a simple scene)
+  → continue with udev, storage, etc.
+  → update the framebuffer as events arrive
+```
+
+That's **several hundred milliseconds earlier** than Plymouth's first frame, because you skip the daemon startup, the plugin load, and the DRM master negotiation. On a system where KMS is built-in (Intel, AMD), `/dev/fb0` exists by the time `/init` runs.
+
+## Practical constraints
+
+| Constraint | Impact |
+|---|---|
+| **C++ runtime** | thorVG is C++. A static build links in libstdc++ (or libc++). Adds ~1–2 MB to the binary. Still fits in the initramfs. Alternatively, the C API lets you call it from a C binary, but the C++ runtime is still linked in. |
+| **`/dev/fb0` availability** | Requires KMS to be active. If the GPU driver is a module (not built-in), `/dev/fb0` doesn't exist until the module loads. SimpleDRM (if enabled) provides a fallback from the UEFI GOP framebuffer, but only on UEFI systems. On legacy BIOS with a module-based GPU driver, you have no framebuffer until the driver loads — same constraint as Plymouth. |
+| **Resolution** | `/dev/fb0` is in whatever mode the firmware or KMS set. thorVG renders to whatever size you give it; you just need to match the framebuffer's width × height × bpp. |
+| **No input** | In the initramfs, there's no input stack yet. You can't do interactive LUKS prompts with thorVG alone (you'd need to read from `/dev/tty0` or `/dev/input/event*` directly). This is the same constraint Plymouth has, and it solves it with its own input handling. |
+| **Size in initramfs** | ~400 KB (thorVG + static binary) vs. ~2 MB (Plymouth + theme). A net win for initramfs size, which matters for USB sticks and compressed kernels. |
+
+## How this changes the staged plan
+
+This opens a **Stage 1.5** that wasn't in the earlier outline:
+
+> **Stage 1.5 — thorVG initramfs renderer (Week 3–4)**
+>
+> A statically-linked C binary using thorVG's CPU renderer that:
+> - Starts in `/init` before udev
+> - Renders a branded boot screen (logo + "Starting..." text) to `/dev/fb0`
+> - Listens on the Plymouth socket (or a custom socket) for `N`/`T` events
+> - Updates the framebuffer as categorized events arrive
+> - Hands off to Plymouth (or the display manager) when the real root is mounted
+>
+> This gives you a **branded, graphical screen from the earliest possible moment** — before udev, before systemd, before Plymouth — with a ~400 KB binary and no daemon.
+
+The thorVG renderer and Plymouth would **coexist**: thorVG handles the initramfs phase (where Plymouth's daemon is too heavy to start quickly), and Plymouth takes over once systemd is running (where you need the full D-Bus/journal integration). The handoff is a single `write()` to `/dev/fb0` from one process to the other — no flicker if they use the same resolution.
+
+**Bottom line:** thorVG's CPU renderer + static linking + C API makes it the lightest viable option for a **graphical** (not text) boot screen in the initramfs. It's ~10× smaller than Plymouth, starts ~500 ms earlier, and has no daemon. The tradeoff is that it's a single-purpose renderer, not a full splash framework — so you'd use it for the early phase and hand off to Plymouth (or your fork) for the systemd phase.
+
+
