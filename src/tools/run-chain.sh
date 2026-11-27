@@ -167,6 +167,14 @@ if [ -n "$GODOT" ]; then
       bad "t0 nctxml hosted in $host" "dotnet build failed (see nctxml-$host-build.log)"
     fi
   done
+  # The greeter's login card, centered — measured from the live
+  # scene at a real display size, not eyeballed from a render.
+  if command -v "$DOTNET" > /dev/null 2>&1 && "$DOTNET" build -v q -nologo "$SRC/godot/greeter" > "$RES/greeter-layout-build.log" 2>&1; then
+    out=$("$GODOT" --headless --path "$SRC/godot/greeter" res://layout-probe/main.tscn 2>&1)
+    echo "$out" | grep -q "GREETER_LAYOUT_OK" && ok "t0 greeter layout (card centred)" || bad "t0 greeter layout (card centred)" "$out"
+  else
+    bad "t0 greeter layout (card centred)" "dotnet build failed (see greeter-layout-build.log)"
+  fi
   # Launch model 2: the same projects as .pck packs on the shared
   # runtime (the shipped form). Build to the results dir, then run
   # the shell pack through nct-godot-run's --main-pack path.

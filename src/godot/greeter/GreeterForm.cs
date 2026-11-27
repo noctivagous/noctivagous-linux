@@ -28,6 +28,12 @@ public partial class GreeterForm : Control
         AddChild(doc.Root);
         _userField = doc.Root.FindChild("UserField", true, false) as LineEdit;
         _passField = doc.Root.FindChild("PassField", true, false) as LineEdit;
+        // The title's size is a theme override, which NCTXML v1
+        // does not express; the host applies it to its own
+        // furniture (a document-level theme vocabulary is the
+        // format's later work, NCTXML.md §8).
+        if (doc.Root.FindChild("TitleLabel", true, false) is Label title)
+            title.AddThemeFontSizeOverride("font_size", 30);
         // A greeter's first field holds focus from the start.
         Callable.From(() => _userField?.GrabFocus()).CallDeferred();
     }
