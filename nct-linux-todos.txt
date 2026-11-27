@@ -4,17 +4,29 @@
 	- window titlebar collapse/expand
 	- patch cords.
 	
--- Inverse relationship for software applications:
-Blender as first-class background app can drive
-3D models for the UI.  Relationship: Enabler-Software Application
 
--- Hardware Ports Overview - shows all ports and everything hooked up to them
-on a sheet with ports on the sheet looking like what the ports are on the hardware.
-If something is plugged into USB A type port, it looks that way on the sheet.
-If it is empty, then the slot is there.  Includes microphone ports.
-If the SSD plugged into a port inside the motherboard, what is on
-the sheet is a vector graphic of that port.  The devices don't have
-to be depicted first but can be overlayed icons. (A printer).
+
+Overview Apps
+   A category of app for managing the complex information
+   that is hard to keep in mind but is important to the workstation.
+
+	Overview Apps: See the schematics and plans
+
+	-- Hardware Ports Overview - shows all ports and everything hooked up to them
+	on a sheet with ports on the sheet looking like what the ports are on the hardware.
+	If something is plugged into USB A type port, it looks that way on the sheet.
+	If it is empty, then the slot is there.  Includes microphone ports.
+	If the SSD plugged into a port inside the motherboard, what is on
+	the sheet is a vector graphic of that port.  The devices don't have
+	to be depicted first but can be overlayed icons. (A printer).
+	
+	Hubs: manage every aspect of a topic
+	
+	-- Python Hub - shows everything happening about Python and its
+	package managers, their installation locations, etc.
+	
+	-- Web Serving Hub -
+
 
 -- (NCT) Kiosk app - used by Kiosk mode.  allows for configuring
 kiosks: cybercafe, demo, touchscreen, check-in, etc.
@@ -40,13 +52,14 @@ Furthermore, an AI agent built into the system
 will have access to these utilities and won't
 have to install equivalent functionality from
 packages when carrying out tasks.
+e.g. Any app can get access to map and geo services.
 
 -- nct-api-gateway - the app in the environment lets you
 set up API information so that it can be utilized by apps
 as part of the NCT app kit (or other apps that use the
 gateway service).  allows for setting keys and permissions
 so that an app has to be given a key before it can use an
-API.
+API.  Comes with presets for common service types.
    -- familiar with protocols, authentication.
    -- Allows for making use of APIs in a central location.
    shell scripts can make use of them, NCT apps can,
@@ -113,4 +126,9 @@ image inside the File Navigator from one format to the next.
 	For data structure, network, protocol, and algorithms.
 
 
+-- Inverse relationship for software applications:
+Blender as first-class background app can drive
+3D models for the UI.  Relationship: Enabler-Software Application
+Blender as allowing the apps to have 3D functionality
+drawn from nct-3d-module.  optional install state.
 
