@@ -1,0 +1,168 @@
+nct-linux-directory-file-layout
+
+> You don't want to make the three letter UNIX directories
+part of your workflow, but that is how it has remained
+at the root of Linux but not Windows or Mac.  Windows
+has Program Files.  Mac has Applications and Utilities.  
+Instead of /home it has Users/ which is more friendly.
+What would our Linux distro have?  The truth is that
+people on these other systems that are more user friendly
+often go to the root of the file system to begin their workflow
+but there are no capitalized directories there?
+
+
+You've hit on a real tension in Linux design. The short answer: **Linux deliberately keeps the root for *system* use, not user use.** The "friendly" equivalent lives one level deeper, in your home directory.
+
+Here's the mapping a "user-friendly" Linux root *would* have, if it followed the Windows/macOS convention:
+
+| Friendly Name (Win/Mac) | Linux Equivalent | Where It Actually Lives |
+|---|---|---|
+| `Program Files` / `Applications` | `/usr` + `/opt` | Not a single directory; apps are scattered across `/usr/bin`, `/usr/lib`, `/usr/share/applications/` |
+| `Users/` / `Users/` | `/home/` | One level down: `/home/yourname/` |
+| `Documents`, `Downloads`, `Desktop` | Same names | Inside `~/` — **these are capitalized and friendly** |
+| `System32` / `System` | `/usr` + `/lib` + `/boot` | Scattered |
+| `Windows` / `System` | `/etc` + `/var` + `/usr` | Scattered |
+
+The key insight from the FHS and from community discussion:
+
+- **The FHS explicitly recommends lowercase** for directory names (it's in the standard's naming conventions section).
+- The short names are **historical** — from the 1970s when disks were tiny and typing was expensive. They stuck because changing them would break decades of software and scripts.
+- **The user is never supposed to be at `/`.** The GUI file manager opens to `~/` (your home), which *does* have friendly names: `Documents`, `Downloads`, `Desktop`, `Music`, `Pictures`, `Videos`. The app menu (equivalent of Start Menu / Launchpad) is built from `/usr/share/applications/` — it's a database, not a directory you browse.
+
+So the design philosophy is:
+
+> **The root is for the system and the admin. The user's world starts at `~/`.**
+
+On Windows, `C:\` is both system *and* user space (Program Files, Users, Windows all sit at the same level), which is why you see friendly names at the root. On macOS, Apple added `/Users` and `/Applications` at the root specifically to bridge the UNIX world and the Finder world — a concession that pure UNIX never made.
+
+A hypothetical "user-friendly" Linux distro might look like:
+
+```
+/
+├── Applications/      (symlink or real dir → /usr/share/applications)
+├── Users/             (symlink → /home)
+├── System/            (hidden umbrella for /usr, /etc, /var, /lib, /boot)
+├── Devices/           (symlink → /dev)
+├── Temp/              (symlink → /tmp)
+└── ...
+```
+
+But no major distro has done this, because:
+1. **Backward compatibility** — every script, package, and tool hardcodes `/usr`, `/etc`, `/var`
+2. **POSIX compliance** — the standard mandates these paths
+3. **The user never needs to be there** — the GUI abstracts it away
+
+The community consensus (from the [Reddit thread](https://www.reddit.com/r/linux/comments/iks5h3/why_are_the_directory_names_of_the_fhs_still_this/) and others) is basically: *"Once you know what `/usr` and `/var` mean, you don't want them renamed. And people who don't know don't look there anyway."*
+
+
+
+> [You said,] The community consensus (from the [Reddit thread](https://www.reddit.com/r/linux/comments/iks5h3/why_are_the_directory_names_of_the_fhs_still_this/) and others) is basically: *"Once you know what `/usr` and `/var` mean, you don't want them renamed. And people who don't know don't look there anyway."*  That doesn't work for us, so we could just symlink?
+
+Yes — and **macOS already does exactly this**, which is the proof it works. On macOS, the "friendly" names are the *real* directories, and the UNIX paths are **hidden symlinks**:
+
+```
+/Users          ← real directory (macOS)
+/home           → /Users          (hidden symlink)
+/Applications   ← real directory
+/usr/bin        → /bin            (hidden symlink)
+/private/etc    ← real directory
+/etc            → /private/etc    (hidden symlink)
+```
+
+So the pattern is: **make the friendly name the real directory, and symlink the old name to it** (or vice versa — either direction works, but macOS chose to make the friendly name real).
+
+**What you *can* symlink without breaking anything:**
+
+| Friendly Name | Real Target | Notes |
+|---|---|---|
+| `/Users` | `/home` | Works perfectly; `dpkg`, useradd, everything follows symlinks transparently |
+| `/Applications` | `/usr/share/applications` | Desktop file database; the app menu reads it fine |
+| `/Programs` or `/Software` | `/usr` | Works, but `/usr` is huge — most tools hardcode subpaths like `/usr/bin/...` |
+| `/Configuration` | `/etc` | Works for reading; some tools do `stat()` checks expecting a real dir |
+| `/Logs` | `/var/log` | Fine |
+| `/Temp` | `/tmp` | Fine |
+
+**What you *cannot* (or shouldn't) symlink:**
+
+| Directory | Why |
+|---|---|
+| `/proc` | Kernel-mounted virtual filesystem; not a real directory you can redirect |
+| `/sys` | Same — kernel device model, mounted by the kernel |
+| `/dev` | Kernel-managed; `udev` populates it at boot before any userspace runs |
+| `/run` | tmpfs mounted at boot; needs to exist before init |
+| `/boot` | Read by the bootloader (GRUB) *before* the kernel is running; a symlink may not resolve in the GRUB environment |
+| `/` | Obviously not |
+
+**Practical caveats:**
+
+1. **Boot safety** — Anything the kernel or GRUB needs *before* userspace (`/boot`, `/dev`, `/proc`, `/sys`, `/run`) must be a real directory. Your friendly symlinks can only cover the "userspace" directories.
+
+2. **Security policies** — SELinux, AppArmor, and some hardened daemons use path-based rules. A symlink at `/Users` pointing to `/home` means a policy written for `/home/*` won't automatically apply to `/Users/*` (and vice versa). You'd need to update policies.
+
+3. **`dpkg` / `apt`** — They install to the real path (`/usr/bin/foo`). If `/usr` is a symlink to `/Software`, the package still works, but `dpkg`'s database records the path as `/usr/bin/foo`. This is fine functionally but can confuse tools that compare paths textually.
+
+4. **The FHS explicitly allows it** — the standard says *"The following directories, **or symbolic links to directories**, must be in /"* — so you're not violating the standard by having symlinks at the root.
+
+**The macOS model is the cleanest template:**
+
+```
+/
+├── Users/              ← real (was /home)
+├── Applications/       ← real (desktop files, was /usr/share/applications)
+├── Library/            ← real (system-wide config, was /etc + /var)
+├── private/            ← real (houses the "true" system dirs)
+│   ├── etc/
+│   ├── var/
+│   ├── usr/
+│   ├── tmp/
+│   └── ...
+├── home -> Users       ← hidden symlink (compatibility)
+├── etc -> private/etc  ← hidden symlink
+├── var -> private/var  ← hidden symlink
+├── tmp -> private/tmp  ← hidden symlink
+├── proc/               ← real (kernel, can't change)
+├── sys/                ← real (kernel, can't change)
+├── dev/                ← real (kernel, can't change)
+├── boot/               ← real (bootloader, can't change)
+└── run/                ← real (init, can't change)
+```
+
+This gives you a friendly root for the user while keeping the system fully functional underneath. The "hidden" symlinks ensure every existing script and package continues to work unchanged.
+
+**TL;DR:** Yes, symlink. Make the friendly names the real directories, tuck the system stuff under a `/private/` or `/system/` umbrella, and leave the five kernel-managed directories (`/proc`, `/sys`, `/dev`, `/boot`, `/run`) as-is. macOS has been doing this for 20+ years without breaking.
+
+> But let's say we establish our own conventions, say we have our own kinds of software applications that other package managers won't handle.  There is still nothing wrong with making those kinds of symlinks in the root.
+
+Correct. There's nothing wrong with it, and you have full latitude here for two reasons:
+
+**1. The FHS already permits it.** The standard's wording for root-level directories is:
+
+> "The following directories, **or symbolic links to directories**, must be in /"
+
+So a symlink at the root is *compliant*, not a violation. You're not bending the standard.
+
+**2. Your own application types are outside any existing package manager's domain.** `dpkg`, `pacman`, `dnf` — none of them know what your application *is*, so none of them have an opinion about where it should live. You're free to define:
+
+```
+/Applications/        ← real dir, your app format
+/Software/            ← real dir, your runtime libs
+/System/              ← real dir, your system config
+```
+
+…and then symlink the legacy names for any third-party tool that still expects them:
+
+```
+/opt    -> /Applications
+/usr/lib/yourapp -> /Software
+/etc/yourapp -> /System
+```
+
+**The only hard constraints remain the same:**
+
+- Don't symlink the five kernel/boot-managed directories (`/proc`, `/sys`, `/dev`, `/boot`, `/run`)
+- Make sure whatever your bootloader and init read *before* userspace is a real path, not a symlink
+- Keep the symlink direction consistent (friendly name real, old name symlinked) so that `realpath()` resolves to one canonical location
+
+Beyond that, it's just a naming convention. You're doing exactly what Apple did with `/Users` vs `/home`, and what Fedora did with `/usr` merge — the mechanism is the same, the names are just different.
+
+

@@ -31,6 +31,8 @@ File Navigator Workflows - reduce number of steps needed at right-click menu
    right-click file or folder: -> AI agent instruction [  ] --> type instruction to AI agent (that has access to command line),
    AI agent performs those tasks with AI agent window that shows up with progress. 
 
+File Navigator mimetype -> execute path.  Right-click -> Execute.
+
 	
 Noctivagous App Catalog
  - Apps and Bundles produced by Noctivagous,
@@ -65,8 +67,53 @@ Overview Apps
 		If the SSD plugged into a port inside the motherboard, what is on
 		the sheet is a vector graphic of that port.  The devices don't have
 		to be depicted first but can be overlayed icons. (A printer).
+
+		-- System and OS Profile - Everything about the system itself, its host hardware, its root
+		directory listing and sizes. Lists what the root directories mean and lists them in a table 
+		with descriptions.
 		
+		Here are all the top-level directories in a Debian Linux system:
+					
+					On UNIX, everything is treated as a file in the browsable
+					file system, e.g. a hardware device is represented as a file in /dev,
+					
+					| Directory | Purpose |
+					|---|---|---|
+					| Root | `/` | The root of the entire filesystem; contains everything |
+					| Essential Program Binaries | `/bin` | Essential user command binaries (e.g., `ls`, `cp`, `cat`). On Debian 12+ this is a **symlink to `/usr/bin`** |
+					| Boot Loading | `/boot` | Static files for the boot loader: kernel images, initrd, GRUB config |
+					| Devices | `/dev` | Device files representing hardware (disks, terminals, `null`, etc.) |
+					| Configuration Files | `/etc` | Host-specific system configuration files (network, users, services, `fstab`, etc.) |
+					| User Home Directories | `/home` | Personal home directories for regular users (e.g., `/home/alice`) |
+					| Libraries | `/lib` | Essential shared libraries and kernel modules. On Debian 12+ this is a **symlink to `/usr/lib`** |
+					| Storage Media Drives | `/media` | Mount points for automatically mounted removable media (USB drives, CD-ROMs) |
+					| Manual Mount Point | `/mnt` | Temporary mount point for manually mounting a filesystem |
+					| Optional Add-On Software | `/opt` | Add-on / optional application software packages (self-contained, not part of core system) |
+					| Process Information | `/proc` | Virtual filesystem exposing real-time process and kernel info (e.g., `/proc/cpuinfo`, `/proc/meminfo`) |
+					| Superuser Home | `/root` | Home directory for the root (superuser) account |
+					| Runtime Data | `/run` | Volatile runtime data (PID files, sockets, locks); backed by tmpfs, cleared on reboot |
+					| System Administration Binaries | `/sbin` | Essential system administration binaries (e.g., `fsck`, `reboot`). On Debian 12+ this is a **symlink to `/usr/sbin`** |
+					| Service Data | `/srv` | Data served by the system to other machines (web content, FTP, etc.) |
+					| Kernel Device Model | `/sys` | Virtual filesystem exposing kernel device model and hardware info (e.g., `/sys/class/net/`) |
+					| Temporary Files | `/tmp` | Temporary files; typically cleared on reboot |
+					| Secondary Hierarchy | `/usr` | The bulk of user programs, libraries, and documentation. Key subdirs: `/usr/bin`, `/usr/sbin`, `/usr/lib`, `/usr/share`, `/usr/local` (for manually compiled software) |
+					| Variable Data | `/var` | Variable data that changes at runtime: logs (`/var/log`), spool (`/var/spool`), caches (`/var/cache`), persistent state (`/var/lib`), durable temp files (`/var/tmp`) |
+					| Recovered Files | `/lost+found` | Holds recovered orphaned files after a filesystem crash (ext* filesystems only) |
+					
+					> **Note:** On Debian 12 (Bookworm) and later, the **usr-merge** change means `
+					/bin`, `/sbin`, and `/lib` are symlinks into their `/usr/` counterparts, so the 
+					actual binaries and libraries live under `/usr`.
+					
+
+		
+				
 	Hubs: manage every aspect of a topic
+	
+
+	
+		-- Developer Hub - What programming languages are installed, their version numbers,
+		and associated package managers.  Provides packages for
+		installing less commonly used programming languages on Linux like Swift.
 	
 		-- Python Hub - shows everything happening about Python and its
 		package managers, their installation locations, etc.
