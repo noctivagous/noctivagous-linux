@@ -1,0 +1,101 @@
+-- Bimodal Tutorial   /bimodal-tutorial/
+	- flip the squares
+	- drag and drop
+	- window titlebar collapse/expand
+	- patch cords.
+	
+-- Inverse relationship for software applications:
+Blender as first-class background app can drive
+3D models for the UI.  Relationship: Enabler-Software Application
+
+-- NCT Kiosk - used by Kiosk mode.  allows for configuring
+kiosks.
+
+
+nct modules.
+
+important note is that modules can be marked as
+available to shell scripts, so that shell scripts come
+with a lot of functionality.  
+
+it looks as though as we build this, there is blending
+of the conventional services and app kit.  in fact it
+may be an exposure that this should be this way
+since when people use the command line they
+often have to install functionality that is already
+inside the local dev app kit but requires compilation
+for those apps to use it.  e.g. shell scripts can't
+make use of any .framework files in Mac OS.
+
+-- nct-api-gateway - the app in the environment lets you
+set up API information so that it can be utilized by apps
+as part of the NCT app kit (or other apps that use the
+gateway service).  allows for setting keys and permissions
+so that an app has to be given a key before it can use an
+API.
+   -- familiar with protocols, authentication.
+   -- Allows for making use of APIs in a central location.
+   shell scripts can make use of them, NCT apps can,
+   any app given access to the nct-api-gateway.
+   
+-- nct-file-converter-toolcloset - ffmpeg, image conversion,
+word processing, pdf.  A suite for NCT apps and shell to
+do file conversion and export.  utilized by the contextual-menu.
+
+-- nct-rendering-preview-hub - the place where descriptions
+and programs are stored for rendering different file type.
+
+-- AI apps
+	- side-by-side imagewells.  modify the UI and configure
+	the squares and the arrows between them.  A clockwise
+	series of squares.  uses what we call a square entry flow.
+	  -> easy to generate images with app that comes with 
+	  the OS, part of helpful apps bundle
+
+-- Activity Packs - when installed, if their contents
+overlap with another it will track it.  Venn diagram on Installed
+Tab.  Activity Packs turn dashed outline on the venn diagram if
+no packs installed different from others
+   - 
+   - Radio
+   - Homelab
+   - Astronomy
+   - Meteorology / Weather
+   - Data Science
+   - AI Research
+    
+	Related: NCT Offline Distro Packaging: kiwipacks.
+
+-- distro comes with quality editions of necessary tools
+like FTP.
+
+-- nct-backup-services > nct-data-sync-services - app has conveniences for setting up
+scheduled rsync, git, etc.   
+   
+
+-- One thing I always reach for is file conversion, so I would 
+like a dedicated built-in program system that, although it isn’t 
+a process running necessarily, would let a person convert an 
+image inside the File Navigator from one format to the next. 
+
+   - File Converter app
+   - File convert menu in right-click.
+   
+ -- software development system.  A template system
+ for the apps.  A Template Component is an arrangement
+ of components.  Templating language/binding inside the template  
+ The OS comes with App Shell, Master-Detail, File Browser,
+ etc. stock Template Component. Template Components can
+ be decomposed-- any portion can be removed as they are
+ a recognized set of annotations for files that contain NCT App Kit
+ Components.
+    - Templates for touchscreen apps, like grids of buttons,
+    e.g. POS register.
+    
+	
+	For screen components:
+	   CanvasView > Control > UI Component 
+	For data structure, network, protocol, and algorithms.
+
+
+
