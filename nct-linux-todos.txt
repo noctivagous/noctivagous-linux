@@ -5,6 +5,24 @@
 	- patch cords.
 	
 
+Noctivagous App Catalog
+ - Apps and Bundles produced by Noctivagous,
+ including apps for the distro.  Some apps will be produced by Noctivagous.
+ Apps from the open source projects may have different names,
+ have hooks installed into them for the distro to make use of its service modules 
+ and be rethemed, customized, usually ported.
+ - "App store" layout app but like Raspberry Pi app catalog only apps
+ set up by Noctivagous for installation, from its own package manager system.
+ 	- Will include Activity Pack page where 
+ - apps installed by Noctivagous are tracked by nct-software-trail-watcher or
+ (undecided) nct-packages-watcher that aggregates all package manager issues.
+ it will be the service that allows for clean uninstalls and reinstalls of nct apps.
+ 	- goal is to address where files go that are associated with different packages
+ 	or what they are associated with, possibly with the use of AI, so that they
+ 	don't accumulate over time.
+ - nctpm - noctivagous package manager 
+ 		nctpm - nct-app- prefix for nct-specific apps
+	    nctpm - nct-module- prefix for nct module packages.
 
 Overview Apps
    A category of app for managing the complex information
@@ -12,24 +30,30 @@ Overview Apps
 
 	Overview Apps: See the schematics and plans
 
-	-- Hardware Ports Overview - shows all ports and everything hooked up to them
-	on a sheet with ports on the sheet looking like what the ports are on the hardware.
-	If something is plugged into USB A type port, it looks that way on the sheet.
-	If it is empty, then the slot is there.  Includes microphone ports.
-	If the SSD plugged into a port inside the motherboard, what is on
-	the sheet is a vector graphic of that port.  The devices don't have
-	to be depicted first but can be overlayed icons. (A printer).
-	
+		-- Hardware Ports Overview - shows all ports and everything hooked up to them
+		on a sheet with ports on the sheet looking like what the ports are on the hardware.
+		If something is plugged into USB A type port, it looks that way on the sheet.
+		If it is empty, then the slot is there.  Includes microphone ports.
+		If the SSD plugged into a port inside the motherboard, what is on
+		the sheet is a vector graphic of that port.  The devices don't have
+		to be depicted first but can be overlayed icons. (A printer).
+		
 	Hubs: manage every aspect of a topic
 	
-	-- Python Hub - shows everything happening about Python and its
-	package managers, their installation locations, etc.
+		-- Python Hub - shows everything happening about Python and its
+		package managers, their installation locations, etc.
+		
+		-- Version Tracking Hub - shows everything happening about Git
+		and git-based services like GitHub, GitLab, etc.
+		
+		-- Web Serving Hub - Vite, Next.JS, Apache, PHP, MySQL, Flask etc.
 	
-	-- Web Serving Hub -
-
+		-- Homelab Hub - for Homelab-related matters.
+		
 
 -- (NCT) Kiosk app - used by Kiosk mode.  allows for configuring
-kiosks: cybercafe, demo, touchscreen, check-in, etc.
+kiosks: cybercafe, demo, single program, confined web browser, 
+touchscreen, check-in, etc.
 
 -- noctivagous-linux-web-remote.  We don't have to stream
 pixels for everything but instead window and text positions.
