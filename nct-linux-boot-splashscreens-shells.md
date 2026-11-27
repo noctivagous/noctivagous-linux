@@ -839,3 +839,41 @@ Plymouth is the first component that has **both** a display (KMS framebuffer) **
 
 The one exception: if your "categorized overlay" were just a **static progress animation** (a pre-baked sequence of category icons lighting up on a timer, with no real data), you *could* do it in GRUB. But that's a fake — it doesn't reflect actual boot progress. The whole point of the architecture we've been discussing is that the overlay is **driven by real events**, which only exist post-kernel.
 
+
+> If we shipped it on USB sticks, we would want to customize GRUB, right?
+
+Yes, and the USB case has a few specifics that make GRUB customization more important than the disk-install case:
+
+**Why it matters more on USB:**
+
+- **The GRUB menu IS the product demo.** On a disk install, the user already chose your distro. On a USB stick, the GRUB screen is the first thing a prospective user sees — it's the 30-second pitch. A stock GRUB menu (black background, white text, "Ubuntu" or whatever) undermines the brand you've built in Plymouth.
+- **The boot entries are different.** You need "Try Live," "Install," possibly "Persistent Install," and "Recovery." Each has a different kernel cmdline (`live`, `persistence`, `single`, etc.). This is more complex than a standard installed-system menu.
+- **Device detection is unstable.** The USB stick might be `/dev/sdb` on one machine and `/dev/sdc` on another. GRUB must use `search --label` or `search --fs-uuid` rather than hardcoded paths. If you ship a custom `grub.cfg` template, you need to handle this correctly or the stick won't boot on half the machines you test it on.
+
+**What you'd actually customize:**
+
+| Piece | Why |
+|---|---|
+| **Theme** (`GRUB_THEME`) | Brand logo, background, font. This is the visible part. |
+| **`grub.cfg` template** | Live-specific entries (Try/Install/Persistent), correct `search` commands for USB, `live` and `persistence` kernel params. |
+| **`GRUB_GFXMODE`** | Must match what Plymouth will use, or you get a mode-switch flicker at the GRUB→kernel boundary. On USB sticks with varied hardware (different GPUs in different test machines), this is where things break. |
+| **Timeout** | Shorter than installed (5 s vs. 30 s). A USB user who's evaluating wants to boot fast; a long timeout feels like a broken stick. |
+| **`GRUB_TIMEOUT_STYLE=hidden`** | Optional. If you only ship one entry ("Try Live"), skip the menu entirely and auto-boot. Saves 5 s. |
+
+**What you *don't* do in GRUB for USB:**
+
+- You don't put the categorized overlay here (same reasoning as before — no systemd, no data).
+- You don't try to make GRUB "smart" about the hardware. Keep it to a static theme + a fixed set of entries. The intelligence lives in the kernel cmdline and the live initrd.
+
+**The handoff chain on USB:**
+
+```
+Firmware (UEFI/BIOS) → GRUB (branded menu, 5 s) → kernel + live initrd
+  → Plymouth (categorized overlay from your fork) → live session autologon
+```
+
+The GRUB→Plymouth transition is the one you need to make seamless (matching `GRUB_GFXMODE` to the KMS mode, `GRUB_GFXPAYLOAD_LINUX=keep`). On a USB stick, that flicker is more noticeable because the user is watching the whole boot sequence as a "demo" rather than just waiting for their system to come up.
+
+**Practical note:** if you're using **aarambh** as your UEFI bootloader (from the Stage 4 plan), it replaces GRUB for the UEFI path and handles the live-boot entries natively. GRUB would then only be the **legacy/CSM fallback** for the USB stick. That simplifies things — you theme aarambh for the primary path and keep a minimal GRUB config for the fallback.
+
+
