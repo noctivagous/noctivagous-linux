@@ -134,3 +134,32 @@ Rules for the agent on the rig:
   verified locally). VM tier not yet run — the Windows box has not run
   Vagrant yet. First rig task for Muse Code: `vagrant up` and the
   tests/vm/ test bed, top to bottom.
+- 2026-11-27 — QEMU-track tier-2 runs against the 4.7.2 debs
+  (agent-build-log/31 and /33). Operational facts for this track:
+  the guest image's root fs is only 2.1G — a runtime reinstall
+  dies disk-full until the (throwaway copy's) fs is grown
+  offline; a GUEST-initiated reboot wedged the VM in SeaBIOS
+  under WHPX (monitor screendump evidence) while cold QEMU
+  starts are reliable, so restart QEMU from the host rather
+  than rebooting the guest; bulk scp over the Tailscale tunnel
+  drops — large debs move as 512KB chunks and are hash-verified
+  after reassembly; WSL deb builds were unreliable (export
+  segfaults, idle-stop eating outputs), sandbox builds are the
+  dependable path. Findings: the runtime deb originally shipped
+  no .NET runtime (greetd start-limited, log 31) — fixed by
+  bundling .NET 8.0.34 (log 33; greetd then held with
+  NRestarts=0) — and C# project assemblies are absent from
+  --export-pack packs, so the greeter form cannot instantiate
+  in shipped form yet (log 33; shipping shape undecided).
+- 2026-11-27 (later) — the GDScript environment's tier-2 proof
+  (agent-build-log/34): with the greeter and shell rebuilt in
+  GDScript, the full chain ran on the QEMU track — greetd held
+  (NRestarts=0) after an in-place restart, the login card
+  rendered and measured centred from the screendump's pixels,
+  a monitor-typed login started the session, and Enter on the
+  bar's focused Firefox button launched Firefox. The C#
+  shipping-shape question closed by strategy instead: the
+  environment ships GDScript; compiled components bake in
+  later, per component. New operational fact: the Windows
+  host's SSH server refuses the default SFTP scp — use
+  `scp -O` (legacy protocol) for rig transfers.

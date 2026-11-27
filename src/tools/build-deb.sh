@@ -2,9 +2,12 @@
 # build-deb.sh — build the two Stage 2 .debs from src/ (STAGE-2.md S2.1):
 #   nct-foundation    — /usr/lib/nct/{core,godot,services,tools,tests}
 #                       + the system/ overlay at its real paths
-#   nct-godot-runtime — the pinned engine at /usr/lib/nct/godot/godot
+#   nct-godot-runtime — the pinned engine at /usr/lib/nct/godot/godot,
+#                       plus the pinned .NET runtime beside it
+#                       (/usr/lib/nct/godot/dotnet, PIN.md)
 # Output: src/distro/debs/ (gitignored artefacts). Version: NCT_VERSION
-# env or 0.1.0. The runtime build verifies the zip against PIN.md's sha256.
+# env or 0.1.0. The runtime build verifies both artefacts against
+# PIN.md's sha256 values.
 set -eu
 SRC=$(cd "$(dirname "$0")/.." && pwd)
 OUT="$SRC/distro/debs"; mkdir -p "$OUT"
@@ -34,6 +37,24 @@ mkdir -p "$WORK/godot-bin"
 # (mono) edition — the current pin — unpacks to a DIRECTORY holding
 # the binary plus GodotSharp/. Resolve the binary either way.
 PACK_GODOT=$(find "$WORK/godot-bin" -type f -name 'Godot_v*' | head -1)
+
+# The pinned .NET runtime, fetched the same way (PIN.md's .NET
+# section): the mono zip ships no hostfxr, and without one every
+# C# project crashes before it draws (agent-build-log/31). The
+# runtime deb bundles it beside the engine binary. Only
+# Microsoft.NETCore.App is staged; the tarball's AspNetCore
+# shared framework is not shipped.
+DURL=$(grep -o 'https://[^ ]*dotnet-runtime[^ ]*\.tar\.gz' "$SRC/godot/runtime/PIN.md" | head -1)
+DSHA=$(awk '/^## The .NET runtime/,0' "$SRC/godot/runtime/PIN.md" | grep -oE '[0-9a-f]{64}' | head -1)
+DTAR="$CACHE/$(basename "$DURL")"
+if [ ! -f "$DTAR" ]; then curl -sL -o "$DTAR" "$DURL"; fi
+echo "$DSHA  $DTAR" | sha256sum -c -
+mkdir -p "$WORK/dotnet-runtime"
+# --no-same-owner: the tarball's files carry the .NET build's
+# uid, which tar cannot always chown to (restricted build
+# sandboxes); the deb's mode normalization below settles the
+# final ownership/modes anyway (dpkg-deb --root-owner-group).
+tar --no-same-owner -xzf "$DTAR" -C "$WORK/dotnet-runtime"
 
 # ---------- nct-foundation ----------
 PKG="$WORK/nct-foundation"
@@ -107,11 +128,26 @@ install -m755 "$PACK_GODOT" "$PKG2/usr/lib/nct/godot/godot"
 if [ -d "$(dirname "$PACK_GODOT")/GodotSharp" ]; then
   cp -r "$(dirname "$PACK_GODOT")/GodotSharp" "$PKG2/usr/lib/nct/godot/GodotSharp"
 fi
+# The bundled .NET runtime (see the fetch at the top): muxer,
+# host/fxr and the NETCore.App shared framework, beside the
+# binary where nct-godot-run looks for it.
+mkdir -p "$PKG2/usr/lib/nct/godot/dotnet/shared"
+cp "$WORK/dotnet-runtime/dotnet" "$PKG2/usr/lib/nct/godot/dotnet/dotnet"
+cp -r "$WORK/dotnet-runtime/host" "$PKG2/usr/lib/nct/godot/dotnet/host"
+cp -r "$WORK/dotnet-runtime/shared/Microsoft.NETCore.App" "$PKG2/usr/lib/nct/godot/dotnet/shared/"
+cp "$WORK/dotnet-runtime/LICENSE.txt" "$WORK/dotnet-runtime/ThirdPartyNotices.txt" "$PKG2/usr/lib/nct/godot/dotnet/"
 cp "$SRC/godot/runtime/PIN.md" "$PKG2/usr/lib/nct/godot/PIN.md"
 # Same mode normalization as the foundation package (see above).
 find "$PKG2" -type d -exec chmod 755 {} +
 find "$PKG2" -type f -exec chmod 644 {} +
-chmod 755 "$PKG2/usr/lib/nct/godot/godot"
+chmod 755 "$PKG2/usr/lib/nct/godot/godot" "$PKG2/usr/lib/nct/godot/dotnet/dotnet"
+# Fail the build rather than ship a runtime that cannot start:
+# the muxer must be executable and hostfxr must be staged
+# (the absence of exactly this went unnoticed until a tier-2
+# rig run, agent-build-log/31).
+[ -x "$PKG2/usr/lib/nct/godot/dotnet/dotnet" ] || { echo "build-deb: staged dotnet muxer missing/not executable" >&2; exit 1; }
+find "$PKG2/usr/lib/nct/godot/dotnet" -name 'libhostfxr.so' | grep -q . || { echo "build-deb: staged .NET runtime lacks libhostfxr.so" >&2; exit 1; }
+find "$PKG2/usr/lib/nct/godot/dotnet/shared/Microsoft.NETCore.App" -name 'libcoreclr.so' | grep -q . || { echo "build-deb: staged .NET runtime lacks libcoreclr.so" >&2; exit 1; }
 cat > "$PKG2/DEBIAN/control" <<EOF
 Package: nct-godot-runtime
 Version: $VERSION
@@ -119,7 +155,8 @@ Architecture: amd64
 Maintainer: Noctivagous <nct@localhost>
 Description: Noctivagous — the pinned Godot runtime
  One shared engine binary for every NCT Godot process (greeter, shell,
- apps), pinned in PIN.md. Apps ship as .pck packs against it.
+ apps), pinned in PIN.md, with the pinned .NET runtime bundled beside
+ it (the mono engine ships none). Apps ship as .pck packs against it.
 EOF
 chmod 755 "$PKG2" "$PKG2/DEBIAN"
 dpkg-deb --build --root-owner-group "$PKG2" "$OUT/nct-godot-runtime_${VERSION}_amd64.deb"

@@ -6,18 +6,19 @@ config_version=5
 config/name="NCT Shell"
 run/main_scene="res://main.tscn"
 ; No engine splash: no boot image, and the boot background is the
-; kit panel surface (#232329 in godot/kit/tokens.json), so an engine
-; start is one solid colour straight into the bar.
-boot_splash/bg_color=Color(0.137255, 0.137255, 0.160784, 1)
+; backdrop's base tone (backdrop.gd), so an engine start is one
+; solid colour straight into the desktop.
+boot_splash/bg_color=Color(0.05, 0.05, 0.05, 1)
 boot_splash/show_image=false
 
 [display]
 window/size/viewport_width=1280
-window/size/viewport_height=56
+window/size/viewport_height=800
+; Fullscreen from engine start, like the greeter: the shell IS
+; the desktop — its backdrop fills the output and the launch
+; bar rides the top. Without this the shell starts as a small
+; window and the compositor places it as one app among others.
+window/size/mode=3
 
 [rendering]
-environment/defaults/default_clear_color=Color(0.137255, 0.137255, 0.160784, 1)
-
-[dotnet]
-
-project/assembly_name="NCTShell"
+environment/defaults/default_clear_color=Color(0.05, 0.05, 0.05, 1)

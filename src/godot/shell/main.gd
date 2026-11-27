@@ -1,39 +1,83 @@
 extends Control
 ## NCT Shell — the session's first furniture: the launch bar.
-## The bar itself is NCTXML (E4): bar.nctxml, hosted by
-## ShellBar.cs (the BarHost node), one Repeat-generated button
-## per launch-list entry. This script owns the launch list and
-## the launching: buttons go through nct-launch; the shell
-## contains no program paths (CONVENTIONS.md §10).
+## The bar is GDScript (bar_host.gd, the BarHost node): one
+## button per launch-list entry, built in code and styled
+## from the TypeScript demo. (It was an NCTXML document
+## hosted by C# until the GDScript-first strategy, build
+## log 34; the NCTXML view lives on in
+## src/modules/nctxml/examples/.) This script owns the
+## backdrop, the launch list and the launching: buttons go
+## through the registry and nct-launch; the shell contains
+## no program paths (CONVENTIONS.md §10).
 ##
-## The window manager is hosted here (build log 30): the bar
-## is a panel-style Window record seated on the Top layer, and
-## every launch registers an own-process record. Processes
-## belong to the app registry and backings to the compositor
-## link (plans/ENVIRONMENT-MANAGER.md §1, §3) — the records are
-## created here; those attachments land on the same records
-## later, and the record does not change.
+## Two modules are hosted here, on the seam plans §1 rule 2
+## draws: the WINDOW MANAGER owns the windows (build log 30 —
+## the bar is a panel-style record on the Top layer), and the
+## APP REGISTRY owns the programs (build log 32): every launch
+## goes through the registry, which hands the manager the
+## record (origin from the app kind, no backing — the surface
+## is the compositor's to attach) and keeps the lifecycle.
+## Single-instance lives there too: relaunching a running app
+## focuses its window instead of spawning a second process.
+## Spawning itself stays the foundation chain's (nct-launch,
+## detached — no pid reaches the shell, so the registry's
+## liveness seam stays unfed until nct-launch reports pids;
+## the records do not change when it does).
 
-const WinMgr := preload("wm/window_manager.gd")
-const Record := preload("wm/window_record.gd")
-const LayerStack := preload("wm/nct-layer-stack/layer_stack.gd")
+const WinMgr := preload("nct-window-manager/window_manager.gd")
+const Record := preload("nct-window-manager/window_record.gd")
+const LayerStack := preload("nct-window-manager/nct-layer-stack/layer_stack.gd")
+const AppRegistry := preload("nct-app-registry/app_registry.gd")
 
 @onready var bar_host: Control = $BarHost
 
-var wm  ## the hosted window manager (wm/window_manager.gd)
-var _launch_seq: int = 0  ## makes each launch record id unique
+var wm  ## the hosted window manager (nct-window-manager)
+var registry  ## the hosted app registry (nct-app-registry)
+
+const Backdrop := preload("backdrop.gd")
 
 func _ready() -> void:
+	_build_backdrop()
 	var entries := _read_launch_list()
 	print("SHELL_READY entries=", entries.size())
 	_setup_window_manager()
+	_setup_registry(entries)
 	var args := OS.get_cmdline_user_args()
 	if "--self-test" in args:
 		for e in entries:
 			print("SHELL_ENTRY ", e["id"], " ", e["title"])
 		print("SHELL_SELFTEST_OK entries=", entries.size())
+		_bar_self_test(entries)
 		_wm_self_test()
+		_registry_self_test(entries)
 		get_tree().quit()
+
+## The desktop backdrop, on a CanvasLayer below every window
+## layer the manager builds: the demo's wallpaper (backdrop.gd).
+## Its top registration marks sit below the launch bar.
+func _build_backdrop() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = -100
+	add_child(layer)
+	var bg = Backdrop.new()
+	bg.top_inset = 62.0
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(bg)
+
+## --self-test only: the bar itself, proven present — the
+## check whose absence let a shipped shell pass its self-test
+## with the bar's C# half missing (build log 33). The bar
+## root must exist and carry one button per launchable entry.
+func _bar_self_test(entries: Array) -> void:
+	var want := 0
+	for e in entries:
+		if e["id"] != "shell":
+			want += 1
+	if bar_host.get_bar_root() != null and bar_host.button_count() == want:
+		print("SHELL_BAR_OK buttons=", bar_host.button_count())
+	else:
+		printerr("SHELL_BAR_FAIL root=", bar_host.get_bar_root(),
+			" buttons=", bar_host.button_count(), " want=", want)
 
 ## Build the layer stack (one CanvasLayer per layer in the
 ## fixed table, under this shell) and register the launch bar:
@@ -48,8 +92,48 @@ func _setup_window_manager() -> void:
 	bar_rec.kind_link = "shell"
 	bar_rec.title = "Launch bar"
 	bar_rec.backing = bar_host.get_bar_root()
-	bar_rec.geometry = Rect2(Vector2.ZERO, get_viewport_rect().size)
+	# A panel's geometry is its strip: the full width, the
+	# bar's own height. (Full-viewport geometry was harmless
+	# while the bar's root was a transparent panel; a styled
+	# bar seated at that size would stretch to fill it.)
+	bar_rec.geometry = Rect2(Vector2.ZERO,
+		Vector2(get_viewport_rect().size.x, 48))
 	wm.register_window(bar_rec)
+
+## The registry: one manifest per launch-list entry (the shell
+## itself is furniture, not a launchable app). Record-only
+## hosting — placeholder backings off, because these programs
+## run in their own processes under the compositor.
+func _setup_registry(entries: Array) -> void:
+	registry = AppRegistry.new()
+	add_child(registry)
+	registry.set_window_manager(wm)
+	registry.placeholder_backings = false
+	for e in entries:
+		if e["id"] == "shell":
+			continue
+		registry.register_manifest(_manifest_for(e))
+
+## The manifest for one launch-list entry. The entry strings
+## are the registry's record of how the app launches
+## (launch_command derives from them); the live resolution —
+## fallbacks, overrides — stays nct-resolve-cmd's, and the
+## starting stays nct-launch's.
+func _manifest_for(e: Dictionary) -> Dictionary:
+	var kind := "foreign"
+	var entry := str(e["key"])
+	match str(e["key"]):
+		"hello":
+			kind = "pck"
+			entry = "/usr/lib/nct/godot/apps/nct-hello.pck"
+		"firefox":
+			entry = "firefox-esr"
+		"qt":
+			entry = "qterminal"
+		"terminal":
+			entry = "foot"
+	return {"id": e["id"], "name": e["title"], "kind": kind,
+		"entry": entry, "single_instance": true}
 
 func _list_path() -> String:
 	var env := OS.get_environment("NCT_LAUNCH_LIST")
@@ -76,31 +160,20 @@ func _read_launch_list() -> Array:
 func get_launch_entries() -> Array:
 	return _read_launch_list()
 
-func _title_for(id: String) -> String:
-	for e in _read_launch_list():
-		if e["id"] == id:
-			return e["title"]
-	return id
-
 ## A bar button was pressed (ShellBar.LaunchItem). The launch
-## registers its Window record first: origin own-process, no
-## backing — nct-launch detaches, so there is no pid to track
-## here, and the surface that would be this record's backing
-## is the compositor's to attach when the link lands.
+## goes through the registry: it registers the Window record
+## and tracks the lifecycle; the shell then starts the program
+## through the foundation chain. A running single-instance app
+## is focused, never respawned.
 func launch_entry(id: String) -> void:
 	print("SHELL_LAUNCH ", id)
-	_register_launch(id)
+	if registry.is_running(id):
+		registry.launch(id)
+		return
+	if registry.launch(id) == "":
+		printerr("SHELL: no manifest for launch id ", id)
+		return
 	OS.create_process("nct-launch", [id])
-
-func _register_launch(id: String) -> String:
-	_launch_seq += 1
-	var rec_id := "app-%s-%d" % [id, _launch_seq]
-	var rec := Record.new(rec_id, "normal")
-	rec.origin = "own-process"
-	rec.app_id = id
-	rec.title = _title_for(id)
-	wm.register_window(rec)
-	return rec_id
 
 ## --self-test only: the hosted window manager, proven from
 ## the live scene tree (layer nodes present, the bar's backing
@@ -122,21 +195,73 @@ func _wm_self_test() -> void:
 			fails.append("bar backing is not seated in the Top layer")
 		if bar.takes_focus():
 			fails.append("a panel-style bar must not take focus")
-	var rec = wm.get_record(_register_launch("self-test-app"))
-	if rec == null:
+	var rec := Record.new("app-self-test-1", "normal")
+	rec.origin = "own-process"
+	rec.app_id = "self-test-app"
+	rec.title = "Self Test App"
+	wm.register_window(rec)
+	var got = wm.get_record("app-self-test-1")
+	if got == null:
 		fails.append("launch record missing")
 	else:
-		if rec.origin != "own-process":
-			fails.append("launch origin is " + rec.origin)
-		if rec.app_id != "self-test-app":
-			fails.append("launch app_id is " + rec.app_id)
-		if rec.backing != null:
+		if got.origin != "own-process":
+			fails.append("launch origin is " + got.origin)
+		if got.app_id != "self-test-app":
+			fails.append("launch app_id is " + got.app_id)
+		if got.backing != null:
 			fails.append("an own-process record has no backing yet")
 	if fails.is_empty():
 		print("SHELL_WM_OK records=", wm.window_count())
 	else:
 		for f in fails:
 			printerr("SHELL_WM_FAIL ", f)
+
+## --self-test only: the hosted registry, proven against the
+## real launch list — manifests for every entry but the shell,
+## a launch that registers a backing-less own-process record,
+## single-instance returning the same window, and the crash
+## seam (marked dead -> liveness removes the record). The
+## self-test drives the registry directly; nothing spawns.
+func _registry_self_test(entries: Array) -> void:
+	var fails: Array[String] = []
+	var want := 0
+	for e in entries:
+		if e["id"] != "shell":
+			want += 1
+	if registry.app_ids().size() != want:
+		fails.append("manifests=%d want %d" % [registry.app_ids().size(), want])
+	var wid: String = registry.launch("hello")
+	if wid == "":
+		fails.append("hello launch produced no window")
+	else:
+		var rec = wm.get_record(wid)
+		if rec == null:
+			fails.append("hello window has no record")
+		else:
+			if rec.app_id != "hello":
+				fails.append("hello record app_id is " + rec.app_id)
+			if rec.origin != "own-process":
+				fails.append("hello record origin is " + rec.origin)
+			if rec.backing != null:
+				fails.append("hello record has a backing (record-only hosting)")
+		var before: int = wm.window_count()
+		if registry.launch("hello") != wid:
+			fails.append("single-instance returned a different window")
+		if wm.window_count() != before:
+			fails.append("single-instance added a window")
+		registry.mark_process_dead("hello")
+		var crashed: Array = registry.check_liveness()
+		if crashed != ["hello"]:
+			fails.append("liveness reported " + str(crashed))
+		if wm.get_record(wid) != null:
+			fails.append("crashed app's record stayed registered")
+		if registry.is_running("hello"):
+			fails.append("crashed app stayed in the running set")
+	if fails.is_empty():
+		print("SHELL_REGISTRY_OK manifests=", registry.app_ids().size())
+	else:
+		for f in fails:
+			printerr("SHELL_REGISTRY_FAIL ", f)
 
 func _notification(what: int) -> void:
 	# Activation can clear a grab made at startup (this window is

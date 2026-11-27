@@ -20,3 +20,15 @@ its window and is announced as app.crashed on the root's bus.
 Real process spawning stays the foundation chain's (tier 1);
 the process table here is the liveness seam. Plan:
 src/plans/ENVIRONMENT-MANAGER.md §1, §6, §7 Slice 3.
+HOSTED IN THE SHIPPED SHELL (2026-11-27, agent-build-log/32):
+vendored into godot/shell beside the window manager (layout
+mirrors src/modules; tools/sync-shell-modules.sh, drift-
+checked). The shell registers one manifest per launch-list
+entry, sets placeholder_backings = false (record-only
+hosting: own-process and foreign apps get backing-less
+records; surfaces attach at the compositor link), and routes
+every bar launch through launch() — single-instance focus
+included — before starting the program via nct-launch. The
+liveness seam stays unfed in the session (nct-launch
+detaches; no pid reaches the shell) until nct-launch reports
+pids; the self-test feeds it by hand (SHELL_REGISTRY_OK).

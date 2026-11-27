@@ -234,6 +234,21 @@ public partial class Slice3Harness : Control
         Check(_registry.Call("close_app", "fake-browser").AsBool(), "close refused");
         Check(!_wm.Call("has_window", fb).AsBool(), "closed app's window stayed");
         Check(BusHas("app.exited", "fake-browser"), "app.exited not announced");
+
+        // Record-only hosting (the shipped shell's mode): with
+        // placeholder backings off, a launch registers the
+        // record with NO backing — the surface is a compositor
+        // surface, attached later, never a shell-drawn fake.
+        Manifest("batch-tool", "Batch Tool", "foreign", "batch-tool", true);
+        _registry.Set("placeholder_backings", false);
+        var bt = _registry.Call("launch", "batch-tool").AsString();
+        Check(bt != "", "record-only launch produced no window");
+        var brec = _wm.Call("get_record", bt).AsGodotObject();
+        Check(brec.Get("backing").AsGodotObject() == null,
+            "record-only launch got a placeholder backing");
+        Check(_registry.Call("close_app", "batch-tool").AsBool(),
+            "record-only close refused");
+        _registry.Set("placeholder_backings", true);
     }
 
     private void Manifest(string id, string name, string kind, string entry, bool single)
