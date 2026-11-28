@@ -39,3 +39,17 @@ not edited into it.)
   (greetd/cage/Godot startup on software rendering);
   closing it needs Plymouth frame retention in the session
   stack — open.
+
+## Display dimensions — behaviour by phase
+
+(As recorded by the user, 2026-11-28.)
+
+| Phase | Behaviour |
+|---|---|
+| GRUB | Percentage geometry; proven at 1024×768 and 640×480. The mode list ends in auto, so other panels get their native resolution. The 300 px emblem is fixed-size — proportionally smaller on a 4K panel. |
+| Plymouth | Fully proportional: logo is 52% of the smaller dimension, bars 44% of width capped at 560 px. Theme v3.2 (this round) scales all vertical spacings by H/800 and drops the rolling log under 640 px height, where logo + bars alone fill the screen — that short-display path is code-reviewed but not yet rig-proven; 1280×800 is unchanged and proven. |
+| Greeter splash | The continuation image is 1280×800 with stretch=keep — on other shapes it letterboxes onto the same black Plymouth used. The greeter itself is Godot and resolution-independent. |
+| ThorVG prototype | Fixed 800×600 buffer — prototype scope only; the real renderer will take its geometry from the display mode. |
+
+Note: the Greeter splash row describes the suspended
+handoff design (see Later changes, phase 4).
