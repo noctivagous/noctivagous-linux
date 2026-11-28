@@ -12,7 +12,9 @@ here is wired into the image build yet.
   framing; `nct-ground-wireframe.svg` is the ground layer,
   kept for other surfaces, never part of the boot logo.
 - `plymouth-theme-nct/` - slice C, the categorised Plymouth
-  script theme.
+  script theme (rig-proven, incl. the v3 rolling status log).
+- `grub-theme-nct/` - the GRUB phase of the sequence:
+  NCT GRUB theme + gfxmode/payload settings (rig-proven).
 - `nct-bootsplash/` - slice D, the ThorVG renderer.
   Prototype stage: offline buffer rendering proven
   (see its README); framebuffer/initramfs work not done.

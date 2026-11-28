@@ -1,0 +1,41 @@
+# NCT GRUB theme - STAGING (see README.md in this directory)
+# Black ground, the radial logo centred, a minimal menu with a
+# focus-blue selection bar. Pairs with GRUB_GFXMODE=1280x800
+# and GRUB_GFXPAYLOAD_LINUX=keep so the kernel and Plymouth
+# inherit this resolution - no mode switch between phases.
+title-text: ""
+desktop-color: "#000000"
+terminal-font: "DejaVu Sans 12"
+
++ image {
+    left = 50%-150
+    top = 4%
+    width = 300
+    height = 300
+    file = "logo.png"
+}
+
++ boot_menu {
+    left = 32%
+    width = 36%
+    top = 70%
+    height = 15%
+    item_font = "DejaVu Sans 14"
+    item_color = "#b8b8c2"
+    selected_item_font = "DejaVu Sans 14"
+    selected_item_color = "#0b0b0e"
+    item_height = 30
+    item_spacing = 6
+    item_icon_space = 0
+    selected_item_pixmap_style = "select_*.png"
+}
+
++ label {
+    top = 90%
+    left = 0
+    width = 100%
+    align = "center"
+    font = "DejaVu Sans 12"
+    color = "#6a6a72"
+    text = "Noctivagous"
+}

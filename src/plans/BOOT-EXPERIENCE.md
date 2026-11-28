@@ -8,7 +8,15 @@ C RUNS ON VBOX RIG (2026-11-28: two real boots, v2 fixes for
 the String method-call bug, fill width and logo padding;
 QEMU boot still owed — its initrd is build-generated, theme
 rides in with slice D); VBox timing measured: DRM up at
-kernel t=5.71s, plymouthd backend at 5.87s (~0.15s gap); D PROTOTYPE PROVEN offline (static ThorVG
+kernel t=5.71s, plymouthd backend at 5.87s (~0.15s gap);
+GRUB phase themed + text phase themed (2026-11-28, user's
+'yes and do everything'): NCT GRUB theme live in the guest
+(VBE caps GRUB at 1024x768 on this rig; geometry made
+resolution-robust), plymouth:debug removed (its trace
+reached the screen), Plymouth v3 rolling status log renders
+the unit stream in-theme (names unescaped from systemd's
+\\x2d form); two switches remain (640x480 BIOS -> 1024x768
+GRUB/kernel -> 1280x800 splash); D PROTOTYPE PROVEN offline (static ThorVG
 renderer, 523,096 B binary, ~3-4 ms/frame, proof frames in
 src/core/boot/nct-bootsplash/frames/; framebuffer/initramfs
 work not done, its measurement task still first); rig staging

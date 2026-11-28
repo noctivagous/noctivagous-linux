@@ -31,6 +31,18 @@ Findings from the two boots, all fixed in v2 unless noted:
   surface and Plymouth's first frame are ~0.15 s apart here,
   so an own-renderer win on this rig would be control, not
   earliness.
+- v3 (2026-11-28, same day): the theme now shows the boot's
+  text instead of competing with it — a rolling log of the
+  last three unit events under the bars, failures pinned on
+  the line above it. systemd escapes '-' as \x2d in the
+  names it sends; pretty_name unescapes, strips the unit
+  suffix and caps the length (rig-verified: "systemd-binfmt",
+  "rpcbind" render clean). `boot-vbox-v3.png` is a real frame.
+- `plymouth:debug` was REMOVED after the v3 boot proved the
+  debug trace reaches the screen (a full-screen log frame at
+  splash start) even with gfxpayload keep. The debug log is
+  a diagnostic toggle, not a boot configuration; the timing
+  numbers above are already taken.
 
 ## What it is
 
