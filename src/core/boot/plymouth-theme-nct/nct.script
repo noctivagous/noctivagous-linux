@@ -1,0 +1,192 @@
+# NCT Plymouth script theme - STAGING (slice C of src/plans/BOOT-EXPERIENCE.md)
+#
+# What this does:
+#   - the radial-12 NCT logo, large, centred, rotating in code
+#     (the source SVG's rotation is SMIL, which Plymouth cannot
+#     run; rotation here is Image.Rotate from the refresh
+#     callback, 30 s per turn as in the source art)
+#   - boot activity grouped into six categories, driven by the
+#     unit-name updates systemd already sends Plymouth
+#     (SetUpdateStatusFunction). Stage-1 categorisation is by
+#     unit-name pattern, inside the theme - no daemon, Plymouth
+#     or systemd changes. Totals are activity counts, not real
+#     denominators; slice E replaces this with structured
+#     events (see the plan).
+#   - an overall progress bar from SetBootProgressFunction
+#   - the LUKS passphrase prompt stays Plymouth's own flow;
+#     this theme only displays it (prompt + bullets), per
+#     decision D4 of the plan.
+#
+# API use verified against Plymouth's own script libraries
+# (script-lib-string/image/sprite/plymouth): String.SubString,
+# String.Length, Image.Text, Image.Rotate, Sprite.SetImage /
+# SetPosition / SetOpacity and the Set*Function callbacks are
+# all real. NOT yet run under a real plymouthd - staging.
+
+# ---------------------------------------------------------------- setup
+
+screen_width = Window.GetWidth();
+screen_height = Window.GetHeight();
+cx = screen_width / 2;
+cy = screen_height / 2;
+
+logo_size = Math.Min(screen_width, screen_height) * 0.52;
+logo_image = Image("logo.png").Scale(logo_size, logo_size);
+logo_sprite = Sprite(logo_image);
+logo_sprite.SetPosition(cx - logo_size / 2, cy - logo_size / 2 - screen_height * 0.10, 0);
+
+angle = 0;
+refresh_tick = 0;
+
+# ------------------------------------------------------------ categories
+
+cat_count = 6;
+cat_name[0] = "Storage";   cat_key[0] = "storage";
+cat_name[1] = "Network";   cat_key[1] = "network";
+cat_name[2] = "Display";   cat_key[2] = "display";
+cat_name[3] = "Security";  cat_key[3] = "security";
+cat_name[4] = "Input";     cat_key[4] = "input";
+cat_name[5] = "System";    cat_key[5] = "system";
+for (i = 0; i < cat_count; i++)
+    cat_seen[i] = 0;
+
+bar_w = Math.Min(screen_width * 0.44, 560);
+bar_h = 10;
+bar_x = cx - bar_w / 2;
+bar_y0 = cy + logo_size / 2 - screen_height * 0.10 + 34;
+bar_dy = 30;
+
+bar_bg_image = Image("bar-bg.png");
+bar_fill_image = Image("bar-fill.png");
+
+for (i = 0; i < cat_count; i++) {
+    y = bar_y0 + i * bar_dy;
+    label = Image.Text(cat_name[i], 0.72, 0.72, 0.76);
+    label_sprite[i] = Sprite(label);
+    label_sprite[i].SetPosition(bar_x, y - 3, 1);
+    bg = Sprite(bar_bg_image.Scale(bar_w, bar_h));
+    bg.SetPosition(bar_x + 92, y, 1);
+    fill_sprite[i] = Sprite(bar_fill_image.Scale(1, bar_h));
+    fill_sprite[i].SetPosition(bar_x + 92, y, 2);
+    count_sprite[i] = Sprite(Image.Text("", 0.72, 0.72, 0.76));
+    count_sprite[i].SetPosition(bar_x + 100 + bar_w, y - 3, 1);
+}
+
+# overall progress (real fraction, from Plymouth itself)
+overall_y = bar_y0 + cat_count * bar_dy + 16;
+overall_bg = Sprite(bar_bg_image.Scale(bar_w + 92, 6));
+overall_bg.SetPosition(bar_x, overall_y, 1);
+overall_fill = Sprite(bar_fill_image.Scale(1, 6));
+overall_fill.SetPosition(bar_x, overall_y, 2);
+
+message_sprite = Sprite(Image.Text("", 0.85, 0.85, 0.88));
+message_sprite.SetPosition(cx - bar_w / 2, overall_y + 26, 1);
+
+prompt_sprite = Sprite(Image.Text("", 0.9, 0.9, 0.92));
+prompt_sprite.SetPosition(cx - bar_w / 2, overall_y + 52, 3);
+bullets_sprite = Sprite(Image.Text("", 0.9, 0.9, 0.92));
+bullets_sprite.SetPosition(cx - bar_w / 2, overall_y + 76, 3);
+
+# ------------------------------------------------------------- matching
+
+fun contains(haystack, needle) {
+    hl = String.Length(haystack);
+    nl = String.Length(needle);
+    if (nl > hl) return 0;
+    for (i = 0; i <= hl - nl; i++) {
+        if (String.SubString(haystack, i, i + nl) == needle)
+            return 1;
+    }
+    return 0;
+}
+
+fun categorize(status) {
+    if (contains(status, "Network") || contains(status, "network") ||
+        contains(status, "wpa") || contains(status, "dhcp"))
+        return 1;
+    if (contains(status, "mount") || contains(status, "crypt") ||
+        contains(status, "lvm") || contains(status, "dm-") ||
+        contains(status, "fsck") || contains(status, "disk"))
+        return 0;
+    if (contains(status, "display") || contains(status, "greetd") ||
+        contains(status, "drm") || contains(status, "plymouth"))
+        return 2;
+    if (contains(status, "audit") || contains(status, "apparmor") ||
+        contains(status, "security") || contains(status, "polkit"))
+        return 3;
+    if (contains(status, "keyboard") || contains(status, "input") ||
+        contains(status, "udev") || contains(status, "bluetooth"))
+        return 4;
+    return 5;
+}
+
+fun redraw_category(i) {
+    seen = cat_seen[i];
+    frac = seen / 8;
+    if (frac > 1) frac = 1;
+    w = Math.Max(1, (bar_w - 92) * frac);
+    fill_sprite[i].SetImage(bar_fill_image.Scale(w, bar_h));
+    if (seen > 0)
+        count_sprite[i].SetImage(Image.Text("" + seen, 0.72, 0.72, 0.76));
+}
+
+# ------------------------------------------------------------- callbacks
+
+fun update_status(status) {
+    i = categorize(status);
+    cat_seen[i]++;
+    redraw_category(i);
+}
+Plymouth.SetUpdateStatusFunction(update_status);
+
+fun boot_progress(duration, progress) {
+    if (progress > 1) progress = 1;
+    w = Math.Max(1, (bar_w + 92) * progress);
+    overall_fill.SetImage(bar_fill_image.Scale(w, 6));
+}
+Plymouth.SetBootProgressFunction(boot_progress);
+
+fun display_message(text) {
+    message_sprite.SetImage(Image.Text(text, 0.85, 0.85, 0.88));
+}
+Plymouth.SetDisplayMessageFunction(display_message);
+
+fun display_password(prompt, bullets) {
+    if (!prompt) prompt = "Password";
+    prompt_sprite.SetImage(Image.Text(prompt, 0.9, 0.9, 0.92));
+    bullet_text = "";
+    for (i = 0; i < bullets; i++) bullet_text += "*";
+    bullets_sprite.SetImage(Image.Text(bullet_text, 0.9, 0.9, 0.92));
+}
+Plymouth.SetDisplayPasswordFunction(display_password);
+
+fun display_normal() {
+    prompt_sprite.SetImage(Image.Text("", 0.9, 0.9, 0.92));
+    bullets_sprite.SetImage(Image.Text("", 0.9, 0.9, 0.92));
+}
+Plymouth.SetDisplayNormalFunction(display_normal);
+
+# Rotation: refresh runs up to 50x/s. Rotating a large image
+# every tick is wasteful in software; step every 3rd tick,
+# 30 s per turn as in the source art.
+fun refresh() {
+    refresh_tick++;
+    if (refresh_tick % 3 == 0) {
+        angle += 6.2832 / (30 * 50 / 3);
+        if (angle > 6.2832) angle -= 6.2832;
+        logo_sprite.SetImage(logo_image.Rotate(angle));
+    }
+}
+Plymouth.SetRefreshFunction(refresh);
+
+fun quit() {
+    logo_sprite.SetOpacity(0);
+    for (i = 0; i < cat_count; i++) {
+        label_sprite[i].SetOpacity(0);
+        fill_sprite[i].SetOpacity(0);
+        count_sprite[i].SetOpacity(0);
+    }
+    overall_bg.SetOpacity(0);
+    overall_fill.SetOpacity(0);
+}
+Plymouth.SetQuitFunction(quit);

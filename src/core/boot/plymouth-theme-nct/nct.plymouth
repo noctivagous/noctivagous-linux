@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=NCT
+Description=Noctivagous boot splash: rotating radial logo with boot progress grouped by category (Storage / Network / Display / Security / Input / System). STAGING - see README.md in this directory.
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/nct
+ScriptFile=/usr/share/plymouth/themes/nct/nct.script
