@@ -100,6 +100,18 @@ previous theme + `update-initramfs -u`.
 - `Image.Text` uses Plymouth's label rendering; font and
   metrics on the rig may differ from the mock.
 
+## Boot handoff to the greeter — SUSPENDED 2026-11-28
+
+Suspended on the user's judgment after the boot-5 trial:
+the continuation did not work that well compared to
+before. The greeter splash change is reverted in the tree
+(greeter back to show_image=false) and the guest's original
+greeter.pck restored from backup; the full implementation
+remains in git history at commit 21e645b for the revisit.
+The theme v3.2 responsive geometry is independent and
+stays. The section below is the suspended design, kept as
+the revisit record.
+
 ## Boot handoff to the greeter (v3.2 + greeter splash, 2026-11-28)
 
 The black beat between Plymouth quit and the greeter's first
