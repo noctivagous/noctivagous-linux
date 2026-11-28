@@ -1,3 +1,7 @@
 .vagrant/
 # QEMU rig inputs/working files (built images are build outputs, ~2 GB)
 qemu-image/
+# One-off guest proof installers: they land here because the
+# guest reaches this directory via /vagrant, but they belong
+# to the rig toolkit, not the repo (build logs 34-37)
+guest-install*.sh
