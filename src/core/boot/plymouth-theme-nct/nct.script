@@ -89,12 +89,17 @@ bullets_sprite.SetPosition(cx - bar_w / 2, overall_y + 76, 3);
 
 # ------------------------------------------------------------- matching
 
+# NOTE: Plymouth's String natives read the string from `this`,
+# so they must be called method-style on the string itself.
+# String.Length(x) sets `this` to the String hash and silently
+# matches nothing - that bug shipped in staging v1 and sent
+# every unit to the System catch-all (rig boot, 2026-11-28).
 fun contains(haystack, needle) {
-    hl = String.Length(haystack);
-    nl = String.Length(needle);
+    hl = haystack.Length();
+    nl = needle.Length();
     if (nl > hl) return 0;
     for (i = 0; i <= hl - nl; i++) {
-        if (String.SubString(haystack, i, i + nl) == needle)
+        if (haystack.SubString(i, i + nl) == needle)
             return 1;
     }
     return 0;
@@ -124,7 +129,7 @@ fun redraw_category(i) {
     seen = cat_seen[i];
     frac = seen / 8;
     if (frac > 1) frac = 1;
-    w = Math.Max(1, (bar_w - 92) * frac);
+    w = Math.Max(1, bar_w * frac);
     fill_sprite[i].SetImage(bar_fill_image.Scale(w, bar_h));
     if (seen > 0)
         count_sprite[i].SetImage(Image.Text("" + seen, 0.72, 0.72, 0.76));
