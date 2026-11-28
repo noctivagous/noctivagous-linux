@@ -1,0 +1,9 @@
+NAME="Noctivagous Linux"
+PRETTY_NAME="Noctivagous Linux"
+ID=noctivagous
+ID_LIKE=debian
+VERSION_ID="0.1"
+VERSION="0.1 (staging)"
+HOME_URL="https://github.com/noctivagous/noctivagous-linux"
+SUPPORT_URL="https://github.com/noctivagous/noctivagous-linux/issues"
+BUG_REPORT_URL="https://github.com/noctivagous/noctivagous-linux/issues"

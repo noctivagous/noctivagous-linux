@@ -1,0 +1,11 @@
+# Noctivagous /etc/default/grub values - the distro's shipped
+# boot configuration (staging form; the image build installs
+# this file, the rig guest had the same values applied by
+# hand). Boot-sequence files: src/core/boot/.
+GRUB_DISTRIBUTOR="Noctivagous"
+GRUB_THEME="/boot/grub/themes/nct/theme.txt"
+GRUB_GFXMODE="1280x800,1024x768,auto"
+GRUB_GFXPAYLOAD_LINUX="keep"
+GRUB_TIMEOUT=3
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
+GRUB_CMDLINE_LINUX="net.ifnames=0 biosdevname=0 "
