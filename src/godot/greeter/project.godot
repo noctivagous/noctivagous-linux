@@ -5,11 +5,19 @@ config_version=5
 [application]
 config/name="NCT Greeter"
 run/main_scene="res://main.tscn"
-; No engine splash: no boot image, and the boot background is the
-; greeter backdrop's own base tone (backdrop.gd), so an engine
-; start is one solid colour straight into the scene.
-boot_splash/bg_color=Color(0.05, 0.05, 0.05, 1)
-boot_splash/show_image=false
+; Boot handoff (2026-11-28): the engine splash IS used, as the
+; continuation of the Plymouth boot splash. Plymouth's last
+; frame (logo + full category bars on black) is recreated in
+; boot-continuation.png; Godot draws it as its first frame, so
+; the Plymouth -> greeter seam shows one continuous image
+; instead of a black beat while cage/Godot start. The scene's
+; own backdrop tone (0.05) follows when the login form fades
+; in. Pure black bg so off-size displays letterbox onto the
+; same black Plymouth used.
+boot_splash/bg_color=Color(0, 0, 0, 1)
+boot_splash/show_image=true
+boot_splash/image="res://boot-continuation.png"
+boot_splash/stretch_mode=1
 
 [display]
 window/size/viewport_width=900

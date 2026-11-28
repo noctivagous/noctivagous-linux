@@ -27,6 +27,11 @@
 
 screen_width = Window.GetWidth();
 screen_height = Window.GetHeight();
+# Vertical scale unit (theme v3.2): the layout was tuned at
+# 800 px height. Shorter displays scale the spacings down;
+# the rolling log is dropped entirely under 640 px, where
+# logo + bars alone fill the screen.
+u = Math.Min(1, screen_height / 800);
 cx = screen_width / 2;
 cy = screen_height / 2;
 
@@ -54,7 +59,7 @@ bar_w = Math.Min(screen_width * 0.44, 560);
 bar_h = 10;
 bar_x = cx - bar_w / 2;
 bar_y0 = cy + logo_size / 2 - screen_height * 0.13 + 28;
-bar_dy = 26;
+bar_dy = 26 * u;
 
 bar_bg_image = Image("bar-bg.png");
 bar_fill_image = Image("bar-fill.png");
@@ -73,14 +78,14 @@ for (i = 0; i < cat_count; i++) {
 }
 
 # overall progress (real fraction, from Plymouth itself)
-overall_y = bar_y0 + cat_count * bar_dy + 16;
+overall_y = bar_y0 + cat_count * bar_dy + 16 * u;
 overall_bg = Sprite(bar_bg_image.Scale(bar_w + 92, 6));
 overall_bg.SetPosition(bar_x, overall_y, 1);
 overall_fill = Sprite(bar_fill_image.Scale(1, 6));
 overall_fill.SetPosition(bar_x, overall_y, 2);
 
 message_sprite = Sprite(Image.Text("", 0.85, 0.85, 0.88));
-message_sprite.SetPosition(bar_x, overall_y + 20, 1);
+message_sprite.SetPosition(bar_x, overall_y + 20 * u, 1);
 
 # Rolling status log (theme v3): the boot's unit stream shown
 # in the theme's own presentation under the bars - the last
@@ -88,16 +93,17 @@ message_sprite.SetPosition(bar_x, overall_y + 20, 1);
 # pinned on the message line above the log instead of
 # scrolling away.
 log_count = 3;
+if (screen_height < 640) log_count = 0;
 for (i = 0; i < log_count; i++) {
     log_text[i] = "";
     log_sprite[i] = Sprite(Image.Text("", 0.55, 0.55, 0.60));
-    log_sprite[i].SetPosition(bar_x, overall_y + 42 + i * 18, 1);
+    log_sprite[i].SetPosition(bar_x, overall_y + (42 + i * 18) * u, 1);
 }
 
 prompt_sprite = Sprite(Image.Text("", 0.9, 0.9, 0.92));
 prompt_sprite.SetPosition(bar_x, overall_y + 20, 3);
 bullets_sprite = Sprite(Image.Text("", 0.9, 0.9, 0.92));
-bullets_sprite.SetPosition(bar_x, overall_y + 44, 3);
+bullets_sprite.SetPosition(bar_x, overall_y + 44 * u, 3);
 
 # ------------------------------------------------------------- matching
 
@@ -176,6 +182,7 @@ fun pretty_name(status) {
 }
 
 fun push_log(text) {
+    if (log_count == 0) return;
     for (i = 0; i < log_count - 1; i++)
         log_text[i] = log_text[i + 1];
     log_text[log_count - 1] = text;

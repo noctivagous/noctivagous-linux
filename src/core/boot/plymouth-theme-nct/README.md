@@ -99,3 +99,33 @@ previous theme + `update-initramfs -u`.
   rotation frames. Decide on rig measurements, not here.
 - `Image.Text` uses Plymouth's label rendering; font and
   metrics on the rig may differ from the mock.
+
+## Boot handoff to the greeter (v3.2 + greeter splash, 2026-11-28)
+
+The black beat between Plymouth quit and the greeter's first
+frame is the unowned-display gap: plymouthd exits, then
+greetd -> cage -> Godot must start before anything can draw.
+The greeter now meets it halfway (user's design): the
+greeter's Godot boot splash - previously disabled - shows
+boot-continuation.png, a recreation of this theme's final
+frame (logo, all bars full, overall full, black ground) at
+1280x800, drawn by the engine as its first frame while the
+login scene loads (src/godot/greeter/project.godot +
+boot-continuation.png; stretch=keep, letterboxed on black
+at other sizes). Rig-proven boot 5: Plymouth near-final
+frame -> black (process start, unchanged) -> continuation
+frame held (boot-continuation-vbox.png) -> login form. The
+remaining pre-engine black is greetd/cage/Godot startup;
+closing it needs Plymouth frame retention (deactivate
+protocol) in the session stack - recorded, not attempted.
+
+Display dimensions: GRUB theme geometry is percentage
+based (proven 1024x768 and 640x480; GFXMODE ends in auto).
+This theme is proportional: logo = 52% of the smaller
+dimension, bars 44% of width capped at 560 px. v3.2 adds a
+vertical scale unit u = min(1, H/800) on all spacings and
+drops the rolling log under 640 px height, where logo +
+bars alone fill the screen (code-reviewed; the rig's
+1280x800 path is unchanged and proven, the short-display
+path is not yet rig-proven). The ThorVG prototype renders
+a fixed 800x600 buffer (prototype scope only).
