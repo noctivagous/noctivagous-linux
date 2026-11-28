@@ -13,6 +13,6 @@ here is wired into the image build yet.
   kept for other surfaces, never part of the boot logo.
 - `plymouth-theme-nct/` - slice C, the categorised Plymouth
   script theme.
-- `nct-bootsplash/` - slice D, the ThorVG initramfs
-  renderer (arrives from the prototype in
-  ~/workspace/boot-prototype/ once it proves out).
+- `nct-bootsplash/` - slice D, the ThorVG renderer.
+  Prototype stage: offline buffer rendering proven
+  (see its README); framebuffer/initramfs work not done.

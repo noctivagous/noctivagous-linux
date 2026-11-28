@@ -5,7 +5,12 @@ by the user ('.') in the ThorVG/boot planning chat of 2026-11-27.
 Slice states as of 2026-11-27 evening: A+B DONE and seat-proven
 (build logs 40+41, compositor chat, branch feat/labwc-nct-theme);
 C STAGING (built on feat/boot-experience-staging, not yet run
-under plymouthd); D in progress (offline ThorVG prototype);
+under plymouthd); D PROTOTYPE PROVEN offline (static ThorVG
+renderer, 523,096 B binary, ~3-4 ms/frame, proof frames in
+src/core/boot/nct-bootsplash/frames/; framebuffer/initramfs
+work not done, its measurement task still first); rig staging
+bundle assembled at ~/workspace/boot-staging/ (BUNDLE.md +
+MANIFEST.sha256), not yet transferred;
 E-G not started. Local file, unpushed.
 
 Companions: POSITIONING.md (why a distinctive boot is ours to
