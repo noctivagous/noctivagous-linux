@@ -1,4 +1,6 @@
-# core/boot - STAGING
+# core/boot
+
+Phase-by-phase boot customization status: CUSTOMIZATION.md - STAGING
 
 Boot-experience code, per src/plans/BOOT-EXPERIENCE.md.
 Everything under this directory is **STAGING** until its
